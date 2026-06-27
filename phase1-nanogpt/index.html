@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM from Scratch · 交互式学习</title>
+<style>
+  /* ============ 全局基础样式(与 01 可视化共用同一套暖色变量)============ */
+  :root{
+    --bg:#F0EEE6;          /* 暖米色背景 */
+    --card:#FAF9F5;        /* 卡片底 */
+    --border:#E5E2D9;      /* 淡边框 */
+    --accent:#D97757;      /* 陶土橙 强调色 */
+    --accent-soft:#F2D9CE; /* 浅陶土 */
+    --ink:#1A1A18;         /* 正文 */
+    --ink2:#6B6B68;        /* 次要文字 */
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:960px;margin:0 auto;padding:48px 24px 80px;}
+
+  /* ============ 顶部标题区 ============ */
+  header{margin-bottom:40px;}
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:18px;
+  }
+  h1{
+    font-family:var(--serif);font-weight:600;
+    font-size:36px;line-height:1.25;margin:0 0 12px;
+  }
+  h1 .dot{color:var(--accent);}
+  .subtitle{color:var(--ink2);font-size:16px;max-width:640px;margin:0;}
+  .subtitle code{
+    font-family:var(--mono);font-size:13px;
+    background:var(--card);border:1px solid var(--border);
+    padding:2px 6px;border-radius:6px;color:var(--accent);
+  }
+
+  /* ============ 章节卡片栅格(自适应,可容纳更多章节)============ */
+  .chapters{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+    gap:22px;margin-top:8px;
+  }
+
+  .card{
+    background:var(--card);border:1px solid var(--border);
+    border-radius:18px;padding:26px 26px 22px;
+    transition:transform .25s ease,box-shadow .25s ease,border-color .25s ease;
+    display:flex;flex-direction:column;
+  }
+  .card:hover{
+    transform:translateY(-3px);
+    border-color:#cfc9ba;
+    box-shadow:0 10px 28px rgba(26,26,24,.06);
+  }
+
+  .card-head{display:flex;align-items:baseline;gap:10px;margin-bottom:4px;}
+  .ch-num{
+    font-family:var(--mono);font-size:12px;font-weight:700;
+    color:var(--accent);letter-spacing:.5px;
+  }
+  .card h2{
+    font-family:var(--serif);font-size:21px;font-weight:600;margin:6px 0 8px;
+  }
+  /* 章标题作为链接:进入该章第一步 */
+  .card h2 a{color:var(--ink);text-decoration:none;transition:color .2s ease;}
+  .card h2 a:hover{color:var(--accent);}
+  .card .desc{color:var(--ink2);font-size:14px;margin:0 0 16px;}
+  .card .desc code{
+    font-family:var(--mono);font-size:12.5px;
+    background:#F4F2EA;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);
+  }
+
+  /* ============ 步骤列表(可点击深链)============ */
+  .steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;}
+  .steps li a{
+    display:flex;align-items:center;gap:10px;
+    text-decoration:none;color:var(--ink);
+    font-size:13.5px;
+    background:#fff;border:1px solid var(--border);border-radius:10px;
+    padding:9px 12px;
+    transition:all .2s ease;
+  }
+  .steps li a:hover{
+    border-color:var(--accent);
+    box-shadow:0 0 0 1px var(--accent);
+    color:var(--accent);
+  }
+  .steps li a .sn{
+    font-family:var(--mono);font-size:11px;font-weight:700;
+    color:var(--accent);
+    flex-shrink:0;width:46px;
+  }
+  .steps li a .st{flex:1;}
+  .steps li a .arrow{color:var(--ink2);transition:color .2s ease,transform .2s ease;}
+  .steps li a:hover .arrow{color:var(--accent);transform:translateX(3px);}
+
+  /* ============ 锁定 / 占位卡片 ============ */
+  .card.locked{cursor:default;}
+  .card.locked:hover{transform:none;border-color:var(--border);box-shadow:none;}
+  .card.locked h2{color:var(--ink2);}
+  .tag-soon{
+    font-family:var(--mono);font-size:11px;font-weight:700;
+    color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:999px;padding:3px 10px;display:inline-block;
+  }
+  .card.locked .desc{margin-bottom:14px;}
+  .soon-hint{
+    margin-top:auto;font-size:12.5px;color:var(--ink2);
+    background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:10px 12px;text-align:center;
+    cursor:pointer;transition:border-color .2s ease,color .2s ease;
+  }
+  .soon-hint:hover{border-color:var(--accent);color:var(--accent);}
+
+  /* 把步骤列表推到底,卡片等高更整齐 */
+  .card .steps{margin-top:auto;}
+
+  .card-foot{
+    margin-top:16px;padding-top:14px;border-top:1px solid var(--border);
+    font-size:12.5px;color:var(--ink2);
+  }
+  .card-foot a{color:var(--accent);text-decoration:none;font-weight:600;}
+  .card-foot a:hover{text-decoration:underline;}
+
+  /* ============ 页脚 ============ */
+  footer{
+    margin-top:48px;padding-top:22px;border-top:1px solid var(--border);
+    font-size:13px;color:var(--ink2);
+  }
+  footer b{color:var(--accent);font-weight:600;}
+  .progress{
+    font-family:var(--mono);font-size:12px;color:var(--ink2);
+    margin-top:6px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ 顶部标题区 ============ -->
+  <header>
+    <span class="eyebrow">llm-from-scratch · 交互式学习可视化</span>
+    <h1>LLM from Scratch <span class="dot">·</span> 交互式学习</h1>
+    <p class="subtitle">
+      从零手写一个语言模型的可视化学习之旅。每一章把抽象的张量、损失与训练循环
+      拆成可以亲手拨动的动画 —— 看懂了,再回去读 <code>.py</code> 代码就豁然开朗。
+    </p>
+  </header>
+
+  <!-- ============ 章节卡片栅格 ============ -->
+  <div class="chapters">
+
+    <!-- 第 1 章 · Bigram 基线 -->
+    <section class="card">
+      <div class="card-head">
+        <span class="ch-num">CHAPTER 01</span>
+      </div>
+      <h2><a href="01_bigram_crossentropy_viz.html#step-1">第 1 章 · Bigram 基线</a></h2>
+      <p class="desc">
+        最朴素的语言模型。一口气理解 tokenizer / batch / forward /
+        <code>cross_entropy</code> / 训练循环这条主线。
+      </p>
+      <ul class="steps">
+        <li>
+          <a href="01_bigram_crossentropy_viz.html#step-1">
+            <span class="sn">STEP 1</span>
+            <span class="st">x / y 错位:一个 batch 的输入与目标</span>
+            <span class="arrow">→</span>
+          </a>
+        </li>
+        <li>
+          <a href="01_bigram_crossentropy_viz.html#step-2">
+            <span class="sn">STEP 2</span>
+            <span class="st">三维 logits 摊平 (B,T,C)→(B*T,C)</span>
+            <span class="arrow">→</span>
+          </a>
+        </li>
+        <li>
+          <a href="01_bigram_crossentropy_viz.html#step-3">
+            <span class="sn">STEP 3</span>
+            <span class="st">单题 cross_entropy 拆解(softmax → -ln(p))</span>
+            <span class="arrow">→</span>
+          </a>
+        </li>
+        <li>
+          <a href="01_bigram_crossentropy_viz.html#step-4">
+            <span class="sn">STEP 4</span>
+            <span class="st">loss = -ln(p) 损失曲线滑块直觉</span>
+            <span class="arrow">→</span>
+          </a>
+        </li>
+        <li>
+          <a href="01_bigram_crossentropy_viz.html#step-5">
+            <span class="sn">STEP 5</span>
+            <span class="st">训练循环:圆环图 + 权重表 + loss 下降曲线</span>
+            <span class="arrow">→</span>
+          </a>
+        </li>
+      </ul>
+      <div class="card-foot">
+        共 5 步 · <a href="01_bigram_crossentropy_viz.html#step-1">从第一步开始 →</a>
+      </div>
+    </section>
+
+    <!-- 第 2 章 · 自注意力(占位)-->
+    <section class="card locked">
+      <div class="card-head">
+        <span class="ch-num">CHAPTER 02</span>
+        <span class="tag-soon">🔒 即将上线 · Coming soon</span>
+      </div>
+      <h2>第 2 章 · 自注意力 (self-attention)</h2>
+      <p class="desc">
+        给模型装上"往回看"的能力,让每个位置都能参考前文 ——
+        正是它打败了 bigram 那道 <code>loss ≈ 2.5</code> 的天花板。
+      </p>
+      <div class="soon-hint" id="soon2" role="button" tabindex="0">
+        敬请期待:对应 <code>02_attention.py</code> 的交互讲解正在路上。
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ============ 页脚 ============ -->
+  <footer>
+    一个从零理解大语言模型的教学项目 —— 先<b>看懂直觉</b>,再读代码。
+    全部页面均为单文件、零依赖,离线双击即可打开。
+    <div class="progress">进度:第 1 章已上线 · 第 2 章筹备中 · 更多章节陆续加入</div>
+  </footer>
+
+</div>
+
+<script>
+  /* 占位章节:点击/回车给出"即将上线"提示,不做跳转 */
+  (function(){
+    var soon = document.getElementById('soon2');
+    if(!soon) return;
+    function notify(){
+      var orig = soon.innerHTML;
+      soon.innerHTML = '🚧 第 2 章还在打磨中,先把第 1 章吃透吧!';
+      setTimeout(function(){ soon.innerHTML = orig; }, 1800);
+    }
+    soon.addEventListener('click', notify);
+    soon.addEventListener('keydown', function(e){
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); notify(); }
+    });
+  })();
+</script>
+</body>
+</html>

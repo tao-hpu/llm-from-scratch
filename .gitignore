@@ -1,0 +1,33 @@
+# ===== 模型权重 / checkpoint（太大，走 GitHub Release 或 HuggingFace，不进 git）=====
+*.pt
+*.bin
+*.safetensors
+ckpt/
+ckpt*/
+
+# ===== 训练数据 / 分词后的 shards（自己跑 prepare_fineweb.py 生成）=====
+data/
+data10b/
+*.npy
+*.parquet
+
+# ===== 日志 =====
+*.log
+runs/
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+
+# ===== 系统 / 编辑器 / 本地工具配置 =====
+.DS_Store
+.idea/
+.vscode/
+.claude/
+
+# ===== 个人规划稿（引用了私有科研线，勿发布）=====
+_规划稿-内部勿发.md

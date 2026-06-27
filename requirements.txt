@@ -1,0 +1,10 @@
+# Phase 1 依赖。装这些就能跑通从 bigram 到 GPT-2 124M 的全部代码。
+# 建议 Python 3.10+。装 torch 请按你的平台到 https://pytorch.org 选对应命令：
+#   - NVIDIA 显卡(Windows/Linux)：选 CUDA 版
+#   - Mac(Apple Silicon)：默认 pip 版即自带 MPS
+#   - 纯 CPU：默认 pip 版
+torch>=2.2
+numpy
+tiktoken          # GPT-2 真 BPE 分词（phase1-124m 用）
+pyarrow           # 读本地 FineWeb-Edu parquet（phase1-124m 用）
+# huggingface_hub  # 可选：下载预训练好的权重时用

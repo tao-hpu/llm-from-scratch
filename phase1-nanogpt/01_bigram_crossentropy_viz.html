@@ -1,0 +1,1404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bigram 的 cross_entropy 可视化</title>
+<style>
+  /* ============ 全局基础样式 ============ */
+  :root{
+    --bg:#F0EEE6;          /* 暖米色背景 */
+    --card:#FAF9F5;        /* 卡片底 */
+    --border:#E5E2D9;      /* 淡边框 */
+    --accent:#D97757;      /* 陶土橙 强调色 */
+    --accent-soft:#F2D9CE; /* 浅陶土 */
+    --ink:#1A1A18;         /* 正文 */
+    --ink2:#6B6B68;        /* 次要文字 */
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:920px;margin:0 auto;padding:32px 24px 80px;}
+
+  /* ============ 顶部标题区 ============ */
+  header{margin-bottom:28px;}
+  .filename{
+    font-family:var(--mono);
+    font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;
+  }
+  h1{
+    font-family:var(--serif);font-weight:600;
+    font-size:30px;line-height:1.3;margin:0 0 10px;
+  }
+  .subtitle{color:var(--ink2);font-size:15px;max-width:680px;margin:0;}
+  .subtitle code{
+    font-family:var(--mono);font-size:13px;
+    background:var(--card);border:1px solid var(--border);
+    padding:2px 6px;border-radius:6px;color:var(--accent);
+  }
+
+  /* ============ 步骤导航 ============ */
+  .steps{
+    display:flex;gap:8px;margin:28px 0 20px;flex-wrap:wrap;
+  }
+  .step-tab{
+    flex:1;min-width:170px;
+    background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:12px 14px;cursor:pointer;
+    transition:all .25s ease;text-align:left;
+  }
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{
+    border-color:var(--accent);
+    box-shadow:0 0 0 1px var(--accent);
+    background:#fff;
+  }
+  .step-tab .num{
+    font-family:var(--mono);font-size:12px;color:var(--accent);
+    font-weight:700;letter-spacing:.5px;
+  }
+  .step-tab .label{font-size:14px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  /* ============ 面板卡片 ============ */
+  .panel{
+    background:var(--card);border:1px solid var(--border);
+    border-radius:16px;padding:28px;display:none;
+    animation:fade .4s ease;
+  }
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{
+    font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;
+  }
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 22px;}
+  .note{
+    font-size:13px;color:var(--ink2);
+    background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:10px 14px;margin-top:18px;
+  }
+  .note b{color:var(--accent);font-weight:600;}
+
+  code,.mono{font-family:var(--mono);}
+  .shape-tag{
+    font-family:var(--mono);font-size:15px;font-weight:700;
+    color:var(--accent);background:#fff;border:1px solid var(--accent);
+    padding:4px 12px;border-radius:8px;display:inline-block;
+    transition:all .4s ease;
+  }
+
+  /* ============ 通用按钮 ============
+     规则:亮 = 橘色(.primary,当前激活/推荐操作);不亮 = 中性(默认 / .ghost) */
+  button.btn{
+    font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);
+    border-radius:10px;padding:9px 18px;cursor:pointer;
+    transition:all .2s ease,transform .1s ease;
+  }
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  /* 中性次要按钮(复位/重置类) */
+  button.btn.ghost{background:transparent;color:var(--ink2);border:1px solid var(--border);}
+  button.btn.ghost:hover{border-color:#cfc9ba;color:var(--ink);}
+  /* 激活 / 推荐主操作:陶土橙填充 */
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);border-color:var(--accent);color:#fff;}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  button.btn:disabled:hover{border-color:var(--border);}
+
+  /* ============ 上一步/下一步 ============ */
+  .nav{display:flex;justify-content:space-between;margin-top:24px;}
+
+  /* ============ Step1: x/y 表格 ============ */
+  .seq-block{margin:18px 0;}
+  .seq-row{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+  .seq-row .tag{
+    font-family:var(--mono);font-size:13px;color:var(--ink2);width:74px;flex-shrink:0;
+  }
+  .cell{
+    width:46px;height:46px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:20px;font-weight:600;
+    border:1px solid var(--border);background:#fff;
+    position:relative;
+  }
+  .cell.x{background:#EEF1EC;border-color:#d7ddd2;}
+  .cell.y{background:var(--accent-soft);border-color:#e8c4b5;color:#8a3d23;}
+  .arrows{display:flex;gap:10px;margin:2px 0 2px 84px;}
+  .arrow-col{width:46px;text-align:center;color:var(--accent);font-size:18px;}
+  .seq-title{font-size:13px;color:var(--ink2);margin:18px 0 6px;font-weight:600;}
+  .legend{display:flex;gap:18px;font-size:13px;color:var(--ink2);margin-top:14px;flex-wrap:wrap;}
+  .legend span{display:inline-flex;align-items:center;gap:6px;}
+  .swatch{width:14px;height:14px;border-radius:4px;display:inline-block;border:1px solid var(--border);}
+
+  /* ============ Step2: 摊平动画 ============ */
+  #flipStage{
+    position:relative;
+    height:360px;margin:10px auto;
+    transition:height .5s ease;
+  }
+  .tile{
+    position:absolute;
+    width:150px;height:64px;border-radius:12px;
+    background:#fff;border:1px solid var(--border);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    transition:transform .7s cubic-bezier(.22,.61,.36,1);
+    box-shadow:0 1px 0 rgba(0,0,0,.02);
+  }
+  .tile .idx{font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:700;}
+  .tile .ch{font-family:var(--mono);font-size:13px;color:var(--ink2);margin-top:2px;}
+  .tile .clen{font-family:var(--mono);font-size:11px;color:#aaa;margin-top:1px;}
+  .flip-controls{display:flex;gap:12px;align-items:center;margin:6px 0 4px;flex-wrap:wrap;}
+
+  /* ============ Step3: 单题拆解 ============ */
+  .q-picker{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 20px;}
+  .q-btn{
+    font-family:var(--mono);font-size:13px;font-weight:600;
+    background:#fff;border:1px solid var(--border);border-radius:10px;
+    padding:8px 12px;cursor:pointer;transition:all .2s ease;color:var(--ink2);
+  }
+  .q-btn:hover{border-color:#cfc9ba;}
+  .q-btn.sel{border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .bars{display:flex;align-items:flex-end;gap:14px;height:200px;margin:18px 0 8px;padding:0 6px;}
+  .bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;}
+  .bar{
+    width:100%;max-width:54px;border-radius:8px 8px 4px 4px;
+    background:#cdd3c8;
+    transition:height .6s cubic-bezier(.22,.61,.36,1),background .4s ease;
+    position:relative;
+  }
+  .bar.correct{background:var(--accent);}
+  .bar-val{font-family:var(--mono);font-size:11px;color:var(--ink2);margin-bottom:4px;height:14px;}
+  .bar-label{font-family:var(--mono);font-size:15px;margin-top:8px;font-weight:600;}
+  .bar-label.correct{color:var(--accent);}
+  .calc-box{
+    background:#F4F2EA;border:1px solid var(--border);border-radius:12px;
+    padding:16px 18px;margin-top:16px;font-family:var(--mono);font-size:14.5px;
+  }
+  .calc-box .big{font-size:20px;color:var(--accent);font-weight:700;}
+
+  /* ============ Step4: 滑块 + 曲线 ============ */
+  .slider-row{display:flex;align-items:center;gap:16px;margin:20px 0 10px;flex-wrap:wrap;}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;height:6px;border-radius:3px;
+    background:linear-gradient(90deg,var(--accent) 0%,var(--accent) var(--fill,50%),#ddd var(--fill,50%),#ddd 100%);
+    width:320px;max-width:60vw;outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:3px solid #fff;box-shadow:0 0 0 1px var(--accent);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:18px;height:18px;border-radius:50%;background:var(--accent);
+    cursor:pointer;border:3px solid #fff;
+  }
+  .readout{display:flex;gap:28px;flex-wrap:wrap;margin:8px 0 16px;}
+  .readout .item{font-family:var(--mono);}
+  .readout .item .k{font-size:12px;color:var(--ink2);}
+  .readout .item .v{font-size:24px;font-weight:700;color:var(--accent);}
+  .refs{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;}
+  .ref-chip{
+    font-family:var(--mono);font-size:12px;color:var(--ink2);
+    background:#fff;border:1px solid var(--border);border-radius:8px;
+    padding:6px 10px;cursor:pointer;transition:all .2s ease;
+  }
+  .ref-chip:hover{border-color:var(--accent);color:var(--accent);}
+  .avg-box{
+    margin-top:20px;background:#F4F2EA;border:1px solid var(--border);
+    border-radius:12px;padding:16px 18px;
+  }
+  .avg-terms{font-family:var(--mono);font-size:13px;color:var(--ink2);word-break:break-all;}
+  .avg-result{font-family:var(--mono);font-size:16px;margin-top:8px;}
+  .avg-result b{color:var(--accent);font-size:20px;}
+  svg text{font-family:var(--mono);}
+
+  /* ============ Step5: 训练循环 ============ */
+  .sub-h{font-family:var(--serif);font-size:17px;font-weight:600;margin:30px 0 4px;}
+  .sub-h .badge{
+    font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;
+  }
+  .sub-desc{color:var(--ink2);font-size:13.5px;margin:0 0 12px;}
+
+  /* (A) 闭环流程图 —— 圆环布局 */
+  .loop-wrap{max-width:600px;margin:8px auto 0;}
+  .loop-stage{position:relative;width:100%;aspect-ratio:1/1;}
+  .loop-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+  .lnode{
+    position:absolute;width:27%;min-width:138px;
+    transform:translate(-50%,-50%);
+    background:#fff;border:1px solid var(--border);border-radius:14px;
+    padding:11px 12px;text-align:center;transition:all .3s ease;z-index:2;
+  }
+  .lnode .ln-num{
+    font-family:var(--mono);font-size:11px;font-weight:700;color:var(--ink2);
+    display:inline-flex;align-items:center;justify-content:center;
+    width:20px;height:20px;border-radius:50%;background:#F4F2EA;
+  }
+  .lnode .ln-title{font-size:13.5px;font-weight:600;margin:5px 0 5px;line-height:1.35;}
+  .lnode .ln-code{
+    font-family:var(--mono);font-size:11.5px;color:var(--accent);
+    background:#F4F2EA;border-radius:6px;padding:2px 6px;display:inline-block;
+    word-break:break-all;line-height:1.4;
+  }
+  .lnode.on{
+    border-color:var(--accent);box-shadow:0 0 0 2px var(--accent);
+    transform:translate(-50%,-50%) scale(1.06);z-index:3;
+  }
+  .lnode.on .ln-num{background:var(--accent);color:#fff;}
+  /* 圆环中心:当前步说明 */
+  .loop-center{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:32%;min-width:148px;text-align:center;z-index:1;
+  }
+  .loop-center .li-k{font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:700;}
+  .loop-center .li-desc{font-size:12.5px;color:var(--ink);margin-top:6px;line-height:1.5;min-height:54px;}
+  .loop-center .li-count{font-family:var(--mono);font-size:11.5px;color:var(--ink2);margin-top:6px;}
+
+  /* (B) 旋钮 = 参数,loss = 成绩单 */
+  .knob-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin:0;}
+  .knob{display:flex;flex-direction:column;align-items:center;gap:3px;}
+  .knob-dial{
+    width:40px;height:40px;border-radius:50%;background:#fff;
+    border:2px solid var(--border);position:relative;
+    transition:transform .65s cubic-bezier(.22,.61,.36,1),border-color .3s ease;
+  }
+  .knob-dial::after{
+    content:"";position:absolute;left:50%;top:4px;width:2.5px;height:15px;
+    background:var(--accent);border-radius:2px;transform:translateX(-50%);
+  }
+  .knob-dial.spun{border-color:#e8c4b5;}
+  .knob-grad{font-family:var(--mono);font-size:9.5px;color:var(--accent);height:13px;opacity:0;transition:opacity .3s ease;}
+  .knob-grad.show{opacity:1;}
+  .knob-name{font-family:var(--mono);font-size:9.5px;color:var(--ink2);}
+  .score-card{
+    display:flex;align-items:center;gap:14px;justify-content:center;flex-wrap:wrap;
+    background:#F4F2EA;border:1px solid var(--border);border-radius:12px;
+    padding:14px 20px;margin-top:14px;
+  }
+  .score-card .sc-k{font-family:var(--mono);font-size:12px;color:var(--ink2);}
+  .score-card .sc-v{font-family:var(--mono);font-size:32px;font-weight:700;color:var(--accent);transition:color .3s ease;}
+  .score-card .sc-arrow{font-family:var(--mono);font-size:13px;color:var(--ink2);}
+
+  /* (B) 整合区块:上=旋钮+loss(横向铺满),下=6×6 表+预测 —— 消除高度落差的空白 */
+  .train-controls{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:6px 0 14px;}
+  .bgrid{display:flex;flex-direction:column;gap:14px;}
+  .bcard{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px 14px;}
+  .bcard-h{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:12px;}
+  .bcard-foot{font-size:11.5px;color:var(--ink2);text-align:center;margin-top:10px;line-height:1.55;}
+  /* 旋钮卡:旋钮横排 + loss 成绩单并排,撑满宽度 */
+  .knob-loss-row{display:flex;gap:18px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
+  .knob-loss-row .knob-row{flex:1 1 320px;}
+  .knob-loss-row .score-card{flex:0 0 auto;margin-top:0;}
+
+  /* (B2) 6×6 权重表(热力图) */
+  .wtable{
+    display:grid;grid-template-columns:30px repeat(6,1fr);gap:4px;
+    max-width:440px;margin:0 auto;
+  }
+  .wt-h{
+    font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink2);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .wt-corner{font-family:var(--mono);font-size:9px;color:var(--ink2);
+    display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.1;}
+  .wt-rh{
+    font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:6px;
+    transition:color .2s ease,background .2s ease;
+  }
+  .wt-rh:hover{color:var(--accent);background:#F4F2EA;}
+  .wt-cell{
+    aspect-ratio:1/1;border-radius:7px;border:1px solid var(--border);
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:12px;font-weight:600;cursor:pointer;
+    transition:background .55s ease,color .55s ease,box-shadow .2s ease;
+  }
+  .wt-cell.knob{box-shadow:0 0 0 2px var(--accent);}     /* 旋钮联动格子 */
+  .wt-rh.sel,.wt-cell.rowsel{outline:2px solid var(--ink);outline-offset:-2px;}
+  .wt-legend{
+    display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+    margin-top:10px;font-size:12px;color:var(--ink2);
+  }
+  .wt-legend .wt-tip{font-size:12.5px;}
+  .wt-scale{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);}
+  .wt-scale i{width:16px;height:16px;border-radius:4px;background:#FAF9F5;border:1px solid var(--border);display:inline-block;}
+  .wt-scale b{width:16px;height:16px;border-radius:4px;background:var(--accent);display:inline-block;}
+
+  /* (B2) 点一行看预测 */
+  .wpredict{
+    margin-top:8px;background:#F4F2EA;border:1px solid var(--border);
+    border-radius:12px;padding:14px 16px;
+  }
+  .wpredict .wp-title{font-size:13px;color:var(--ink2);margin-bottom:10px;}
+  .wpredict .wp-title b{color:var(--accent);}
+  .wp-bars{display:flex;align-items:flex-end;gap:10px;height:92px;}
+  .wp-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;}
+  .wp-bar{width:100%;max-width:40px;border-radius:6px 6px 3px 3px;background:#cdd3c8;transition:height .45s ease,background .3s ease;}
+  .wp-bar.top{background:var(--accent);}
+  .wp-val{font-family:var(--mono);font-size:10px;color:var(--ink2);margin-bottom:3px;height:12px;}
+  .wp-lab{font-family:var(--mono);font-size:13px;margin-top:5px;font-weight:600;}
+  .wp-lab.top{color:var(--accent);}
+
+  /* (C) loss 曲线读数 */
+  .loss-readout{display:flex;gap:28px;flex-wrap:wrap;margin:6px 0 4px;}
+  .loss-readout .item .k{font-family:var(--mono);font-size:12px;color:var(--ink2);}
+  .loss-readout .item .v{font-family:var(--mono);font-size:24px;font-weight:700;color:var(--accent);}
+
+  /* (D) zero_grad 提示框 —— 普通卡片样式(无左侧色条/纹理) */
+  .callout{
+    background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:16px 18px;margin-top:22px;font-size:13.5px;color:var(--ink);line-height:1.7;
+  }
+  .callout .co-title{font-weight:600;color:var(--accent);margin-bottom:5px;}
+  .callout code{
+    font-family:var(--mono);font-size:12.5px;background:#F4F2EA;
+    padding:1px 5px;border-radius:5px;color:var(--accent);
+  }
+  .order-flow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:10px;}
+  .order-flow .oc{
+    font-family:var(--mono);font-size:12px;font-weight:600;color:var(--accent);
+    background:#F4F2EA;border:1px solid var(--accent-soft);border-radius:8px;padding:4px 10px;
+  }
+  .order-flow .oa{color:var(--ink2);}
+
+  /* 通关祝贺横幅 */
+  .congrats{
+    position:fixed;left:50%;top:24%;transform:translate(-50%,-50%) scale(.92);
+    z-index:10000;pointer-events:none;text-align:center;
+    background:#fff;border:1px solid var(--accent);
+    box-shadow:0 8px 30px rgba(217,119,87,.25);
+    border-radius:16px;padding:18px 28px;
+    font-family:var(--serif);font-size:22px;font-weight:600;color:var(--accent);
+    opacity:0;transition:opacity .45s ease,transform .45s ease;
+  }
+  .congrats.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+  .congrats span{
+    display:block;margin-top:6px;font-family:system-ui,sans-serif;
+    font-size:13px;font-weight:400;color:var(--ink2);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ 顶部标题区 ============ -->
+  <header>
+    <span class="filename">phase1-nanogpt / 01_bigram_crossentropy_viz.html</span>
+    <h1>logits 摊平 &amp; 交叉熵到底在算什么</h1>
+    <p class="subtitle">
+      逐步拆解 nanoGPT bigram <code>forward</code> 的最后两行:
+      <code>loss = F.cross_entropy(logits.view(B*T, C), targets.view(B*T))</code>。
+      为了画面清晰,这里用 <b>B=2, T=3</b>(共 6 道题)的小例子,词表只画 6 个示意字符。
+    </p>
+  </header>
+
+  <!-- ============ 步骤导航 ============ -->
+  <div class="steps">
+    <div class="step-tab active" data-step="0">
+      <div class="num">STEP 1</div><div class="label">一个 batch 的 x / y</div>
+    </div>
+    <div class="step-tab" data-step="1">
+      <div class="num">STEP 2</div><div class="label">三维 logits 摊平</div>
+    </div>
+    <div class="step-tab" data-step="2">
+      <div class="num">STEP 3</div><div class="label">单题 cross_entropy 拆解</div>
+    </div>
+    <div class="step-tab" data-step="3">
+      <div class="num">STEP 4</div><div class="label">loss = -ln(p) 的直觉</div>
+    </div>
+    <div class="step-tab" data-step="4">
+      <div class="num">STEP 5</div><div class="label">训练循环:不断转的闭环</div>
+    </div>
+  </div>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>Step 1 · 一个 batch 长什么样:x 和 y 错开一格</h2>
+    <p class="lead">
+      取字符串 <code>"To be or"</code> 切成 <b>B=2</b> 个序列、每个长度 <b>T=3</b>。
+      规则:看到 <code>x[t]</code> 就要预测它的下一个字符 <code>y[t]</code> —— 所以 y 是 x 整体右移一位。
+    </p>
+
+    <div class="seq-block" id="seqBlock"></div>
+
+    <div class="legend">
+      <span><i class="swatch" style="background:#EEF1EC"></i> x:输入字符(喂给模型)</span>
+      <span><i class="swatch" style="background:var(--accent-soft)"></i> y:目标字符(正确答案)</span>
+      <span style="color:var(--accent)">↓ 看到上面 → 该预测下面</span>
+    </div>
+
+    <div class="note">
+      一个 batch 的"题目数" = <b>batch_size × block_size</b> = 2 × 3 = <b>6 道独立的分类题</b>。
+      真实代码里是 32 × 8 = <b>256 道</b>。每道题都是:在 65 个字符里选出正确的下一个。
+    </div>
+  </section>
+
+  <!-- ============ STEP 2 ============ -->
+  <section class="panel" id="panel1">
+    <h2>Step 2 · 把三维 logits 摊平成二维分类题</h2>
+    <p class="lead">
+      模型对每个位置都吐出一个长度 65 的打分向量,所以 logits 形状是
+      <span class="shape-tag" id="shapeTag">(2, 3, 65)</span> —— B 行 × T 列,每格里藏着 65 个数。
+      <code>view(B*T, C)</code> 把这个 2×3 网格 <b>拉直成一列</b>,得到 6 道并排的题。
+    </p>
+
+    <div class="flip-controls">
+      <button class="btn" id="flatBtn">摊平 · view(B*T, C)</button>
+      <button class="btn" id="resetFlatBtn">复原成 (B, T)</button>
+    </div>
+
+    <div id="flipStage"></div>
+
+    <div class="note">
+      摊平 <b>不改变任何数据</b>,只是换了个排列方式:从"2×3 的二维结构"拉直成"6 道独立分类题"。
+      C=65 这一维(每格里的 65 个打分)始终原封不动地跟着走。真实代码是 256 × 65。
+    </div>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="panel" id="panel2">
+    <h2>Step 3 · 单道题里 cross_entropy 的三步</h2>
+    <p class="lead">
+      点一道题,看 cross_entropy 内部发生什么:<b>① softmax</b> 把打分变成概率 →
+      <b>② 找出正确答案那一类</b> → <b>③ 取它概率的 -log</b>。词表用 6 个示意字符。
+    </p>
+
+    <div class="q-picker" id="qPicker"></div>
+
+    <div style="font-size:13px;color:var(--ink2);margin-bottom:2px" id="q3hint"></div>
+    <div class="bars" id="bars"></div>
+
+    <div class="flip-controls" style="margin-top:4px">
+      <button class="btn" id="softmaxBtn">应用 softmax(打分 → 概率)</button>
+      <button class="btn ghost" id="rawBtn">看原始 logits</button>
+    </div>
+
+    <div class="calc-box" id="calcBox"></div>
+
+    <div class="note">
+      <code>cross_entropy(logits, target)</code> = 内部先做 <b>softmax</b> 得到概率分布,
+      再取 <b>正确类别</b>的概率 p,最后 <b>loss = -ln(p)</b>。
+      (实现上用 log_softmax 更数值稳定,但意义等价。)
+    </div>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="panel" id="panel3">
+    <h2>Step 4 · 核心直觉:loss = -ln(p)</h2>
+    <p class="lead">
+      拖动滑块改变"模型给真实下一字符的概率 p",观察 loss 怎么变。
+      <b>模型越确信正确答案(p→1),loss→0;越瞎猜,loss 越大。</b>
+    </p>
+
+    <div class="slider-row">
+      <input type="range" id="pSlider" min="1" max="100" value="50">
+      <div class="readout">
+        <div class="item"><div class="k">p(正确类)</div><div class="v" id="pVal">0.50</div></div>
+        <div class="item"><div class="k">loss = -ln(p)</div><div class="v" id="lossVal">0.69</div></div>
+      </div>
+    </div>
+
+    <div class="refs">
+      <span class="ref-chip" data-p="0.0154">p≈1/65=0.015 · 随机初始 loss≈4.17</span>
+      <span class="ref-chip" data-p="0.5">p=0.5 · loss≈0.69</span>
+      <span class="ref-chip" data-p="0.9">p=0.9 · loss≈0.11</span>
+      <span class="ref-chip" data-p="1">p=1.0 · loss=0(完美)</span>
+    </div>
+
+    <svg id="curve" viewBox="0 0 560 280" preserveAspectRatio="xMidYMid meet" style="margin-top:18px;width:100%;height:auto;display:block"></svg>
+
+    <div class="note">
+      训练就是不断把"模型给真实下一字符的概率"往 1 推,从而把 loss 从随机的
+      <b>ln(65)≈4.17</b> 一路压向 0。这就是为什么 nanoGPT 一开始 loss 接近 4.17 不是 bug。
+    </div>
+
+    <div class="avg-box">
+      <div style="font-weight:600;font-size:14px;margin-bottom:8px">
+        最终的标量 loss = 6 道题各自 -ln(p) 的平均(reduction='mean')
+      </div>
+      <div class="avg-terms" id="avgTerms"></div>
+      <div class="avg-result" id="avgResult"></div>
+    </div>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="panel" id="panel4">
+    <h2>Step 5 · 训练循环:5 行代码 = 一个不断转的闭环</h2>
+    <p class="lead">
+      前 4 步只讲清了"怎么给一批题打一个分(loss)"。真正的训练,是把下面这
+      <b>5 行</b>放进一个 <code>for</code> 里,转 <b>3000 圈</b>。每转一圈,模型的参数就被
+      梯度推着扭一小步,loss 随之下降一点点。
+    </p>
+
+    <!-- (A) 闭环流程图 -->
+    <div class="sub-h"><span class="badge">A</span>这个闭环每一步在做什么</div>
+    <p class="sub-desc">
+      5 个动作沿圆环顺时针依次执行;点「单步执行」像调试器一样一步步走,或「自动循环」让高亮自动流动。
+      注意第 5 步之后,箭头会<b>回到第 1 步</b> —— 这就是"闭环重复"。
+    </p>
+
+    <div class="flip-controls">
+      <button class="btn primary" id="loopStepBtn">▶ 单步执行</button>
+      <button class="btn ghost" id="loopAutoBtn">▶▶ 自动循环</button>
+      <button class="btn ghost" id="loopResetBtn">复位</button>
+    </div>
+
+    <div class="loop-wrap">
+      <div class="loop-stage" id="loopStage">
+        <svg class="loop-svg" id="loopSvg" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet">
+          <defs>
+            <marker id="ahead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#D97757"/>
+            </marker>
+            <marker id="ahead2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#c9c3b5"/>
+            </marker>
+          </defs>
+        </svg>
+        <div class="loop-center">
+          <div class="li-k" id="loopK">训练循环</div>
+          <div class="li-desc" id="loopDesc">把这 5 步重复 3000 次。每一圈,模型都更聪明一点点。</div>
+          <div class="li-count" id="loopCount"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      代码就是 <code>for it in range(max_iters): get_batch → forward → cross_entropy → backward → step</code>。
+      5 个动作首尾相接,转一圈叫一次 <b>iteration</b>,转 3000 圈就训练完了。
+    </div>
+
+    <!-- (B) 参数=开关 / 权重表 / 预测:整合为一块,点训练三者同屏联动 -->
+    <div class="sub-h"><span class="badge">B</span>参数是"开关",loss 是"成绩单"——点训练,旋钮 / 表 / 预测一起变</div>
+    <p class="sub-desc">
+      别把 loss 和参数搞混:<b>参数(旋钮 / 下面这张表)是因,loss(成绩单)是果</b>。
+      旋钮只是拟物;参数真正的样子是<b>一张 vocab×vocab 的得分表</b>(第 i 行第 j 列 = "看到字符 i 后,下一个是 j 的得分"),
+      形状由词表大小决定(真实 65×65,和 batch 的 2×3 无关)。下面用 6 字符示意画 <b>6×6</b>。
+    </p>
+
+    <div class="train-controls">
+      <button class="btn primary" id="trainOneBtn">执行一轮训练(扭旋钮 → loss 下降)</button>
+      <button class="btn" id="trainResetBtn">复位</button>
+    </div>
+
+    <div class="bgrid">
+      <!-- 上:旋钮 + loss 成绩单(横向铺满,无空白) -->
+      <div class="bcard">
+        <div class="bcard-h">① 6 个示意旋钮(参数 = 开关)与 loss 成绩单</div>
+        <div class="knob-loss-row">
+          <div class="knob-row" id="knobRow"></div>
+          <div class="score-card">
+            <span class="sc-k">loss(成绩单)</span>
+            <span class="sc-v" id="scoreVal">4.17</span>
+            <span class="sc-arrow" id="scoreDelta"></span>
+          </div>
+        </div>
+        <div class="bcard-foot">
+          真实是 65×65 = 4225 个开关,这里画 6 个示意;每个旋钮下方箭头 = 梯度提示(该往哪扭)。
+        </div>
+      </div>
+
+      <!-- 下:6×6 权重表 + 点行的 softmax 预测 -->
+      <div class="bcard">
+        <div class="bcard-h">② 参数真身:6×6 得分表(真实 65×65)· <span style="color:var(--accent)">点一行看预测 ↓</span></div>
+        <div class="wtable" id="wtable"></div>
+        <div class="wt-legend" id="wtLegend">
+          <span class="wt-tip" id="wtTip">出生时:随机雪花表(颜色杂乱)。点上方「执行一轮训练」看它逐渐变出结构。</span>
+          <span class="wt-scale"><i></i>低分</span>
+          <span class="wt-scale"><b></b>高分</span>
+        </div>
+        <div class="wpredict" id="wpredict"></div>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>训练 = 把这 36(真实 4225)个数字,从随机雪花,调成字符接龙的统计规律。</b>
+      每个旋钮(W[当前→下一个])就是表里的<b>一个格子</b>(橘色描边标出),旋钮一转,格子数字同步变,loss 随之下降。
+      转动幅度为<b>确定性演示值</b>(非真实梯度,越接近天花板扭动越小)。
+      <b>点某一行</b> = 取该行 6 个 logit 过 softmax,就是模型看到该字符时对"下一个字符"的概率猜测。
+    </div>
+
+    <!-- (C) loss 下降曲线 -->
+    <div class="sub-h"><span class="badge">C</span>3000 圈下来,loss 怎么走</div>
+    <p class="sub-desc">
+      点「训练!」,看曲线从左到右画出来。起点 ≈ 4.17 是<b>随机瞎猜</b>(=ln(65)),
+      迅速掉到 ~2.6,最后<b>卡在 ~2.5 下不去</b>。
+    </p>
+
+    <div class="flip-controls">
+      <button class="btn primary" id="trainCurveBtn">训练!</button>
+      <button class="btn ghost" id="curveResetBtn">重置曲线</button>
+    </div>
+
+    <div class="loss-readout">
+      <div class="item"><div class="k">step</div><div class="v" id="curveStep">0</div></div>
+      <div class="item"><div class="k">loss</div><div class="v" id="curveLoss">4.17</div></div>
+    </div>
+
+    <svg id="lossCurve" viewBox="0 0 560 280" preserveAspectRatio="xMidYMid meet" style="margin-top:8px;width:100%;height:auto;display:block"></svg>
+
+    <div class="note">
+      两个关键点:① 起点 <b>4.17 = ln(vocab_size)</b>,是完全随机时的 loss,不是 bug;
+      ② 卡在 <b>2.5</b> 下不去,是因为 bigram <b>只看前 1 个字符</b> —— 这是它的能力天花板,
+      也正是下一课要加 <b>注意力(attention)</b> 的理由。
+    </div>
+
+    <!-- (D) zero_grad 提示 -->
+    <div class="callout">
+      <div class="co-title">⚠ 为什么每轮要先 <code>optimizer.zero_grad()</code>?</div>
+      PyTorch 的梯度是<b>累加</b>的:<code>loss.backward()</code> 会把新梯度<b>加到</b>旧梯度上,而不是覆盖。
+      若不清零,这一轮就会带着上一轮的"陈旧方向",越走越偏。所以每圈开头必须先清零。
+      <div class="order-flow">
+        <span class="oc">zero_grad 清零</span>
+        <span class="oa">→</span>
+        <span class="oc">backward 算新梯度</span>
+        <span class="oa">→</span>
+        <span class="oc">step 扭开关</span>
+        <span class="oa">· 顺序不能乱</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 上一步 / 下一步 ============ -->
+  <div class="nav">
+    <button class="btn ghost" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<script>
+/* =====================================================================
+   全局小例子数据:字符串 "To be or" → B=2, T=3
+   x:每个序列的输入字符;y:右移一位的目标字符
+   ===================================================================== */
+// "To be or" 共 8 个字符: T o ␣ b e ␣ o r
+// 取前 7 个字符,做成两条 (x,y) 错位序列,每条 T=3
+// 序列0: x = T o ␣   y = o ␣ b
+// 序列1: x = b e ␣   y = e ␣ o
+const SEQ = [
+  { x:['T','o','␣'], y:['o','␣','b'] },
+  { x:['b','e','␣'], y:['e','␣','o'] }
+];
+const B = 2, T = 3, C = 65;
+
+// 6 个示意字符的小词表(真实是 65 个)
+const VOCAB = ['o','␣','b','e','r','t'];
+
+/* 把 (b,t) 展开成 6 道题的元信息:索引 + 当前输入字符 + 正确答案字符 */
+const QUESTIONS = [];
+for(let b=0;b<B;b++){
+  for(let t=0;t<T;t++){
+    QUESTIONS.push({ b, t, flat:b*T+t, inCh:SEQ[b].x[t], target:SEQ[b].y[t] });
+  }
+}
+
+/* 为每道题造一组"示意 logits"(6 个数),并让正确答案类的分数偏高一点,
+   这样 softmax 后看起来更像一个学到点东西的模型。纯展示用。 */
+function makeLogits(q){
+  // 用确定性伪随机,保证每次打开数值一致
+  let seed = (q.flat+1)*97;
+  const rnd = ()=>{ seed=(seed*1103515245+12345)&0x7fffffff; return (seed/0x7fffffff); };
+  const logits = VOCAB.map(()=> (rnd()*3-1.5));
+  // 找到正确答案在示意词表里的位置(若不在词表,落到第0类做示意)
+  let ci = VOCAB.indexOf(q.target);
+  if(ci<0) ci = 0;
+  q.correctIdx = ci;
+  // 给正确类加一点优势,但不至于压倒一切,保留教学对比
+  logits[ci] += 1.6;
+  return logits;
+}
+QUESTIONS.forEach(q=> q.logits = makeLogits(q));
+
+function softmax(arr){
+  const m = Math.max(...arr);
+  const ex = arr.map(v=>Math.exp(v-m));
+  const s = ex.reduce((a,b)=>a+b,0);
+  return ex.map(v=>v/s);
+}
+
+/* 每道题正确类的概率 p,用于 Step4 的平均演示 */
+QUESTIONS.forEach(q=>{
+  q.probs = softmax(q.logits);
+  q.pCorrect = q.probs[q.correctIdx];
+});
+
+/* =====================================================================
+   步骤切换逻辑
+   ===================================================================== */
+let cur = 0;
+const LAST = 4;
+const tabs = document.querySelectorAll('.step-tab');
+const panels = [0,1,2,3,4].map(i=>document.getElementById('panel'+i));
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+
+function goto(i){
+  cur = Math.max(0, Math.min(LAST, i));
+  tabs.forEach(t=>t.classList.toggle('active', +t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active', idx===cur));
+  prevBtn.disabled = cur===0;
+  nextBtn.disabled = false;                         // 最后一步也可点(触发庆祝)
+  nextBtn.textContent = cur===LAST ? '完成 🎉' : '下一步 →';
+  // 进入某步时初始化
+  if(cur===1) resetFlat();
+  // 离开 Step5 时停掉自动循环
+  if(cur!==4 && typeof stopLoopAuto==='function') stopLoopAuto();
+  // 同步 URL hash(用 replaceState 不污染历史记录),便于首页深链 #step-N
+  const hash = '#step-' + (cur+1);
+  if(location.hash !== hash){
+    history.replaceState(null, '', hash);
+  }
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+/* 从 URL hash 解析初始步骤:#step-N → 索引 N-1,缺省/非法回退到 Step 1 */
+function stepFromHash(){
+  const m = /^#step-(\d+)$/.exec(location.hash);
+  if(!m) return 0;
+  const n = parseInt(m[1],10) - 1;
+  return (n>=0 && n<=LAST) ? n : 0;
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+prevBtn.addEventListener('click',()=>goto(cur-1));
+nextBtn.addEventListener('click',()=>{ if(cur===LAST){ celebrate(); } else { goto(cur+1); } });
+
+/* =====================================================================
+   通关庆祝:祝贺横幅 + 手写 canvas confetti(纯 vanilla,无外部库)
+   ===================================================================== */
+function showCongrats(){
+  const old=document.getElementById('congrats'); if(old) old.remove();
+  const el=document.createElement('div');
+  el.id='congrats'; el.className='congrats';
+  el.innerHTML='🎉 第 1 章 · bigram 通关!<span>你已看懂从一个 batch 到训练循环的全过程</span>';
+  document.body.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>el.remove(),500); }, 3400);
+}
+function launchConfetti(){
+  const cv=document.createElement('canvas');
+  cv.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9999';
+  document.body.appendChild(cv);
+  const ctx=cv.getContext('2d');
+  cv.width=window.innerWidth; cv.height=window.innerHeight;
+  const colors=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const parts=[];
+  for(let i=0;i<170;i++){
+    parts.push({
+      x:Math.random()*cv.width,
+      y:-20-Math.random()*cv.height*0.4,
+      r:4+Math.random()*5,
+      c:colors[i%colors.length],
+      vx:(Math.random()-0.5)*3.2,
+      vy:2+Math.random()*4,
+      rot:Math.random()*Math.PI,
+      vr:(Math.random()-0.5)*0.3,
+      rect:Math.random()<0.55
+    });
+  }
+  const start=performance.now(), DUR=3800;
+  function frame(now){
+    const t=now-start;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    const fade = t>DUR-900 ? Math.max(0,(DUR-t)/900) : 1;
+    ctx.globalAlpha=fade;
+    parts.forEach(p=>{
+      p.x+=p.vx; p.y+=p.vy; p.vy+=0.06; p.rot+=p.vr;
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c;
+      if(p.rect) ctx.fillRect(-p.r,-p.r*0.6,p.r*2,p.r*1.2);
+      else { ctx.beginPath(); ctx.arc(0,0,p.r,0,Math.PI*2); ctx.fill(); }
+      ctx.restore();
+    });
+    ctx.globalAlpha=1;
+    if(t<DUR) requestAnimationFrame(frame); else cv.remove();
+  }
+  requestAnimationFrame(frame);
+}
+function celebrate(){ showCongrats(); launchConfetti(); }
+
+/* =====================================================================
+   STEP 1:渲染 x / y 序列(上下对齐 + 箭头)
+   ===================================================================== */
+function renderSeq(){
+  const root = document.getElementById('seqBlock');
+  let html = '';
+  SEQ.forEach((s,b)=>{
+    html += `<div class="seq-title">序列 ${b}  (b=${b})</div>`;
+    // x 行
+    html += `<div class="seq-row"><span class="tag">x (输入)</span>`;
+    s.x.forEach(ch=> html += `<div class="cell x">${ch}</div>`);
+    html += `</div>`;
+    // 箭头行
+    html += `<div class="arrows">`;
+    s.x.forEach(()=> html += `<div class="arrow-col">↓</div>`);
+    html += `</div>`;
+    // y 行
+    html += `<div class="seq-row"><span class="tag">y (目标)</span>`;
+    s.y.forEach(ch=> html += `<div class="cell y">${ch}</div>`);
+    html += `</div>`;
+  });
+  root.innerHTML = html;
+}
+renderSeq();
+
+/* =====================================================================
+   STEP 2:FLIP 式摊平动画
+   用绝对定位 + transform 平移,从 2×3 网格 → 1×6 列
+   ===================================================================== */
+const stage = document.getElementById('flipStage');
+const shapeTag = document.getElementById('shapeTag');
+let flatTiles = [];
+
+// 网格布局坐标(2 行 3 列)
+const TILE_W = 150, TILE_H = 64, GAP_X = 20, GAP_Y = 22;
+function gridPos(b,t){
+  return { x: t*(TILE_W+GAP_X), y: b*(TILE_H+GAP_Y) };
+}
+// 摊平后布局(1 列 6 行)
+function colPos(flat){
+  return { x: 0, y: flat*(TILE_H+10) };
+}
+
+function buildTiles(){
+  stage.innerHTML='';
+  flatTiles = QUESTIONS.map(q=>{
+    const el = document.createElement('div');
+    el.className='tile';
+    el.innerHTML = `<span class="idx">(b=${q.b}, t=${q.t})</span>`
+                 + `<span class="ch">输入 "${q.inCh}"</span>`
+                 + `<span class="clen">↳ 65 个打分</span>`;
+    const p = gridPos(q.b,q.t);
+    el.style.transform = `translate(${p.x}px, ${p.y}px)`;
+    stage.appendChild(el);
+    return el;
+  });
+  stage.style.height = (2*TILE_H + GAP_Y + 8) + 'px';
+}
+
+const flatBtn = document.getElementById('flatBtn');
+const resetFlatBtn = document.getElementById('resetFlatBtn');
+
+// 纯 active 高亮切换(与 Step 3 题目/Softmax 按钮一致):当前状态的按钮橘色,另一个中性
+function updateFlatBtns(flattened){
+  flatBtn.classList.toggle('primary', flattened);
+  resetFlatBtn.classList.toggle('primary', !flattened);
+}
+
+function doFlatten(){
+  QUESTIONS.forEach((q,i)=>{
+    const p = colPos(q.flat);
+    flatTiles[i].style.width = '100%';
+    flatTiles[i].style.maxWidth = '420px';
+    flatTiles[i].style.transform = `translate(${p.x}px, ${p.y}px)`;
+    flatTiles[i].querySelector('.clen').textContent = `第 ${q.flat} 题 · 65 个打分`;
+  });
+  stage.style.height = (6*(TILE_H+10)) + 'px';
+  shapeTag.textContent = '(6, 65)';
+  updateFlatBtns(true);
+}
+
+function resetFlat(){
+  buildTiles();
+  shapeTag.textContent = '(2, 3, 65)';
+  updateFlatBtns(false);
+}
+flatBtn.addEventListener('click', doFlatten);
+resetFlatBtn.addEventListener('click', resetFlat);
+resetFlat();
+
+/* =====================================================================
+   STEP 3:单题 cross_entropy 拆解
+   ===================================================================== */
+let selQ = 0;          // 选中的题
+let showProb = false;  // 当前是否显示概率(softmax 后)
+
+function renderPicker(){
+  const root = document.getElementById('qPicker');
+  root.innerHTML = QUESTIONS.map(q=>
+    `<button class="q-btn ${q.flat===selQ?'sel':''}" data-q="${q.flat}">`
+    + `第 ${q.flat} 题:看 "${q.inCh}"</button>`
+  ).join('');
+  root.querySelectorAll('.q-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{ selQ=+btn.dataset.q; showProb=false; renderStep3(); });
+  });
+}
+
+const softmaxBtn = document.getElementById('softmaxBtn');
+const rawBtn = document.getElementById('rawBtn');
+
+function renderStep3(){
+  renderPicker();
+  // 当前所处视图的按钮 = 橘色高亮,另一个 = 中性
+  softmaxBtn.classList.toggle('primary', showProb);
+  rawBtn.classList.toggle('primary', !showProb);
+  const q = QUESTIONS[selQ];
+  document.getElementById('q3hint').textContent =
+    `第 ${selQ} 题:模型看到 "${q.inCh}",正确的下一个字符是 "${q.target}"(高亮那一类)。`;
+
+  const vals = showProb ? q.probs : q.logits;
+  const probs = q.probs;
+  // bar 高度归一化(logits 含负数,做线性映射;概率直接 *比例)
+  let maxAbs = showProb ? Math.max(...probs) : Math.max(...vals.map(v=>Math.abs(v)));
+  const barsRoot = document.getElementById('bars');
+  barsRoot.innerHTML = VOCAB.map((ch,i)=>{
+    const v = vals[i];
+    let h;
+    if(showProb){ h = (probs[i]/maxAbs)*100; }
+    else { h = ((v+maxAbs)/(2*maxAbs))*100; } // 把含负 logits 平移到 [0,100]
+    h = Math.max(4, h);
+    const isC = i===q.correctIdx;
+    const label = showProb ? probs[i].toFixed(3) : v.toFixed(2);
+    return `<div class="bar-col">
+        <div class="bar-val">${label}</div>
+        <div class="bar ${isC?'correct':''}" style="height:${h}%"></div>
+        <div class="bar-label ${isC?'correct':''}">${ch}</div>
+      </div>`;
+  }).join('');
+
+  // 计算框
+  const calc = document.getElementById('calcBox');
+  const p = probs[q.correctIdx];
+  if(!showProb){
+    calc.innerHTML = `当前是 <b>原始 logits</b>(可正可负的打分)。`
+      + `点上面的「应用 softmax」把它们变成加起来 = 1 的概率分布。`;
+  }else{
+    const sum = probs.reduce((a,b)=>a+b,0);
+    calc.innerHTML =
+      `softmax 后所有概率之和 = <b>${sum.toFixed(3)}</b> ✓<br>`
+      + `正确类 "${q.target}" 的概率 &nbsp; p = <b>${p.toFixed(4)}</b><br><br>`
+      + `loss = -ln(p) = -ln(${p.toFixed(4)}) = <span class="big">${(-Math.log(p)).toFixed(4)}</span>`;
+  }
+}
+
+softmaxBtn.addEventListener('click',()=>{ showProb=true; renderStep3(); });
+rawBtn.addEventListener('click',()=>{ showProb=false; renderStep3(); });
+renderStep3();
+
+/* =====================================================================
+   STEP 4:滑块 + SVG 曲线 -ln(p)
+   ===================================================================== */
+const slider = document.getElementById('pSlider');
+const pValEl = document.getElementById('pVal');
+const lossValEl = document.getElementById('lossVal');
+const svg = document.getElementById('curve');
+
+// SVG 绘图坐标系
+const SVG_W=560, SVG_H=280, PAD_L=44, PAD_B=40, PAD_T=16, PAD_R=16;
+const plotW = SVG_W-PAD_L-PAD_R, plotH = SVG_H-PAD_T-PAD_B;
+const LOSS_MAX = 4.7; // y 轴上限(略高于 ln(65))
+
+function px(p){ return PAD_L + p*plotW; }              // p∈[0,1] → x
+function py(loss){ return PAD_T + (1 - loss/LOSS_MAX)*plotH; } // loss → y
+
+function buildCurve(){
+  let d='';
+  // 从 p=0.005 起画,避免 -ln(0) 爆炸
+  for(let i=0;i<=200;i++){
+    const p = 0.005 + (1-0.005)*(i/200);
+    const loss = Math.min(LOSS_MAX, -Math.log(p));
+    d += (i===0?'M':'L') + px(p).toFixed(1) + ',' + py(loss).toFixed(1) + ' ';
+  }
+  // 坐标轴
+  let axes = `<line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${PAD_T+plotH}" stroke="#ccc7ba"/>`
+           + `<line x1="${PAD_L}" y1="${PAD_T+plotH}" x2="${PAD_L+plotW}" y2="${PAD_T+plotH}" stroke="#ccc7ba"/>`;
+  // y 轴刻度
+  [0,1,2,3,4].forEach(v=>{
+    const y=py(v);
+    axes += `<line x1="${PAD_L-4}" y1="${y}" x2="${PAD_L}" y2="${y}" stroke="#ccc7ba"/>`
+          + `<text x="${PAD_L-8}" y="${y+4}" font-size="10" fill="#6B6B68" text-anchor="end">${v}</text>`;
+  });
+  // x 轴刻度
+  [0,0.25,0.5,0.75,1].forEach(v=>{
+    const x=px(v);
+    axes += `<line x1="${x}" y1="${PAD_T+plotH}" x2="${x}" y2="${PAD_T+plotH+4}" stroke="#ccc7ba"/>`
+          + `<text x="${x}" y="${PAD_T+plotH+18}" font-size="10" fill="#6B6B68" text-anchor="middle">${v}</text>`;
+  });
+  // 参考虚线:loss=4.17 (随机)
+  const yr=py(Math.log(65));
+  axes += `<line x1="${PAD_L}" y1="${yr}" x2="${PAD_L+plotW}" y2="${yr}" stroke="#D97757" stroke-dasharray="4 4" opacity="0.5"/>`
+        + `<text x="${PAD_L+plotW}" y="${yr-5}" font-size="10" fill="#D97757" text-anchor="end">≈4.17 随机初始</text>`;
+  // 轴标题
+  axes += `<text x="${PAD_L+plotW/2}" y="${SVG_H-4}" font-size="11" fill="#6B6B68" text-anchor="middle">p (正确类概率)</text>`;
+
+  svg.innerHTML = axes
+    + `<path d="${d}" fill="none" stroke="#1A1A18" stroke-width="2"/>`
+    + `<circle id="marker" r="7" fill="#D97757" stroke="#fff" stroke-width="2"/>`
+    + `<line id="markerV" stroke="#D97757" stroke-dasharray="3 3" opacity="0.5"/>`;
+}
+buildCurve();
+
+function updateSlider(){
+  const p = +slider.value/100; // 1..100 → 0.01..1.0
+  const loss = -Math.log(p);
+  pValEl.textContent = p.toFixed(p<0.1?3:2);
+  lossValEl.textContent = loss.toFixed(2);
+  slider.style.setProperty('--fill', (p*100)+'%');
+  // 移动标记点
+  const x=px(p), y=py(Math.min(LOSS_MAX,loss));
+  const m=document.getElementById('marker');
+  const mv=document.getElementById('markerV');
+  m.setAttribute('cx',x); m.setAttribute('cy',y);
+  mv.setAttribute('x1',x); mv.setAttribute('x2',x);
+  mv.setAttribute('y1',y); mv.setAttribute('y2',PAD_T+plotH);
+}
+slider.addEventListener('input',updateSlider);
+updateSlider();
+
+// 参考点快捷按钮
+document.querySelectorAll('.ref-chip').forEach(c=>{
+  c.addEventListener('click',()=>{
+    const p=+c.dataset.p;
+    slider.value = Math.round(Math.max(1,Math.min(100,p*100)));
+    updateSlider();
+  });
+});
+
+// 6 道题的 -ln(p) 平均演示(用 Step3 那套示意概率)
+function renderAvg(){
+  const terms = QUESTIONS.map(q=> -Math.log(q.pCorrect));
+  const mean = terms.reduce((a,b)=>a+b,0)/terms.length;
+  document.getElementById('avgTerms').innerHTML =
+    '各题 -ln(p): [ ' + terms.map(t=>t.toFixed(3)).join(',  ') + ' ]';
+  document.getElementById('avgResult').innerHTML =
+    `平均 = ( ${terms.map(t=>t.toFixed(2)).join(' + ')} ) / 6 = <b>${mean.toFixed(4)}</b>`;
+}
+renderAvg();
+
+/* =====================================================================
+   STEP 5 · (A) 闭环流程图 —— 圆环布局,5 节点沿圆周等角分布,弧形箭头首尾相接
+   ===================================================================== */
+const LOOP = [
+  { title:'取一批样本',       code:'get_batch("train")', desc:'随机抽 32×8 = 256 个 (x → y) 样本对:xb 是输入,yb 是目标。' },
+  { title:'forward 猜',       code:'model(xb, yb)',      desc:'凭当前参数为每道题吐出 logits(打分)。' },
+  { title:'cross_entropy 打分', code:'_, loss = ...',     desc:'对照答案,把 256 道题压成一个标量 loss(成绩单)。' },
+  { title:'backward 算梯度',   code:'loss.backward()',    desc:'反向传播,算出每个参数(开关)该往哪个方向扭。' },
+  { title:'step 扭开关',       code:'optimizer.step()',   desc:'照梯度把参数各扭一小步 → 箭头回到第 1 步,开始下一圈。' },
+];
+const loopStage = document.getElementById('loopStage');
+const loopSvg   = document.getElementById('loopSvg');
+const loopDesc  = document.getElementById('loopDesc');
+const loopKEl   = document.getElementById('loopK');
+const loopCount = document.getElementById('loopCount');
+
+// 圆环几何:viewBox 600×600,5 节点等角分布(从正上方开始,顺时针每 72°)
+const VW=600, VH=600, CX=300, CY=300, R=200;
+function angDeg(i){ return -90 + i*72; }
+function ptAt(deg,r){ const a=deg*Math.PI/180; return { x:CX+r*Math.cos(a), y:CY+r*Math.sin(a) }; }
+
+// 画 5 段弧形箭头(两端留角度间隙,避免压住节点);最后一段 step→get_batch 用橘色虚线 + 标签
+function buildLoopArcs(){
+  let arcs='';
+  for(let i=0;i<5;i++){
+    const a0=angDeg(i)+24, a1=angDeg(i+1)-24;
+    const p0=ptAt(a0,R), p1=ptAt(a1,R);
+    const back=(i===4);
+    arcs += `<path d="M${p0.x.toFixed(1)},${p0.y.toFixed(1)} A${R},${R} 0 0 1 ${p1.x.toFixed(1)},${p1.y.toFixed(1)}" `
+          + `fill="none" stroke="${back?'#D97757':'#c9c3b5'}" stroke-width="${back?2.6:1.8}" `
+          + `marker-end="url(#${back?'ahead':'ahead2'})" ${back?'stroke-dasharray="7 5"':''}/>`;
+  }
+  const lp=ptAt(angDeg(4)+36, R+24);
+  arcs += `<text x="${lp.x.toFixed(1)}" y="${lp.y.toFixed(1)}" font-size="13" fill="#D97757" text-anchor="middle">闭环·重复</text>`;
+  // 用 innerHTML 拼接(在 SVG 上下文中解析,保证命名空间正确并保留已有 defs)
+  loopSvg.innerHTML = loopSvg.innerHTML + arcs;
+}
+
+// 圆周上放置 5 个节点卡片(用百分比定位,跟随 SVG viewBox)
+function buildLoopNodes(){
+  LOOP.forEach((n,i)=>{
+    const p=ptAt(angDeg(i),R);
+    const el=document.createElement('div');
+    el.className='lnode'; el.dataset.i=i;
+    el.style.left=(p.x/VW*100)+'%';
+    el.style.top =(p.y/VH*100)+'%';
+    el.innerHTML=`<div class="ln-num">${i+1}</div>`
+               + `<div class="ln-title">${n.title}</div>`
+               + `<div class="ln-code">${n.code}</div>`;
+    loopStage.appendChild(el);
+  });
+}
+buildLoopArcs();
+buildLoopNodes();
+
+let loopIdx=-1, loopRound=0, loopTimer=null;
+function loopHighlight(i){
+  loopStage.querySelectorAll('.lnode').forEach(el=>{
+    el.classList.toggle('on', +el.dataset.i===i);
+  });
+  if(i<0){
+    loopKEl.textContent='训练循环';
+    loopDesc.textContent='把这 5 步重复 3000 次。每一圈,模型都更聪明一点点。';
+    loopCount.textContent='';
+  }else{
+    const n=LOOP[i];
+    loopKEl.textContent=`第 ${i+1} 步 · ${n.code}`;
+    loopDesc.textContent=n.desc;
+    loopCount.textContent = `已转 ${loopRound} 圈` + (i===4 ? ' · ↩ 之后回到第 1 步' : '');
+  }
+}
+function loopStepFn(){
+  loopIdx++;
+  if(loopIdx>4){ loopIdx=0; loopRound++; }
+  loopHighlight(loopIdx);
+}
+function startLoopAuto(){
+  if(loopTimer) return;
+  const b=document.getElementById('loopAutoBtn');
+  b.textContent='⏸ 暂停'; b.classList.add('primary');
+  loopTimer=setInterval(loopStepFn, 1100);
+}
+function stopLoopAuto(){
+  if(loopTimer){ clearInterval(loopTimer); loopTimer=null; }
+  const b=document.getElementById('loopAutoBtn');
+  if(b){ b.textContent='▶▶ 自动循环'; b.classList.remove('primary'); }
+}
+document.getElementById('loopStepBtn').addEventListener('click',()=>{ stopLoopAuto(); loopStepFn(); });
+document.getElementById('loopAutoBtn').addEventListener('click',()=>{ loopTimer?stopLoopAuto():startLoopAuto(); });
+document.getElementById('loopResetBtn').addEventListener('click',()=>{ stopLoopAuto(); loopIdx=-1; loopRound=0; loopHighlight(-1); });
+
+/* =====================================================================
+   STEP 5 · (B) 旋钮(参数) vs 成绩单(loss)
+   确定性演示:每轮把旋钮各扭一小步(阻尼递减),loss 朝天花板靠拢
+   ===================================================================== */
+// 6 个旋钮直接对应 6×6 示意权重表里的 6 个格子(旋钮 = 拟物,表格 = 真身)
+// VOCAB = ['o','␣','b','e','r','t'];  [行=当前字符, 列=下一个字符]
+const KNOB_CELLS=[[2,3],[0,1],[1,2],[3,1],[5,0],[1,0]]; // b→e, o→␣, ␣→b, e→␣, t→o, ␣→o
+const KNOB_NAMES=KNOB_CELLS.map(([r,c])=>`W[${VOCAB[r]}→${VOCAB[c]}]`);
+const KNOB_BASE =[-32, 18, -8, 36, 6, -24];   // 初始角度
+const KNOB_DIR  =[ +1, +1, +1, +1, +1, +1];   // 这些格子都需要"调高"(确定性)
+let knobAngles = KNOB_BASE.slice();
+let roundB=0, lossB=4.17;
+const KNOB_CEIL=2.50;
+const knobRow=document.getElementById('knobRow');
+const scoreVal=document.getElementById('scoreVal');
+const scoreDelta=document.getElementById('scoreDelta');
+
+function renderKnobs(showGrad){
+  knobRow.innerHTML = KNOB_NAMES.map((nm,i)=>{
+    const arrow = KNOB_DIR[i]>0 ? '↻ 右扭' : '↺ 左扭';
+    return `<div class="knob">
+        <div class="knob-dial${roundB>0?' spun':''}" style="transform:rotate(${knobAngles[i].toFixed(1)}deg)"></div>
+        <div class="knob-grad${showGrad?' show':''}">${arrow}</div>
+        <div class="knob-name">${nm}</div>
+      </div>`;
+  }).join('');
+}
+function renderScore(){
+  scoreVal.textContent = lossB.toFixed(3);
+}
+function trainOne(){
+  const prev=lossB;
+  roundB++;
+  const damp=Math.pow(0.72, roundB-1);            // 越往后扭得越小
+  knobAngles=knobAngles.map((a,i)=> a + KNOB_DIR[i]*16*damp);
+  lossB = KNOB_CEIL + (lossB-KNOB_CEIL)*0.74;      // 朝天花板收敛
+  renderKnobs(true);
+  renderScore();
+  const d=(lossB-prev);
+  scoreDelta.textContent = `↓ ${d.toFixed(3)}` + (lossB-KNOB_CEIL<0.02?'(已近天花板 2.5)':'');
+  if(typeof wTrainStep==='function') wTrainStep();   // 同步推进权重表
+}
+function resetKnobs(){
+  knobAngles=KNOB_BASE.slice(); roundB=0; lossB=4.17;
+  renderKnobs(false); renderScore(); scoreDelta.textContent='';
+  if(typeof wReset==='function') wReset();            // 同步复位权重表
+}
+document.getElementById('trainOneBtn').addEventListener('click', trainOne);
+document.getElementById('trainResetBtn').addEventListener('click', resetKnobs);
+
+/* =====================================================================
+   STEP 5 · (B2) 6×6 示意权重表:雪花 → 有结构
+   形状 = vocab×vocab(真实 65×65),与 batch 的 2×3 无关。确定性演示数据。
+   ===================================================================== */
+const WV = VOCAB;                                     // ['o','␣','b','e','r','t']
+const WT_KNOB = [[2,3],[0,1],[1,2],[3,1],[5,0],[1,0]]; // 与 6 个旋钮一一对应的格子
+const wtableEl   = document.getElementById('wtable');
+const wpredictEl = document.getElementById('wpredict');
+const wtTip      = document.getElementById('wtTip');
+
+// 确定性伪随机:保证每次打开数值一致
+let wsd = 20240627;
+function wrnd(){ wsd=(wsd*1103515245+12345)&0x7fffffff; return wsd/0x7fffffff; }
+
+// 出生雪花 W0 + 学成目标 WTARGET(符合 bigram 接龙直觉)
+const W0=[], WTARGET=[];
+for(let r=0;r<6;r++){ W0[r]=[]; WTARGET[r]=[]; for(let c=0;c<6;c++){ W0[r][c]=wrnd()*2-1; WTARGET[r][c]=-0.5+wrnd()*0.6; } }
+// [行=当前字符, 列=下一个字符, 高分]:be / o␣ / ␣b / ␣o / e␣ / er / to / r␣
+[[2,3,5.0],[0,1,4.6],[1,2,4.3],[1,0,3.9],[3,1,4.5],[3,4,3.7],[5,0,4.2],[4,1,3.3]].forEach(([r,c,v])=>WTARGET[r][c]=v);
+
+let Wcur = W0.map(row=>row.slice());
+let wSelRow = 2, wRound = 0;     // 默认看 "b" 行
+const cellEls = [];
+
+function isKnobCell(r,c){ return WT_KNOB.some(([a,b])=>a===r && b===c); }
+function heat(t){
+  t=Math.max(0,Math.min(1,t));
+  const lo=[250,249,245], hi=[217,119,87];
+  const c=lo.map((x,i)=>Math.round(x+(hi[i]-x)*t));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+
+function buildWTable(){
+  let html=`<div class="wt-corner">行=当前<br>列=下一个</div>`;
+  WV.forEach(ch=> html+=`<div class="wt-h">${ch}</div>`);
+  for(let r=0;r<6;r++){
+    html+=`<div class="wt-rh" data-r="${r}">${WV[r]}</div>`;
+    for(let c=0;c<6;c++){
+      html+=`<div class="wt-cell${isKnobCell(r,c)?' knob':''}" data-r="${r}" data-c="${c}"></div>`;
+    }
+  }
+  wtableEl.innerHTML=html;
+  for(let r=0;r<6;r++){ cellEls[r]=[]; for(let c=0;c<6;c++){
+    cellEls[r][c]=wtableEl.querySelector(`.wt-cell[data-r="${r}"][data-c="${c}"]`);
+  }}
+  // 点行头 / 点格子 → 选中该行看预测
+  wtableEl.querySelectorAll('[data-r]').forEach(el=>{
+    el.addEventListener('click',()=>{ wSelRow=+el.dataset.r; renderWTable(); renderWPredict(); });
+  });
+}
+
+function renderWTable(){
+  let mn=Infinity,mx=-Infinity;
+  for(let r=0;r<6;r++)for(let c=0;c<6;c++){ const v=Wcur[r][c]; if(v<mn)mn=v; if(v>mx)mx=v; }
+  const rng=(mx-mn)||1;
+  for(let r=0;r<6;r++)for(let c=0;c<6;c++){
+    const v=Wcur[r][c], t=(v-mn)/rng, el=cellEls[r][c];
+    el.textContent=v.toFixed(1);
+    el.style.background=heat(t);
+    el.style.color = t>0.58 ? '#fff' : '#6B6B68';
+    el.classList.toggle('rowsel', r===wSelRow);
+  }
+  wtableEl.querySelectorAll('.wt-rh').forEach(el=> el.classList.toggle('sel', +el.dataset.r===wSelRow));
+}
+
+function renderWPredict(){
+  const ps=softmax(Wcur[wSelRow]);            // 复用全局 softmax
+  const maxp=Math.max(...ps);
+  let bars='';
+  for(let c=0;c<6;c++){
+    const top = ps[c]===maxp;
+    const h=Math.max(4, ps[c]/maxp*100);
+    bars+=`<div class="wp-col">`
+        + `<div class="wp-val">${(ps[c]*100).toFixed(0)}%</div>`
+        + `<div class="wp-bar${top?' top':''}" style="height:${h.toFixed(1)}%"></div>`
+        + `<div class="wp-lab${top?' top':''}">${WV[c]}</div></div>`;
+  }
+  wpredictEl.innerHTML =
+    `<div class="wp-title">查表第 "<b>${WV[wSelRow]}</b>" 行 → 6 个 logit 过 softmax = 看到 "${WV[wSelRow]}" 时对下一个字符的概率猜测(和 ≈ 100%):</div>`
+    + `<div class="wp-bars">${bars}</div>`;
+}
+
+function wTrainStep(){
+  wRound++;
+  for(let r=0;r<6;r++)for(let c=0;c<6;c++){ Wcur[r][c]+=(WTARGET[r][c]-Wcur[r][c])*0.5; }
+  if(wtTip) wtTip.textContent=`已训练 ${wRound} 轮:雪花正在长出结构 —— 少数接龙格子升高变橘,其余压低变浅。`;
+  renderWTable(); renderWPredict();
+}
+function wReset(){
+  Wcur=W0.map(row=>row.slice()); wRound=0;
+  if(wtTip) wtTip.textContent='出生时:随机雪花表(颜色杂乱无规律)。点上方「执行一轮训练」看它逐渐变出结构。';
+  renderWTable(); renderWPredict();
+}
+buildWTable();
+resetKnobs();   // 初始化旋钮 + 权重表(此时 Wcur/WTARGET 已就绪)
+
+/* =====================================================================
+   STEP 5 · (C) loss 下降曲线(SVG,手写)
+   ===================================================================== */
+const lossSvg=document.getElementById('lossCurve');
+const curveStepEl=document.getElementById('curveStep');
+const curveLossEl=document.getElementById('curveLoss');
+const C_W=560,C_H=280,CPL=46,CPB=40,CPT=16,CPR=18;
+const cpw=C_W-CPL-CPR, cph=C_H-CPT-CPB;
+const STEP_MAX=3000, L_MIN=2.3, L_MAX=4.4, CEIL=2.5, START=Math.log(65);
+
+function cX(step){ return CPL + step/STEP_MAX*cpw; }
+function cY(loss){ return CPT + (1-(loss-L_MIN)/(L_MAX-L_MIN))*cph; }
+function lossAt(step){
+  // 快速指数下降 → 收敛到 ~2.5 的天花板,叠加极小抖动更像真实曲线
+  const base = CEIL + (START-CEIL)*Math.exp(-step/240);
+  const wob  = step>120 ? 0.018*Math.sin(step/95) : 0;
+  return Math.max(2.46, base+wob);
+}
+
+function buildLossAxes(){
+  let g='';
+  g += `<line x1="${CPL}" y1="${CPT}" x2="${CPL}" y2="${CPT+cph}" stroke="#ccc7ba"/>`
+     + `<line x1="${CPL}" y1="${CPT+cph}" x2="${CPL+cpw}" y2="${CPT+cph}" stroke="#ccc7ba"/>`;
+  // y 轴刻度
+  [2.5,3,3.5,4].forEach(v=>{
+    const y=cY(v);
+    g += `<line x1="${CPL-4}" y1="${y}" x2="${CPL}" y2="${y}" stroke="#ccc7ba"/>`
+       + `<text x="${CPL-8}" y="${y+4}" font-size="10" fill="#6B6B68" text-anchor="end">${v}</text>`;
+  });
+  // x 轴刻度
+  [0,1000,2000,3000].forEach(v=>{
+    const x=cX(v);
+    g += `<line x1="${x}" y1="${CPT+cph}" x2="${x}" y2="${CPT+cph+4}" stroke="#ccc7ba"/>`
+       + `<text x="${x}" y="${CPT+cph+18}" font-size="10" fill="#6B6B68" text-anchor="middle">${v}</text>`;
+  });
+  // 参考线:4.17 随机起点
+  const yS=cY(START);
+  g += `<line x1="${CPL}" y1="${yS}" x2="${CPL+cpw}" y2="${yS}" stroke="#D97757" stroke-dasharray="4 4" opacity="0.55"/>`
+     + `<text x="${CPL+cpw}" y="${yS-5}" font-size="10" fill="#D97757" text-anchor="end">≈4.17 = ln(65) 随机起点</text>`;
+  // 参考线:2.5 bigram 天花板
+  const yC=cY(CEIL);
+  g += `<line x1="${CPL}" y1="${yC}" x2="${CPL+cpw}" y2="${yC}" stroke="#8a8a85" stroke-dasharray="4 4" opacity="0.55"/>`
+     + `<text x="${CPL+cpw}" y="${yC-5}" font-size="10" fill="#6B6B68" text-anchor="end">≈2.5 bigram 天花板</text>`;
+  // 轴标题
+  g += `<text x="${CPL+cpw/2}" y="${C_H-3}" font-size="11" fill="#6B6B68" text-anchor="middle">step(训练迭代次数)</text>`;
+  return g;
+}
+
+let curveRAF=null;
+function drawLossCurve(uptoStep){
+  let d='';
+  const N=120;
+  for(let i=0;i<=N;i++){
+    const s=uptoStep*(i/N);
+    d += (i===0?'M':'L') + cX(s).toFixed(1) + ',' + cY(lossAt(s)).toFixed(1) + ' ';
+  }
+  const lastX=cX(uptoStep), lastY=cY(lossAt(uptoStep));
+  lossSvg.innerHTML = buildLossAxes()
+    + `<path d="${d}" fill="none" stroke="#1A1A18" stroke-width="2"/>`
+    + `<circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="5" fill="#D97757" stroke="#fff" stroke-width="2"/>`;
+  curveStepEl.textContent = Math.round(uptoStep);
+  curveLossEl.textContent = lossAt(uptoStep).toFixed(2);
+}
+function resetLossCurve(){
+  if(curveRAF){ cancelAnimationFrame(curveRAF); curveRAF=null; }
+  drawLossCurve(0);
+}
+function trainCurve(){
+  if(curveRAF){ cancelAnimationFrame(curveRAF); curveRAF=null; }
+  const DUR=2600, t0=performance.now();
+  function frame(now){
+    const t=Math.min(1,(now-t0)/DUR);
+    // ease-out:前段快、后段慢,贴合真实 loss 曲线
+    const e=1-Math.pow(1-t,2);
+    drawLossCurve(STEP_MAX*e);
+    if(t<1){ curveRAF=requestAnimationFrame(frame); } else { curveRAF=null; }
+  }
+  curveRAF=requestAnimationFrame(frame);
+}
+document.getElementById('trainCurveBtn').addEventListener('click', trainCurve);
+document.getElementById('curveResetBtn').addEventListener('click', resetLossCurve);
+resetLossCurve();
+
+/* 初始化导航状态:优先读 URL hash(支持首页深链 #step-N) */
+goto(stepFromHash());
+/* 浏览器前进/后退或外部修改 hash 时跟随跳转 */
+window.addEventListener('hashchange', ()=>{ goto(stepFromHash()); });
+</script>
+</body>
+</html>
