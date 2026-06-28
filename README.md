@@ -88,7 +88,18 @@ phase2-sft-lora/     【规划中 / WIP】SFT + LoRA 后训练
 | 验证集 loss | 从随机初始化的 **≈10.9**（即 `ln(50257)` 的随机基线）降到 **3.02**（step 19072，val_loss=3.0211） |
 | 推理 | CUDA / Apple MPS / CPU 通用；`05_sample.py` 内置 KV-cache,Mac MPS 上实测 **~2.5–2.8× 提速** |
 
-**真实续写样本**（`05_sample.py`，prompt = `The history of ancient Rome`，`seed=1337` 可复现）:
+### 数据量对照:300M → 10B(同架构、同代码,只变数据量）
+
+训练时顺手留了一份只跑 **300M token** 的早期权重,和最终 **10B** 那份做对照——**唯一变量是训练数据量(33×)**,最直观地看到「数据量抬天花板」:
+
+| 权重 | 数据量 | step | val_loss | 生成表现 |
+|---|---|---|:---:|---|
+| 300M(对照样本） | 0.3B token | 1999 | **3.65** | 能成句,但明显**重复打转** |
+| 10B(主推） | 10B token | 19072 | **3.02** | 通顺、扣题、调用真实世界实体 |
+
+两份权重都可下载(见下方「预训练权重下载」),自己拨一拨同一个 prompt 感受差距。
+
+**真实续写样本**（10B 权重）（`05_sample.py`，prompt = `The history of ancient Rome`，`seed=1337` 可复现）:
 
 ```
 The history of ancient Rome, particularly the last one, is quite fascinating.
@@ -163,10 +174,12 @@ python 05_sample.py --ckpt ckpt/latest.pt --prompt "The history of Rome" --n 3
 
 ## 预训练权重下载
 
-为了保持仓库轻量,训练好的 checkpoint 不放进 git。可按上面的步骤自己训,或直接下载:
+为了保持仓库轻量,训练好的 checkpoint 不放进 git。可按上面的步骤自己训,或直接下载。**主推 10B 那份**;300M 那份是数据量对照样本(见上「数据量对照」)。
 
-- 🤗 **HuggingFace**: [tao-hpu/gpt2-124m-fineweb-edu-10b](https://huggingface.co/tao-hpu/gpt2-124m-fineweb-edu-10b) — 含模型卡
-- 📦 **GitHub Release**: [GPT-2 124M · 10B (val_loss 3.02)](https://github.com/tao-hpu/llm-from-scratch/releases/tag/gpt2-124m-10b) — 475MB,`.pt` 文件
+- 🤗 **HuggingFace**: [tao-hpu/gpt2-124m-fineweb-edu-10b](https://huggingface.co/tao-hpu/gpt2-124m-fineweb-edu-10b) — 含模型卡,**两份权重都在这个仓库**(`...-10b-val3.02.pt` / `...-300m-val3.65.pt`)
+- 📦 **GitHub Release**:
+  - [10B · val_loss 3.02](https://github.com/tao-hpu/llm-from-scratch/releases/tag/gpt2-124m-10b)（主推）
+  - [300M · val_loss 3.65](https://github.com/tao-hpu/llm-from-scratch/releases/tag/gpt2-124m-300m)（数据量对照样本）
 
 ```bash
 # 下载权重后直接推理(三平台通用)
