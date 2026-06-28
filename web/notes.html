@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>学习札记 · 彩蛋</title>
+<style>
+  /* ============ 全局基础样式(与全站共用暖色变量)============ */
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.75;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:860px;margin:0 auto;padding:32px 24px 90px;}
+
+  /* ============ 返回首页 ============ */
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  /* ============ 顶部标题区 ============ */
+  header{margin-bottom:10px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:680px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  /* ============ 札记条目 ============ */
+  .note-card{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:26px 26px 22px;margin-top:26px;box-shadow:0 1px 0 rgba(26,26,24,.02);}
+  .egg-tag{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;
+    font-weight:700;color:var(--accent);background:var(--accent-soft);
+    border-radius:999px;padding:4px 12px;margin-bottom:14px;letter-spacing:.3px;}
+  .note-card h2{font-family:var(--serif);font-size:24px;font-weight:600;margin:0 0 4px;line-height:1.3;}
+  .note-card .deck{color:var(--ink2);font-size:14px;margin:0 0 18px;}
+  .note-card h3{font-size:16px;font-weight:700;margin:24px 0 8px;color:var(--ink);
+    display:flex;align-items:center;gap:8px;}
+  .note-card h3::before{content:"";width:8px;height:8px;border-radius:3px;background:var(--accent);}
+  .note-card p{margin:10px 0;font-size:14.5px;}
+  .note-card code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note-card b{color:var(--ink);}
+  .hl{color:var(--accent);font-weight:700;}
+
+  /* 引用/旁白 */
+  .aside{background:#F4F2EA;border:1px dashed var(--border);border-radius:10px;
+    padding:12px 15px;margin:16px 0;font-size:13.5px;color:var(--ink2);}
+  .aside b{color:var(--accent);}
+
+  /* 表格 */
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px;}
+  th,td{border:1px solid var(--border);padding:9px 12px;text-align:left;vertical-align:top;}
+  th{background:#F4F2EA;font-weight:700;}
+  td.y{font-family:var(--mono);white-space:nowrap;color:var(--accent);font-weight:700;}
+  .star{color:var(--accent);}
+
+  /* 时间线 */
+  .tl{list-style:none;margin:14px 0 4px;padding:0;border-left:2px solid var(--accent-soft);}
+  .tl li{position:relative;padding:4px 0 16px 22px;font-size:14px;}
+  .tl li::before{content:"";position:absolute;left:-7px;top:9px;width:11px;height:11px;
+    border-radius:50%;background:#fff;border:2px solid var(--accent);}
+  .tl .yr{font-family:var(--mono);font-weight:700;color:var(--accent);margin-right:8px;}
+
+  /* 两栋楼比喻 */
+  .houses{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0;}
+  .house{border:1px solid var(--border);border-radius:12px;padding:14px 16px;background:#fff;}
+  .house h4{margin:0 0 6px;font-size:15px;}
+  .house.u h4{color:#3a63c0;}
+  .house.g h4{color:#3f7d63;}
+  .house small{color:var(--ink2);font-size:12.5px;display:block;line-height:1.6;}
+  @media(max-width:600px){.houses{grid-template-columns:1fr;}}
+
+  footer{margin-top:42px;padding-top:20px;border-top:1px solid var(--border);
+    font-size:13px;color:var(--ink2);}
+  footer a{color:var(--accent);text-decoration:none;font-weight:600;}
+
+  /* ============ 名词气泡(全站统一组件)============ */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:264px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;
+    font-family:system-ui,-apple-system,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);
+    font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);
+    text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <header>
+    <span class="filename">notes.html</span>
+    <h1>📖 学习札记 · 彩蛋</h1>
+    <p class="subtitle">
+      正课之外的边角料:它从哪儿来、为什么长这样、当年那帮人后来去哪了。
+      不影响主线,但知道了会让你对着代码会心一笑。
+    </p>
+  </header>
+
+  <!-- ================= 彩蛋 01 ================= -->
+  <article class="note-card" id="egg-transformer">
+    <span class="egg-tag">彩蛋 01 · 前世今生</span>
+    <h2>Transformer 的前世今生:一篇翻译论文,怎么变成全 AI 的地基</h2>
+    <p class="deck">—— 你学的这条线(bigram → 注意力 → GPT)到底打哪儿来。</p>
+
+    <h3>它本来只是想把翻译做快一点</h3>
+    <p>
+      2017 年,Google 一帮人发了篇
+      <span class="term" data-term="Attention Is All You Need" data-key="attention-paper"
+        data-def="2017 年 Google 提出 Transformer 的奠基论文:用自注意力取代 RNN/CNN,实验跑的是机器翻译。GPT/BERT 都源于它。">《Attention Is All You Need》</span>。
+      当时的痛点很"工程":做翻译用的
+      <span class="term" data-term="RNN / LSTM" data-key="self-attention"
+        data-def="Transformer 之前的主流序列模型,必须一个词一个词顺着算,慢、难并行、记不住长句。">RNN/LSTM</span>
+      <b>必须一个词一个词顺着算</b> —— 慢、没法并行、还记不住长句。他们想要个能<b>并行、又能抓长距离</b>的东西。
+    </p>
+    <p>
+      注意力机制本身 2014 年就有人用了。他们真正"狠"的一招是:
+      <span class="hl">干脆把循环结构整个删掉,只留注意力</span> —— 论文标题
+      <i>Attention Is All You Need</i>(你只需要注意力)还带着点调皮的炫耀。
+      实验跑的就是英→德、英→法翻译,<b>压根没想着"统一全 AI"</b>。
+    </p>
+    <div class="aside">
+      🎯 <b>会心一笑点:</b>你在 <code>02_attention.py</code> 里写的那个"只看过去、不许偷看未来"的因果掩码,
+      正是这篇论文为了"预测下一个词"埋下的种子;而你 Step 2 那"一次矩阵乘法搞定一整句",
+      就是它取代 RNN"逐词顺算"的并行威力。
+    </div>
+
+    <h3>署名 8 个人,后来几乎全部"飞升"</h3>
+    <p>
+      论文署名 <b>8 位作者,全在 Google</b>,还特意加了个著名脚注:"<b>贡献均等,排名随机</b>"。
+      如今这 8 人几乎个个开公司或进顶级团队 —— AI 圈最豪华的一次"师门散叶":
+    </p>
+    <table>
+      <tr><th>作者</th><th>后来去了哪(大致)</th></tr>
+      <tr><td>Ashish Vaswani</td><td>创办 Adept → 再创 <b>Essential AI</b></td></tr>
+      <tr><td>Noam Shazeer <span class="star">★</span></td><td>创办 <b>Character.AI</b> → 2024 被 Google 重金请回,<b>联合领导 Gemini</b></td></tr>
+      <tr><td>Niki Parmar</td><td>Adept → Essential AI(和 Vaswani 一路)</td></tr>
+      <tr><td>Jakob Uszkoreit</td><td>创办 <b>Inceptive</b>(用 AI 设计 mRNA / 生物药)</td></tr>
+      <tr><td>Llion Jones</td><td>创办 <b>Sakana AI</b>(东京)</td></tr>
+      <tr><td>Aidan N. Gomez</td><td><b>Cohere</b> CEO(头部大模型公司;当年他还是实习生)</td></tr>
+      <tr><td>Łukasz Kaiser</td><td>进 <b>OpenAI</b>(做推理模型 o 系列那条线)</td></tr>
+      <tr><td>Illia Polosukhin</td><td>创办 <b>NEAR Protocol</b>(区块链)</td></tr>
+    </table>
+    <p>
+      光这 8 人后来创立/主导的公司,估值加起来好几百亿美金,方向还五花八门:大模型、生物、区块链、日本 AI……
+    </p>
+
+    <h3>无心插柳,还是本该如此?——两个都沾边</h3>
+    <p>
+      <b>无心插柳的一半:</b>他们解的是个很具体的"翻译提速"问题,<b>没预见它会变成全 AI 的地基</b> ——
+      连作者后来都公开说"没想到能到这规模"。真正引爆威力的,是后来 GPT 把它<b>往大了 scale</b>。
+    </p>
+    <p>
+      <b>本该如此的一半:</b>这也不是瞎猫碰死耗子。他们是一线顶尖研究员,<b>踩在一个真实的核心瓶颈上</b>
+      (并行 + 长距离依赖),给的答案又足够<b>干净通用</b> —— 好的抽象往往如此:为翻译而造,却能解一切。
+      所以那句"活该他们当大牛",<span class="hl">算实至名归</span>。
+    </p>
+
+    <h3>一张家谱:你学的是哪一栋楼</h3>
+    <p>
+      关键一句:<b>Transformer 是<u>架构(地基)</u>;BERT 和 GPT 是盖在上面的两栋楼。</b>
+      不是"Transformer vs BERT" —— <b>BERT 的全名里就带着 Transformer</b>。
+    </p>
+    <div class="houses">
+      <div class="house u">
+        <h4>🏛 理解楼 · BERT 系</h4>
+        <small><b>2018, Google.</b> 用 Transformer <b>编码器</b>那半边;<b>完形填空</b>式训练(能看左右两边)。
+        擅长理解 / 搜索 / 打标签,<b>不擅长生成</b>。2018–2021 统治 NLP,Google 搜索就用它。
+        百度 <b>文心 ERNIE 1.0</b>(2019)也站这栋(知识增强的编码器)。</small>
+      </div>
+      <div class="house g">
+        <h4>🏗 生成楼 · GPT 系</h4>
+        <small><b>2018, OpenAI.</b> 用 Transformer <b>解码器</b>那半边;<b>预测下一个词</b>(只看过去,带因果掩码)。
+        擅长生成 / 续写 / 对话。<b>ChatGPT 这波爆发就在这栋</b> —— 也是<b>你这套教程走的路线</b>
+        (bigram → 注意力,一直在强调"只看过去")。</small>
+      </div>
+    </div>
+    <ul class="tl">
+      <li><span class="yr">~2017前</span>RNN / LSTM 时代:逐词顺算,慢、记不住长句。</li>
+      <li><span class="yr">2017</span><b>Transformer</b> 诞生(本是翻译论文)—— 地基。</li>
+      <li><span class="yr">2018</span>分叉:<b>GPT-1</b>(生成楼)与 <b>BERT</b>(理解楼)同年现身,都建在 Transformer 上。</li>
+      <li><span class="yr">2019</span>百度 <b>文心 ERNIE 1.0</b>(理解楼,知识增强);BERT 进 Google 搜索。</li>
+      <li><span class="yr">2020–22</span><b>Diffusion(扩散)</b>崛起做图像 —— 本是<b>另一套生成范式</b>(从噪声一步步去噪),
+        早期骨干是<b>卷积 U-Net</b>。</li>
+      <li><span class="yr">2022→</span>ChatGPT 引爆生成楼;Diffusion 也改用 <b>Transformer 当骨干</b>(DiT:Sora、SD3、FLUX)。</li>
+      <li><span class="yr">2023</span>百度 <b>文心一言</b>(ERNIE Bot)切到生成楼,对标 ChatGPT。</li>
+    </ul>
+    <div class="aside">
+      🧩 <b>连 Diffusion 都来借它:</b>扩散是"怎么生成"的配方,Transformer 是"用什么网络干活"的骨架,
+      两者本是正交的两层。早期 Diffusion 配卷积(U-Net),如今主流配 Transformer(DiT)——
+      <b>强到别的范式都来拿它当钢筋</b>,这就是它为什么是这个时代的地基。
+    </div>
+  </article>
+
+  <footer>
+    更多彩蛋持续补充中。回到正课 → <a href="index.html">首页</a> ·
+    不懂的术语查 <a href="glossary.html">名词表</a>。
+  </footer>
+</div>
+
+<!-- =====================================================================
+     名词气泡(全站统一组件):.term hover/点击弹定义,链到名词表
+     ===================================================================== -->
+<script>
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent;
+    const def=el.dataset.def||'';
+    const key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def
+      +(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect();
+    const tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8;
+    if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw;
+    if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el));
+    el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+</script>
+</body>
+</html>

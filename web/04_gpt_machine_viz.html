@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>整机俯瞰 · GPT 全景</title>
+<style>
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 24px 90px;}
+
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:760px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  /* 两段切换 */
+  .steps-nav{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:26px 0 20px;}
+  .step-tab{background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:12px 16px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:14px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+
+  .d{display:inline-flex;align-items:baseline;gap:3px;font-family:var(--mono);font-weight:700;
+    padding:0 5px;border-radius:6px;line-height:1.5;white-space:nowrap;}
+  .d i{font-style:normal;font-size:9.5px;font-weight:600;opacity:.9;letter-spacing:.2px;}
+  .d-emb{color:#3a63c0;background:#E5EBF9;}
+  .d-head{color:#a3548c;background:#F6E6F0;}
+  .d-nhead{color:#1f8a8a;background:#DCEFEF;}
+  .d-layer{color:#9a7b2f;background:#F4ECD6;}
+  .d-vocab{color:#a87b1f;background:#FAEFD6;}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 20px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;align-items:center;}
+
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:24px 0 6px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  /* ============ 装机:参数真身网格 ============ */
+  .parts{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:8px 0 4px;}
+  @media(max-width:680px){ .parts{grid-template-columns:repeat(2,1fr);} }
+  .pcard{background:#fff;border:1px solid var(--border);border-radius:11px;padding:11px 10px;text-align:center;}
+  .pcard.attn{border-color:#e7cbe0;} .pcard.ffn{border-color:#e8c4b5;} .pcard.emb{border-color:#bcd2f2;} .pcard.fin{border-color:#cfc9ba;}
+  .pcard .pname{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--ink);}
+  .pcard .pmini{display:grid;gap:2px;margin:8px auto 0;width:max-content;}
+  .pcard .pmini i{width:11px;height:11px;border-radius:2px;display:block;transition:background .6s ease;}
+  .pcard .psize{font-size:10px;color:var(--ink2);margin-top:7px;font-family:var(--mono);}
+  .grp-tag{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:700;
+    padding:2px 8px;border-radius:6px;margin:14px 0 2px;}
+  .grp-emb{color:#2c4ea0;background:#E5EBF9;} .grp-blk{color:#8a3d23;background:var(--accent-soft);}
+  .grp-fin{color:#6B6B68;background:#EEEBE1;}
+
+  /* ============ 跑起来:序列 ribbon ============ */
+  .ribbon{display:flex;flex-wrap:wrap;gap:5px;align-items:center;background:#fff;border:1px solid var(--border);
+    border-radius:12px;padding:14px 16px;margin:8px 0 6px;min-height:60px;}
+  .rchar{min-width:26px;height:34px;padding:0 6px;border-radius:7px;display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:16px;font-weight:600;border:1px solid var(--border);}
+  .rchar.prompt{background:#F4F2EA;color:var(--ink2);}
+  .rchar.gen{background:var(--accent-soft);border-color:#e8c4b5;color:#8a3d23;}
+  .rchar.pop{animation:pop .45s ease;}
+  @keyframes pop{0%{transform:scale(.4) translateY(-8px);opacity:0;}60%{transform:scale(1.12);}100%{transform:scale(1);opacity:1;}}
+  .rcaret{width:3px;height:30px;background:var(--accent);border-radius:2px;animation:blink 1s steps(1) infinite;}
+  @keyframes blink{50%{opacity:0;}}
+
+  /* 推理流水线:4 个 stage,激活态发光 */
+  .pipe{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0 6px;}
+  @media(max-width:680px){ .pipe{grid-template-columns:repeat(2,1fr);} }
+  .pstage{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 11px;transition:.3s;position:relative;min-height:128px;}
+  .pstage.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft),0 6px 18px rgba(217,119,87,.16);transform:translateY(-2px);}
+  .pstage .stn{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);}
+  .pstage .sttitle{font-size:13px;font-weight:600;margin:2px 0 8px;}
+  .pstage .stsub{font-size:11px;color:var(--ink2);line-height:1.5;}
+  .embcells{display:flex;gap:3px;flex-wrap:wrap;margin-top:4px;}
+  .embcells i{width:13px;height:13px;border-radius:3px;display:block;transition:.3s;}
+  .blkdots{display:flex;gap:6px;margin:6px 0;}
+  .blkdots i{width:18px;height:18px;border-radius:5px;background:#EEEBE1;border:1px solid var(--border);
+    display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;color:var(--ink2);transition:.25s;}
+  .blkdots i.lit{background:var(--accent);color:#fff;border-color:var(--accent);transform:translateY(-2px);}
+  .pbars{display:flex;flex-direction:column;gap:3px;margin-top:2px;}
+  .pbar{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;}
+  .pbar .pc{width:18px;text-align:center;color:var(--ink2);}
+  .pbar .ptrack{flex:1;height:12px;background:#F4F2EA;border-radius:6px;overflow:hidden;}
+  .pbar .pfill{height:100%;width:0;background:#cbb9ad;border-radius:6px;transition:width .4s ease;}
+  .pbar.chosen .pfill{background:var(--accent);}
+  .pbar.chosen .pc{color:var(--accent);font-weight:700;}
+
+  .flow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0 4px;}
+  .flow .fc{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--accent);
+    background:#fff;border:1px solid var(--accent-soft);border-radius:9px;padding:7px 10px;text-align:center;line-height:1.35;}
+  .flow .fc small{display:block;color:var(--ink2);font-weight:400;font-size:10px;margin-top:2px;}
+  .flow .fa{color:var(--ink2);font-size:16px;}
+
+  /* 名词气泡 */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:264px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;font-family:system-ui,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <header>
+    <span class="filename">04_gpt_machine_viz.html</span>
+    <h1>整机俯瞰:一个字符,如何流过整台 GPT</h1>
+    <p class="subtitle">
+      第 1–3 章把零件都拆懂了。这一页把它们<b>拼成整机</b>,只画<b>我们这个 tiny 模型</b>(≈ 0.8M 参数,不是 GPT-2)。
+      分两段:<b>① 装机</b> —— 训练把所有权重矩阵调到位;<b>② 跑起来</b> —— 一个预设字符串走完<span class="term" data-term="前向传播 · forward" data-key="forward" data-def="把输入从头到尾过一遍网络、算出输出(这里是下一个字符的打分 logits)的过程。训练和推理都要做前向;训练还会再反向更新权重。">前向传播</span>,再<span class="term" data-term="采样 · sampling" data-key="sampling" data-def="按模型输出的概率分布随机抽一个 token 作为下一个字符(不是永远取最高分),所以同一个开头每次生成可能不同。">采样</span>出下一个字符。全程<b>自动播放</b>。
+    </p>
+  </header>
+
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">PART 1</div><div class="label">🔧 装机 · 训练把权重调到位</div></div>
+    <div class="step-tab" data-step="1"><div class="num">PART 2</div><div class="label">▶ 跑起来 · 前向 + 采样</div></div>
+  </div>
+
+  <div class="hp-bar">
+    <span class="hp-label">这台机器</span>
+    <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">vocab <b>65</b> <i>字符表</i></span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">n_embd <b>128</b> <i>主干维度</i></span>
+    <span class="hp-chip" style="color:#1f8a8a;background:#DCEFEF">n_head <b>4</b> <i>头数</i></span>
+    <span class="hp-chip" style="color:#9a7b2f;background:#F4ECD6">n_layer <b>4</b> <i>层数</i></span>
+    <span class="hp-note">≈ 0.8M 参数 · 配套 <code style="font-family:var(--mono)">03_transformer.py</code></span>
+  </div>
+
+  <!-- ============ PART 1:装机 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>① 装机:训练 = 把整机所有权重,从随机雪花调成有结构</h2>
+    <p class="lead">
+      整台 GPT 就是下面这<b>一堆权重矩阵</b>(参数真身)。训练做的唯一一件事:用梯度下降把它们<b>从随机雪花,慢慢调出结构</b>。
+      推理时它们<b>全部冻结、不再变</b>。点下面看一次"训练动画"。
+    </p>
+    <div class="btn-row">
+      <button class="btn primary" id="trainReplay" onclick="trainAnim()">▶ 重新训练一遍</button>
+      <span class="hp-note">从随机 → 有结构,扫一遍(示意)</span>
+    </div>
+
+    <div class="grp-tag grp-emb">输入层 · 把字符变成向量</div>
+    <div class="parts" id="partsEmb"></div>
+
+    <div class="grp-tag grp-blk">4 × Block · 每层 = 多头注意力 + FFN(各带残差/LayerNorm)</div>
+    <div class="parts" id="partsBlk"></div>
+
+    <div class="grp-tag grp-fin">收尾 · 把向量映射回字符打分</div>
+    <div class="parts" id="partsFin"></div>
+
+    <div class="note" id="trainNote"></div>
+
+    <details class="dig">
+      <summary>这些矩阵和"中间产物"别混(谁是真身?)</summary>
+      <div class="dig-body">
+        <b>真身 = 被训练、会存盘的权重</b>:上面这些 <code>token_emb / pos_emb / Wq,Wk,Wv / proj / FFN / ln / lm_head</code>。
+        而 <code>q / k / v / wei / 注意力输出 / 每层的 x</code> 都是<b>推理时现算的中间产物</b>,不存储、训练也不直接拧它们。
+        训练拧的永远是矩阵;中间产物只是"矩阵 × 输入"算出来的临时结果。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>0.8M 是怎么来的?</summary>
+      <div class="dig-body">
+        粗算:嵌入 <code>65×128 + 64×128 ≈ 16.5k</code>;每个 <span class="term" data-term="Block · Transformer 层" data-key="block" data-def="一层 = 注意力子层 + FFN 子层,各带残差和 LayerNorm。">Block</span> 里
+        注意力投影(<code>Wq/Wk/Wv/proj</code>)≈ 66k、<span class="term" data-term="FeedForward · 前馈网络" data-key="feedforward" data-def="逐位置小 MLP:Linear→ReLU→Linear,中间放大 4 倍。">FFN</span>(<code>128×512 + 512×128</code>)≈ 131k,
+        合 ≈ 197k,<b>×4 层 ≈ 0.79M</b>;<code>lm_head 128×65 ≈ 8k</code>。总计 <b>≈ 0.8M</b>。GPT-2 是 124M,大了 150 倍,但<b>结构一模一样</b>。
+      </div>
+    </details>
+  </section>
+
+  <!-- ============ PART 2:跑起来 ============ -->
+  <section class="panel" id="panel1">
+    <h2>② 跑起来:一个字符流过整机 → 采样出下一个 → 接着生</h2>
+    <p class="lead">
+      选一个<b>预设开头</b>(不用你打字),机器自动逐字生成。每生成一个字符,都要把当前序列<b>完整过一遍</b>下面四站,
+      最后 <span class="term" data-term="softmax" data-key="softmax" data-def="把一排打分(logits)变成和为 1 的概率分布,分越高概率越大。">softmax</span> 出概率、采样一个字符接到末尾 —— 这叫<span class="term" data-term="自回归 · autoregressive" data-key="autoregressive" data-def="把自己刚生成的字符接回输入,再预测下一个,如此循环。GPT 生成文本就是这样一个字一个字滚出来的。">自回归</span>生成。
+    </p>
+
+    <div class="btn-row" id="presetBtns"></div>
+
+    <div class="sub-h" style="margin-top:14px"><span class="badge">序列</span>当前文本(灰=开头,橙=机器生成)</div>
+    <div class="ribbon" id="ribbon"></div>
+
+    <div class="sub-h"><span class="badge">流水线</span>每个字符都走完这四站(高亮 = 正在算)</div>
+    <div class="pipe" id="pipe">
+      <div class="pstage" data-st="0">
+        <div class="stn">STAGE 1</div>
+        <div class="sttitle">嵌入</div>
+        <div class="stsub">末位字符 → <span class="d d-emb">128<i>n_embd</i></span> 向量<br>(tok_emb + pos_emb)</div>
+        <div class="embcells" id="embcells"></div>
+      </div>
+      <div class="pstage" data-st="1">
+        <div class="stn">STAGE 2</div>
+        <div class="sttitle">4 × Block</div>
+        <div class="blkdots" id="blkdots"><i>1</i><i>2</i><i>3</i><i>4</i></div>
+        <div class="stsub">每层:多头注意力(看前文)<br>+ FFN(逐位置思考)</div>
+      </div>
+      <div class="pstage" data-st="2">
+        <div class="stn">STAGE 3</div>
+        <div class="sttitle">ln_f + lm_head</div>
+        <div class="stsub">末位向量 → <span class="d d-vocab">65<i>vocab</i></span> 个打分<br>(下一个字符的 logits)</div>
+      </div>
+      <div class="pstage" data-st="3">
+        <div class="stn">STAGE 4</div>
+        <div class="sttitle">softmax → 采样</div>
+        <div class="pbars" id="pbars"></div>
+      </div>
+    </div>
+    <div class="note" id="infNote">选一个开头,机器开始自动生成 ↑</div>
+
+    <details class="dig">
+      <summary>为什么生成的是"莎士比亚味儿"的乱码,不是真句子?</summary>
+      <div class="dig-body">
+        这台只有 <b>0.8M 参数 + 字符级</b>,又只训练几千步,能学到的是"字母怎么搭、单词长啥样、谁跟谁常一起出现",
+        所以采样出来<b>像英文、有词形和对话结构</b>,但不成句意。<b>把模型放大(GPT-2 124M)、上更多数据,同一套机器就会越说越像人话。</b>
+        (本页生成文本是<b>预设示意</b>,为了动画稳定;真跑 <code>03_transformer.py</code> 每次结果不同。)
+      </div>
+    </details>
+    <details class="dig">
+      <summary>采样为什么不直接取最高分?</summary>
+      <div class="dig-body">
+        若每次都取最高分(argmax),模型会陷入重复死循环(一直输出同几个字)。按概率<b>随机采样</b>能保持多样性,
+        所以同一个开头每次生成都不一样。代码里就是 <code>torch.multinomial(probs, 1)</code>。
+      </div>
+    </details>
+  </section>
+
+  <div style="height:8px"></div>
+
+</div>
+
+<script>
+/* ============ 两段切换 ============ */
+const tabs=document.querySelectorAll('.step-tab');
+const panels=[document.getElementById('panel0'),document.getElementById('panel1')];
+let cur=0;
+function goto(i){
+  cur=Math.max(0,Math.min(1,i));
+  tabs.forEach(t=>t.classList.toggle('active',+t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active',idx===cur));
+  const hash='#part-'+(cur+1);
+  if(location.hash!==hash) history.replaceState(null,'',hash);
+  stopInfer();
+  if(cur===0) trainAnim();
+  if(cur===1){ buildPresets(); runInference(); }
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+
+/* ============ 颜色工具 ============ */
+function structColor(t){ t=Math.max(0,Math.min(1,t)); return `rgb(${Math.round(247-32*t)},${Math.round(230-112*t)},${Math.round(222-143*t)})`; }
+function noiseAt(a){ const x=Math.sin(a*127.1)*43758.5453; return x-Math.floor(x); }
+function embColor(t){ t=Math.max(0,Math.min(1,t)); return `rgb(${Math.round(229-160*t)},${Math.round(235-150*t)},${Math.round(249-70*t)})`; }
+
+/* ============ PART 1:参数真身网格 + 训练扫描动画 ============ */
+const PARTS_EMB=[
+  {name:'token_emb',size:'65×128',cls:'emb'},
+  {name:'pos_emb',size:'64×128',cls:'emb'},
+];
+const PARTS_BLK=[]; // 4 层,每层 4 块代表
+for(let L=1;L<=4;L++){
+  PARTS_BLK.push({name:`L${L}·Wq/Wk/Wv`,size:'128×32 ×4头',cls:'attn'});
+  PARTS_BLK.push({name:`L${L}·proj`,size:'128×128',cls:'attn'});
+  PARTS_BLK.push({name:`L${L}·FFN①`,size:'128×512',cls:'ffn'});
+  PARTS_BLK.push({name:`L${L}·FFN②`,size:'512×128',cls:'ffn'});
+}
+const PARTS_FIN=[
+  {name:'ln_f',size:'128',cls:'fin'},
+  {name:'lm_head',size:'128×65',cls:'fin'},
+];
+const TG=5; // 5×5 mini
+let trainProg=1;          // 0=全随机,1=全训练好
+function renderParts(){
+  [['partsEmb',PARTS_EMB],['partsBlk',PARTS_BLK],['partsFin',PARTS_FIN]].forEach(([host,arr])=>{
+    const el=document.getElementById(host); el.innerHTML='';
+    arr.forEach((m,mi)=>{
+      // 每块有个"位置阈值",训练扫描波从前往后推进
+      const order=(host==='partsEmb'?mi:host==='partsBlk'?2+mi:2+PARTS_BLK.length+mi);
+      const total=2+PARTS_BLK.length+PARTS_FIN.length;
+      const reveal=Math.max(0,Math.min(1,(trainProg*total - order)));
+      let cells='';
+      for(let i=0;i<TG;i++)for(let j=0;j<TG;j++){
+        const structured=0.5+0.45*Math.sin(i*0.9+j*1.25+mi*1.7+(host.length));
+        const noise=noiseAt(mi*97+i*13+j*7+host.length*3+1);
+        const t=noise+(structured-noise)*reveal;
+        cells+=`<i style="background:${structColor(t)}"></i>`;
+      }
+      const card=document.createElement('div'); card.className='pcard '+m.cls;
+      card.innerHTML=`<div class="pname">${m.name}</div>`
+        +`<div class="pmini" style="grid-template-columns:repeat(${TG},1fr)">${cells}</div>`
+        +`<div class="psize">${m.size}</div>`;
+      el.appendChild(card);
+    });
+  });
+}
+let trainRAF=null;
+function trainAnim(){
+  if(trainRAF) cancelAnimationFrame(trainRAF);
+  const note=document.getElementById('trainNote');
+  const DUR=2400, start=performance.now();
+  function frame(now){
+    const t=Math.min(1,(now-start)/DUR);
+    trainProg=t; renderParts();
+    note.innerHTML = t<1
+      ? '🔧 <b>训练中…</b>梯度下降把每块矩阵从随机雪花调出结构(从输入层往收尾层扫)。'
+      : '✅ <b>装机完成。</b>这一整套矩阵就是模型的"真身"。推理时它们<b>冻结不动</b>,只负责把输入算成输出。';
+    if(t<1) trainRAF=requestAnimationFrame(frame); else trainRAF=null;
+  }
+  trainRAF=requestAnimationFrame(frame);
+}
+
+/* ============ PART 2:前向 + 采样 自回归动画 ============ */
+const PRESETS=[
+  {name:'ROMEO:',  prompt:'ROMEO:',  gen:' But the' },
+  {name:'To be',   prompt:'To be',   gen:' so so' },
+  {name:'First Ci',prompt:'First Ci',gen:'tizen,' },
+];
+let infSel=0, timers=[];
+function buildPresets(){
+  const host=document.getElementById('presetBtns'); host.innerHTML='<span class="hp-note" style="margin-right:4px">预设开头:</span>';
+  PRESETS.forEach((p,i)=>{
+    const b=document.createElement('button'); b.className='btn'+(i===infSel?' primary':'');
+    b.textContent='“'+p.name+'”';
+    b.onclick=()=>{ infSel=i; buildPresets(); runInference(); };
+    host.appendChild(b);
+  });
+  const rb=document.createElement('button');
+  rb.className='btn'; rb.textContent='▶ 重播'; rb.onclick=runInference; host.appendChild(rb);
+}
+function clearTimers(){ timers.forEach(t=>clearTimeout(t)); timers=[]; }
+function after(ms,fn){ timers.push(setTimeout(fn,ms)); }
+function stopInfer(){ clearTimers(); }
+const showChar=c=>(c===' '?'␣':c);
+
+function renderRibbon(prompt,gen,popLast){
+  const r=document.getElementById('ribbon'); r.innerHTML='';
+  [...prompt].forEach(c=>{ const e=document.createElement('div'); e.className='rchar prompt'; e.textContent=showChar(c); r.appendChild(e); });
+  [...gen].forEach((c,i)=>{ const e=document.createElement('div'); e.className='rchar gen'+(popLast&&i===gen.length-1?' pop':''); e.textContent=showChar(c); r.appendChild(e); });
+  const caret=document.createElement('div'); caret.className='rcaret'; r.appendChild(caret);
+}
+function setStage(n){ document.querySelectorAll('#pipe .pstage').forEach(s=>s.classList.toggle('on',+s.dataset.st===n)); }
+function showEmbed(seedChar){
+  const host=document.getElementById('embcells'); host.innerHTML='';
+  const code=seedChar.charCodeAt(0);
+  for(let k=0;k<10;k++){ const t=noiseAt(code*3.3+k*1.7); const i=document.createElement('i'); i.style.background=embColor(t); host.appendChild(i); }
+}
+function litBlocks(n){ document.querySelectorAll('#blkdots i').forEach((d,i)=>d.classList.toggle('lit',i<n)); }
+function showSample(ch){
+  const host=document.getElementById('pbars'); host.innerHTML='';
+  let cands=[ch,' ','e','t','o','h'].filter((c,i,a)=>a.indexOf(c)===i).slice(0,5);
+  const probs=[0.46,0.18,0.14,0.13,0.09];
+  cands.forEach((c,i)=>{
+    const row=document.createElement('div'); row.className='pbar'+(c===ch?' chosen':'');
+    row.innerHTML=`<span class="pc">${showChar(c)}</span><div class="ptrack"><div class="pfill"></div></div>`;
+    host.appendChild(row);
+    after(40,()=>{ row.querySelector('.pfill').style.width=(probs[i]*100*1.6)+'%'; });
+  });
+}
+
+function runInference(){
+  clearTimers();
+  const p=PRESETS[infSel];
+  renderRibbon(p.prompt,'',false);
+  setStage(-1); litBlocks(0); document.getElementById('pbars').innerHTML=''; document.getElementById('embcells').innerHTML='';
+  document.getElementById('infNote').innerHTML='▶ 开始生成 “'+p.name+'” …';
+  let gen='', t=600;
+  const STEP=1500;
+  for(let c=0;c<p.gen.length;c++){
+    const ch=p.gen[c];
+    const seq=p.prompt+gen;
+    const seed=seq[seq.length-1]||p.prompt[0];
+    after(t,        ()=>{ setStage(0); showEmbed(seed); document.getElementById('infNote').innerHTML='把当前序列喂进去,末位字符 <b>"'+showChar(seed)+'"</b> 先嵌入成向量…'; });
+    after(t+360,    ()=>{ setStage(1); litBlocks(0); });
+    [1,2,3,4].forEach((b,bi)=> after(t+360+bi*150, ()=>litBlocks(b)) );
+    after(t+360,    ()=>{ document.getElementById('infNote').innerHTML='过 <b>4 层 Block</b>:每层多头注意力看前文 + FFN 加工…'; });
+    after(t+1020,   ()=>{ setStage(2); document.getElementById('infNote').innerHTML='末位向量 → <code>lm_head</code> → 65 个字符的打分(logits)…'; });
+    after(t+1230,   ()=>{ setStage(3); showSample(ch); document.getElementById('infNote').innerHTML='<code>softmax</code> 出概率,采样到 <b>"'+showChar(ch)+'"</b> ↓'; });
+    after(t+1460,   ()=>{ gen+=ch; renderRibbon(p.prompt,gen,true); });
+    t+=STEP;
+  }
+  after(t+200, ()=>{ setStage(-1); litBlocks(0);
+    document.getElementById('infNote').innerHTML='✅ <b>生成完毕。</b>"'+p.name+'" → "<b>'+showChar(p.prompt[p.prompt.length-1])+'</b>…<b>'+[...p.gen].map(showChar).join('')+'</b>"。每多一个字,都把整条序列重过一遍四站 —— 这就是<b>自回归</b>。点别的开头或「重播」再看一次。'; });
+}
+
+/* ============ 名词气泡 ============ */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent, def=el.dataset.def||'', key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def+(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8; if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw; if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el)); el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* ============ 初始化 ============ */
+renderParts();
+const m=/^#part-(\d)$/.exec(location.hash);
+goto(m?parseInt(m[1],10)-1:0);
+window.addEventListener('hashchange',()=>{ const mm=/^#part-(\d)$/.exec(location.hash); goto(mm?parseInt(mm[1],10)-1:0); });
+</script>
+</body>
+</html>

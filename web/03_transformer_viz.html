@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>完整 Transformer 图解 · 03_transformer</title>
+<style>
+  /* ============ 全局基础样式(与全站共用暖色变量)============ */
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:920px;margin:0 auto;padding:32px 24px 90px;}
+
+  /* ============ 返回首页 ============ */
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  /* ============ 顶部标题区 ============ */
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:720px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  /* ============ 步骤导航 ============ */
+  .steps-nav{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:26px 0 20px;}
+  @media(max-width:560px){ .steps-nav{grid-template-columns:repeat(2,1fr);} }
+  .step-tab{min-width:0;background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 14px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13.5px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  /* ============ 超参速查条(每页常驻)============ */
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+
+  /* 维度色标:凡是出现维度数字都套它,颜色与 hp-bar 一一对应,数字永不裸奔 */
+  .d{display:inline-flex;align-items:baseline;gap:3px;font-family:var(--mono);font-weight:700;
+    padding:0 5px;border-radius:6px;line-height:1.5;white-space:nowrap;}
+  .d i{font-style:normal;font-size:9.5px;font-weight:600;opacity:.9;letter-spacing:.2px;}
+  .d-batch{color:#b8512f;background:#F7E6DE;}   /* batch_size 句子数 */
+  .d-block{color:#3f7d63;background:#E4EFE9;}   /* block_size 位置数 T */
+  .d-emb{color:#3a63c0;background:#E5EBF9;}     /* n_embd 维度 C(主干)*/
+  .d-head{color:#a3548c;background:#F6E6F0;}    /* head_size 头维度 */
+  .d-nhead{color:#1f8a8a;background:#DCEFEF;}   /* n_head 头数 */
+  .d-layer{color:#9a7b2f;background:#F4ECD6;}   /* n_layer 层数 */
+  .d-vocab{color:#a87b1f;background:#FAEFD6;}   /* vocab_size 词表 */
+
+  /* ============ 面板卡片 ============ */
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 22px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    display:flex;align-items:center;gap:7px;}
+  .next-hint::before{content:"↳";font-size:15px;}
+
+  /* 渐进展开:深问题默认收起,点开才看 —— 让主线保持干净(见可视化规范「图形优先」) */
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig+.dig{margin-top:8px;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+  .dig .dig-body ul{margin:6px 0 0;padding-left:18px;}
+  .dig .dig-body li{margin:3px 0;}
+
+  /* ============ 通用按钮 ============ */
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.ghost{background:transparent;}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;}
+
+  /* ============ 上一步 / 下一步 ============ */
+  .nav{display:flex;justify-content:space-between;margin-top:24px;}
+
+  /* ============ 子标题 ============ */
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:24px 0 4px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  /* ============ 真身/对照表(复用 02)============ */
+  .truth{width:100%;border-collapse:collapse;margin:10px 0 4px;font-size:13px;}
+  .truth th,.truth td{border:1px solid var(--border);padding:8px 11px;text-align:left;vertical-align:top;}
+  .truth th{background:#F4F2EA;font-family:system-ui,sans-serif;font-weight:700;color:var(--ink);}
+  .truth td{font-family:var(--mono);}
+  .truth td.lbl{font-family:system-ui,sans-serif;color:var(--ink2);background:#FBFAF6;white-space:nowrap;}
+  .truth .sum{font-weight:700;color:var(--accent);}
+
+  /* ============ STEP 1:切蛋糕(n_embd 切成 n_head 份)============ */
+  .split-bar{display:flex;gap:4px;width:100%;margin:14px 0 6px;height:64px;}
+  .seg{flex:1;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    border:1px solid #bcd9d9;background:#DCEFEF;color:#15686a;font-family:var(--mono);transition:.3s;}
+  .seg .sn{font-size:12px;font-weight:700;}
+  .seg .sh{font-size:10.5px;opacity:.85;margin-top:2px;}
+  .split-sum{font-family:var(--mono);font-size:13.5px;text-align:center;margin:4px 0 2px;color:var(--ink);}
+  .split-sum b{color:var(--accent);}
+
+  /* ============ STEP 2:多头热力图 ============ */
+  .head-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 4px;}
+  .head-tab{flex:1;min-width:120px;background:#fff;border:1px solid var(--border);border-radius:11px;
+    padding:9px 11px;cursor:pointer;text-align:left;transition:.18s;}
+  .head-tab:hover{border-color:#cfc9ba;}
+  .head-tab.on{border-color:#1f8a8a;box-shadow:0 0 0 1px #1f8a8a;background:#F2FAFA;}
+  .head-tab .ht-n{font-family:var(--mono);font-size:11px;font-weight:700;color:#1f8a8a;}
+  .head-tab .ht-d{font-size:12px;font-weight:600;margin-top:2px;}
+  #heat{display:grid;width:100%;gap:5px;margin-top:12px;}
+  .hc{width:auto;height:46px;border-radius:7px;display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:12px;font-weight:600;border:1px solid var(--border);transition:.35s;}
+  .hc.mask{background:#EFECE3;color:#bcb6a6;border-style:dashed;}
+  .heat-axis{font-size:11.5px;color:var(--ink2);font-family:var(--mono);margin:6px 0 0;}
+
+  /* ============ STEP 3:拼接 + 投影 ============ */
+  .cat-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:14px 0 6px;}
+  .hstrip{border-radius:8px;padding:10px 8px;text-align:center;font-family:var(--mono);
+    border:1px solid #bcd9d9;background:#DCEFEF;color:#15686a;font-size:11.5px;min-width:60px;transition:.35s;}
+  .hstrip b{font-size:12.5px;}
+  .catbox{border-radius:9px;padding:12px 10px;text-align:center;font-family:var(--mono);font-size:12px;
+    border:1px solid var(--border);background:#fff;color:var(--ink2);transition:.35s;flex:1;min-width:120px;}
+  .catbox.emb{border-color:#9fb6e8;background:#E5EBF9;color:#2c4ea0;}
+  .op{font-size:22px;color:var(--ink2);}
+
+  /* ============ STEP 4:FeedForward ============ */
+  .ffn-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0 6px;min-height:96px;}
+  .ffn-box{border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-family:var(--mono);border:1px solid #9fb6e8;background:#E5EBF9;color:#2c4ea0;padding:0 14px;min-width:78px;transition:.35s;}
+  .ffn-box.wide{border-color:#e8c4b5;background:var(--accent-soft);color:#8a3d23;min-width:150px;}
+  .ffn-box .fb-d{font-size:15px;font-weight:700;}
+  .ffn-box .fb-t{font-size:10.5px;opacity:.85;margin-top:2px;}
+
+  /* ============ STEP 5:残差 + LayerNorm ============ */
+  .res-stack{display:flex;flex-direction:column;gap:6px;margin:14px 0 6px;max-width:440px;}
+  .res-layer{position:relative;border:1px solid var(--border);border-radius:9px;background:#fff;
+    padding:10px 12px 10px 18px;font-family:var(--mono);font-size:13px;color:var(--ink);transition:.35s;}
+  .res-layer .hw{position:absolute;left:5px;top:6px;bottom:6px;width:4px;border-radius:3px;background:transparent;transition:.35s;}
+  .res-layer.on .hw{background:var(--accent);}
+  .res-cap{font-family:var(--mono);font-size:11px;color:var(--ink2);margin-left:4px;}
+
+  /* ============ STEP 6:forward 流程 + loss 曲线 ============ */
+  .flow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:14px 0 4px;}
+  .flow .fc{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--accent);
+    background:#fff;border:1px solid var(--accent-soft);border-radius:9px;padding:8px 11px;text-align:center;line-height:1.4;}
+  .flow .fc small{display:block;color:var(--ink2);font-weight:400;font-size:10.5px;margin-top:2px;}
+  .flow .fa{color:var(--ink2);font-size:18px;}
+  .loss-wrap{background:#fff;border:1px solid var(--border);border-radius:14px;padding:12px 14px 4px;margin:8px 0 4px;}
+  .loss-wrap svg{width:100%;height:auto;display:block;}
+  .loss-leg{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin:2px 0 0;}
+  .loss-leg i{display:inline-block;width:18px;height:0;border-top-width:3px;vertical-align:middle;margin-right:5px;}
+
+  /* ============ 名词气泡(全站统一组件)============ */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:264px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;
+    font-family:system-ui,-apple-system,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);
+    font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);
+    text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* ============ 通关庆祝 ============ */
+  .congrats{position:fixed;left:50%;top:24%;transform:translate(-50%,-50%) scale(.92);
+    z-index:10000;pointer-events:none;text-align:center;background:#fff;border:1px solid var(--accent);
+    box-shadow:0 8px 30px rgba(217,119,87,.25);border-radius:16px;padding:18px 28px;
+    font-family:var(--serif);font-size:22px;font-weight:600;color:var(--accent);
+    opacity:0;transition:opacity .45s ease,transform .45s ease;}
+  .congrats.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+  .congrats span{display:block;margin-top:6px;font-family:system-ui,sans-serif;font-size:13px;font-weight:400;color:var(--ink2);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <!-- ============ 顶部标题区 ============ -->
+  <header>
+    <span class="filename">03_transformer_viz.html</span>
+    <h1>完整 Transformer:四块新积木,拼出 GPT</h1>
+    <p class="subtitle">
+      配套 <code>03_transformer.py</code>。第 2 章是<b>单头</b>注意力。这一章加四样东西凑成完整 GPT:
+      <b>多头</b>(同时看多种关系)、<b>FeedForward</b>(逐位置思考)、<b>残差 + LayerNorm</b>(让深网络训得动),
+      再把它们摞成多层 —— 六步走完,val loss 从 2.41 掉到 ~1.9。
+    </p>
+  </header>
+
+  <!-- ============ 步骤导航 ============ -->
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">切蛋糕:128 → 4 个头</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">每个头各看各的</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">拼回去 · 头数怎么选</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">FFN:逐位置思考</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">残差 + LayerNorm</div></div>
+    <div class="step-tab" data-step="5"><div class="num">STEP 6</div><div class="label">堆成 GPT · 破墙</div></div>
+  </div>
+
+  <!-- 超参速查(常驻,每步都看得到)-->
+  <div class="hp-bar">
+    <span class="hp-label">超参速查</span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">n_embd <b>128</b> <i>主干维度 C</i></span>
+    <span class="hp-chip" style="color:#1f8a8a;background:#DCEFEF">n_head <b>4</b> <i>头数</i></span>
+    <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">head_size <b>32</b> <i>每头维度</i></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">block_size <b>64</b> <i>位置数 T</i></span>
+    <span class="hp-chip" style="color:#9a7b2f;background:#F4ECD6">n_layer <b>4</b> <i>层数</i></span>
+    <span class="hp-note">⚠ <code style="font-family:var(--mono)">head_size = n_embd / n_head = 128/4 = 32</code></span>
+  </div>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>Step 1 · 切蛋糕:把 128 维切成 4 个头(不是加 4 份)</h2>
+    <p class="lead">
+      <span class="term" data-term="多头注意力 · multi-head attention" data-key="multi-head" data-def="把注意力拆成若干个并行的小头,每个头在 n_embd 的一个子空间(head_size = n_embd / n_head 维)里独立打分聚合,最后拼接再投影回 n_embd。">多头</span>
+      最容易误会的一点:它<b>不是</b>把模型加宽成好几倍,而是把<b>同一块</b> <span class="d d-emb">128<i>n_embd</i></span>
+      切成 <span class="d d-nhead">4<i>n_head</i></span> 份,每份 <span class="d d-head">32<i>head_size</i></span> 维。
+      <b>切几份,总料不变。</b>拨下面看 <code>head_size = n_embd / n_head</code> 怎么变。
+    </p>
+
+    <div class="btn-row" id="splitBtns">
+      <button class="btn" onclick="setSplit(1)">1 头</button>
+      <button class="btn" onclick="setSplit(2)">2 头</button>
+      <button class="btn primary" onclick="setSplit(4)">4 头(本章)</button>
+      <button class="btn" onclick="setSplit(8)">8 头</button>
+      <button class="btn" onclick="setSplit(16)">16 头</button>
+    </div>
+    <div class="split-bar" id="splitBar"></div>
+    <div class="split-sum" id="splitSum"></div>
+    <div class="note" id="splitNote"></div>
+
+    <div class="sub-h"><span class="badge">代码</span>4 个头 = 4 份第 2 章的 <code>Head</code></div>
+    <p class="lead" style="margin-bottom:6px">
+      <code>MultiHeadAttention</code> 里就一行关键:<code>ModuleList</code> 装 <span class="d d-nhead">n_head</span> 个
+      第 2 章那个 <code>Head</code>,每个头有<b>自己独立的</b> <code>Wq/Wk/Wv</code>。
+    </p>
+<pre style="font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;overflow-x:auto;line-height:1.6;color:var(--ink)">
+self.heads = nn.ModuleList([Head(head_size) <span style="color:var(--ink2)"># head_size = 32</span>
+                            for _ in range(num_heads)])  <span style="color:var(--ink2)"># num_heads = 4</span>
+</pre>
+
+    <p class="next-hint">下一步:4 个头各有各的 <code>Wq/Wk/Wv</code> → 各算出<b>不一样</b>的注意力。它们会自己分工。</p>
+  </section>
+
+  <!-- ============ STEP 2 ============ -->
+  <section class="panel" id="panel1">
+    <h2>Step 2 · 每个头各看各的:分工是训练"逼"出来的</h2>
+    <p class="lead">
+      4 个头吃<b>同一个</b>输入,但各有独立的 <code>Wq/Wk/Wv</code> → 各自算出一张<b>不同</b>的注意力权重表 <code>wei</code>。
+      <b>点下面的头</b>,看它们关注的位置多么不一样。每个头是 <span class="d d-block">8<i>T</i></span>×<span class="d d-block">8<i>T</i></span>
+      的下三角(只能看过去),格子越深 = 关注越多。
+    </p>
+
+    <div class="head-tabs" id="headTabs"></div>
+    <div id="heat"></div>
+    <p class="heat-axis">行 = 发问的位置 i(query);列 = 被看的位置 j(key)。每行和为 1。</p>
+    <div class="note" id="headNote"></div>
+
+    <details class="dig">
+      <summary>这 4 个头的"专长",是谁分配的?</summary>
+      <div class="dig-body">
+        <b>没人分配,是训练中自己涌现的。</b>没有哪行代码写"1 号头管前一个词"。让它们分开的是两股力:
+        ① <b>初始随机不同</b> —— 每个头的 <code>Wq/Wk/Wv</code> 随机初始化,起点就有差异;
+        ② <b>"别重复"的压力</b> —— 若 4 个头算同一件事,等于浪费 3 个头的容量,<code>loss</code> 降不下去,
+        梯度下降于是把它们推向<b>各管一摊</b>。<br>
+        训练完用可解释性工具去看,确实能认出一些有名的头:专盯前一个词的、回看句首的、配对引号/括号的、
+        以及 induction head(归纳头:见过 "AB",再遇 A 就预测 B)。<br>
+        (上面四张图是<b>示意</b>,用来体现"每个头一种模式";真实的头多数更杂、更难一句话概括。)
+      </div>
+    </details>
+    <details class="dig">
+      <summary>这跟 Q/K/V 的分工是一回事吗?</summary>
+      <div class="dig-body">
+        <b>不是,两种分工的来源相反:</b><br>
+        · <b>Q/K/V 是"公式钦定"的</b> —— q 站在点积左边(发问)、k 在右边(被问)、v 被聚合搬运,
+        三者在算式里位置不同,角色天生被劈开,<b>绝不会冗余</b>。<br>
+        · <b>多个头是"训练涌现"的</b> —— 架构上 4 个头完全对称、可互换,是训练动力学才把它们卷出了不同专长,
+        <b>有时还会重复</b>(见下条)。<br>
+        一句话:<b>Q/K/V 是三个不同工种;4 个头是四个一样的新人,在干活中自己卷出了专长。</b>
+      </div>
+    </details>
+    <details class="dig">
+      <summary>会不会两个头分化成一模一样?(冗余头)</summary>
+      <div class="dig-body">
+        <b>会,这叫"冗余头(redundant heads)"。</b>"别重复"的压力是软的、间接的,不是硬约束,头一多总有几个长得彼此很像。
+        有研究(《Are Sixteen Heads Really Better than One?》)发现很多头是冗余的,训练后<b>剪掉(prune)性能几乎不掉</b>。
+        冗余不是错,只是浪费 —— 这也是"头并非越多越好"的一个原因。代码里那行 <span class="term" data-term="Dropout · 随机失活" data-key="dropout" data-def="训练时随机丢弃一部分连接(如 10%),逼网络别过度依赖某几条路径,防过拟合。只在训练时生效,推理时关闭。"><code>dropout</code></span> 多少帮点忙,
+        训练时随机丢连接,逼头之间别抱团长得太像。
+      </div>
+    </details>
+
+    <p class="next-hint">下一步:4 个头各吐一根 <span class="d d-head">32</span> 维向量,怎么拼回 <span class="d d-emb">128</span>?头数又该怎么挑?</p>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="panel" id="panel2">
+    <h2>Step 3 · 拼回去,与"头数怎么选"</h2>
+    <p class="lead">
+      每个头输出一根 <span class="d d-head">32<i>head_size</i></span> 维的"看过历史"向量。4 根<b>拼接(concat)</b>正好回到
+      <span class="d d-emb">128<i>n_embd</i></span>,再过一个 <code>proj</code> 线性层<b>融合</b>一下 —— 主干维度自始至终是 128,接口不变。
+      <b>逐步点</b>:
+    </p>
+
+    <div class="btn-row" id="catBtns">
+      <button class="btn primary" onclick="catStep(0)">① 4 个头各自输出</button>
+      <button class="btn" onclick="catStep(1)">② 拼接 cat → 128</button>
+      <button class="btn" onclick="catStep(2)">③ 投影 proj 融合</button>
+    </div>
+    <div class="cat-row" id="catRow"></div>
+    <div class="note" id="catNote"></div>
+
+    <div class="sub-h"><span class="badge">代码</span>拼接 + 投影</div>
+<pre style="font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;overflow-x:auto;line-height:1.6;color:var(--ink)">
+out = torch.cat([h(x) for h in self.heads], dim=-1)  <span style="color:var(--ink2)"># 4×32 → 128,沿特征维拼</span>
+return self.dropout(self.proj(out))                  <span style="color:var(--ink2)"># proj: 128 → 128 融合</span>
+</pre>
+
+    <div class="sub-h"><span class="badge">实战</span>头数怎么选?有没有最佳实践</div>
+    <p class="lead" style="margin-bottom:6px">
+      经验法则:<b>别直接挑头数,先把 <span class="d d-head">head_size</span> 锚在 64 附近</b>(32–128 都行),再反推
+      <code>n_head = n_embd / head_size</code>。真实模型几乎都这么干:
+    </p>
+    <table class="truth">
+      <tr><th>模型</th><th>n_embd</th><th>n_head</th><th>head_size</th></tr>
+      <tr><td class="lbl">GPT-2 small</td><td>768</td><td>12</td><td class="sum">64</td></tr>
+      <tr><td class="lbl">GPT-2 medium</td><td>1024</td><td>16</td><td class="sum">64</td></tr>
+      <tr><td class="lbl">GPT-3</td><td>12288</td><td>96</td><td class="sum">128</td></tr>
+      <tr><td class="lbl">本章(玩具)</td><td>128</td><td>4</td><td class="sum">32</td></tr>
+    </table>
+
+    <details class="dig">
+      <summary>加头数会爆显存、让训练时间暴涨吗?</summary>
+      <div class="dig-body">
+        <b>几乎不会。</b>因为 <code>head_size = n_embd / n_head</code> —— 你不是在"加头",是在<b>切同一块 128 维的蛋糕</b>:
+        4 头×32 = 8 头×16 = 16 头×8,<b>总料始终 128</b>。显存、算力<b>基本持平</b>(不是线性涨,更不是指数),
+        拼接后那个 <code>proj</code> 也永远是 <span class="d d-emb">128</span>×<span class="d d-emb">128</span>,与头数无关。<br>
+        真正会爆显存/时间的是另几个:<b><span class="d d-block">block_size</span></b>(注意力 O(T²),序列翻倍算力四倍)、
+        <b><span class="d d-emb">n_embd</span></b>、<b><span class="d d-layer">n_layer</span></b>、<b><span class="d d-batch">batch_size</span></b>。
+        <code>n_head</code> 不在这张爆炸名单上。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>那是头越多越好,还是越少越好?</summary>
+      <div class="dig-body">
+        都不是,是<b>"固定预算怎么切"的平衡</b>:<br>
+        · <b>头多</b> → 每个头更薄(head_size 小),单头表达力弱,但<b>同时并行的视角多</b>;<br>
+        · <b>头少</b> → 每个头更厚更强,但一次能看的关系少;<br>
+        · 切太碎(如 128 切 64 个头、每头才 2 维)→ 每头薄到啥也表示不了,反而变差。<br>
+        所以有个甜点区,把 <span class="d d-head">head_size</span> 放在 64 左右最省心;还要能<b>整除</b>(<code>n_embd % n_head == 0</code>),且习惯取 2 的幂(对硬件友好)。
+      </div>
+    </details>
+
+    <div class="note" style="border-style:solid;background:#fff">
+      🎯 <b>多头一句话:把 <span class="d d-emb">128</span> 切成几个子空间,各看一种关系,再拼回 128。</b>
+      接口(进 128、出 128)没变,所以它能像积木一样,叠进后面每一层 <code>Block</code> 里。
+    </div>
+    <p class="next-hint">下一步:横向收集完信息,每个位置还得自己"消化"一下 —— 这就是 FeedForward。</p>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="panel" id="panel3">
+    <h2>Step 4 · FeedForward:注意力管"沟通",它管"思考"</h2>
+    <p class="lead">
+      多头让每个位置<b>横向</b>从别人那收集信息(沟通)。收集完,总得<b>自己消化</b>一下 —— 这就是
+      <span class="term" data-term="FeedForward · 前馈网络" data-key="feedforward" data-def="Transformer 层里的小 MLP:Linear→ReLU→Linear,中间放大 4 倍。逐位置加工每个 token。注意力管「沟通」,FFN 管「思考」。"><code>FeedForward</code></span>:一个<b>逐位置</b>(position-wise)的小
+      <span class="term" data-term="MLP · 多层感知机" data-key="mlp" data-def="最基础的神经网络:几层全连接(Linear)中间夹非线性(如 ReLU)。FFN 就是一个很小的 MLP。">MLP</span>,对每个位置的向量<b>单独</b>加工,位置之间互不干涉。
+      结构是<b>放大 → <span class="term" data-term="ReLU · 激活函数" data-key="relu" data-def="非线性激活:ReLU(x)=max(0,x),把负数清零。给网络引入非线性,否则多层 Linear 叠起来还是一个线性变换,层数白加。">ReLU</span> 非线性 → 压回</b>,逐步点:
+    </p>
+    <div class="btn-row" id="ffnBtns">
+      <button class="btn primary" onclick="ffnStep(0)">① 输入 x · 128</button>
+      <button class="btn" onclick="ffnStep(1)">② 拓宽 →512(×4)</button>
+      <button class="btn" onclick="ffnStep(2)">③ ReLU 掐负</button>
+      <button class="btn" onclick="ffnStep(3)">④ 压回 →128</button>
+    </div>
+    <div class="ffn-row" id="ffnRow"></div>
+    <div class="note" id="ffnNote"></div>
+
+    <div class="sub-h"><span class="badge">代码</span>FeedForward</div>
+<pre style="font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;overflow-x:auto;line-height:1.6;color:var(--ink)">
+nn.Sequential(
+    nn.Linear(n_embd, 4 * n_embd),  <span style="color:var(--ink2)"># 128 → 512 放大 4 倍</span>
+    nn.ReLU(),                      <span style="color:var(--ink2)"># 非线性(关键)</span>
+    nn.Linear(4 * n_embd, n_embd),  <span style="color:var(--ink2)"># 512 → 128 压回,方便残差相加</span>
+)
+</pre>
+
+    <details class="dig">
+      <summary>"逐位置(position-wise)"到底什么意思?</summary>
+      <div class="dig-body">
+        同一个 MLP <b>独立</b>作用在每个位置的向量上,位置之间<b>不交换</b>任何信息 —— 8 个位置就是把同一个 FFN 跑 8 遍。
+        换句话说:<b>注意力横向沟通(让 token 互相看),FFN 纵向加工(每个 token 自己想)。</b>
+        一个 Transformer 层就是这"沟通 + 思考"的组合拳。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>为什么中间放大 4 倍?为什么非要 ReLU?</summary>
+      <div class="dig-body">
+        <b>放大 4 倍</b>是惯例(经验值):给非线性变换更大的"草稿纸",表达力更强;算完再压回 n_embd。<br>
+        <b>ReLU 不能省</b>:它把负数清零,提供<b>非线性</b>。否则 <code>Linear ∘ Linear</code> 数学上还是<b>一个</b>线性变换,
+        整个 FFN 会退化成一个矩阵,放大 4 倍也白搭。非线性才是 FFN "能思考"的来源。
+      </div>
+    </details>
+    <p class="next-hint">下一步:多头、FFN 这些子层,怎么稳稳叠很多层而不"训崩"?靠残差 + LayerNorm。</p>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="panel" id="panel4">
+    <h2>Step 5 · 残差 + LayerNorm:让深网络训得动</h2>
+    <p class="lead">
+      多头、<span class="term" data-term="FeedForward · 前馈网络" data-key="feedforward" data-def="Transformer 层里的小 MLP:Linear→ReLU→Linear,中间放大 4 倍。逐位置加工每个 token。注意力管「沟通」,FFN 管「思考」。">FFN</span> 都是"子层"。要把它们叠很多层(本章 <span class="d d-layer">4<i>n_layer</i></span> 层),靠两个稳定器:
+      <span class="term" data-term="残差连接 · residual" data-key="residual" data-def="把子层输出加回输入:x = x + 子层(x)。那个 + 是梯度高速公路,让梯度直达底层、避免梯度消失,深网络才堆得动。出自 2015 ResNet。">残差连接</span>(子层外包一个 <code>x = x + 子层(x)</code>)和
+      <span class="term" data-term="LayerNorm · 层归一化" data-key="layernorm" data-def="对每个位置那根向量(沿特征维)减均值除标准差,稳住数值分布,深网络才不发散。先 norm 再进子层叫 pre-norm,更好训。">LayerNorm</span>(进子层前先归一化)。
+      一个 <span class="term" data-term="Block · Transformer 层" data-key="block" data-def="一层 Transformer = 注意力子层 + FFN 子层,各带残差和 LayerNorm。完整 GPT 就是摞 n_layer 个 Block。"><code>Block</code></span> = <code>x = x + sa(ln1(x))</code> 然后 <code>x = x + ffwd(ln2(x))</code>。
+      <b>把残差开关拨一下</b>,看堆深时的差别:
+    </p>
+    <div class="btn-row" id="resBtns">
+      <button class="btn primary" onclick="setRes(true)">残差:开</button>
+      <button class="btn" onclick="setRes(false)">残差:关</button>
+    </div>
+    <div class="res-stack" id="resStack"></div>
+    <div class="note" id="resNote"></div>
+
+    <details class="dig">
+      <summary>残差到底解决了什么?(梯度高速公路)</summary>
+      <div class="dig-body">
+        反向传播时,梯度要从顶层一路乘回底层。层一深,连乘会让梯度<b>越来越小 → <span class="term" data-term="梯度消失 · vanishing gradient" data-key="vanishing" data-def="深网络里梯度逐层相乘越传越小,底层几乎收不到梯度、学不动。残差连接就是为缓解它而生。">梯度消失</span></b>,底层学不动。
+        残差那个 <code>+</code> 给梯度开了一条<b>直通车</b>:它可以绕过子层直接往下传,不被连乘衰减。
+        于是子层只需学"<b>在原信号上加什么修正 Δ</b>",而不是从头重建整个信号 —— 这就是 2015 年 <b>ResNet</b> 的核心思想,Transformer 全靠它堆深。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>LayerNorm 在归一化什么?pre-norm vs post-norm</summary>
+      <div class="dig-body">
+        <b>LayerNorm</b> 对<b>每个位置那一根向量</b>(沿特征维)做归一化:减均值、除标准差,把数值拉回稳定范围,深网络才不发散。
+        它<b>不跨位置、不跨 batch</b>,所以和序列长度无关。<br>
+        代码里是 <code>x + 子层(ln(x))</code> —— <b>先 norm 再进子层</b>,叫 <b>pre-norm</b>;比原始 Transformer 的 post-norm(子层后再 norm)更好训、更稳。
+      </div>
+    </details>
+    <p class="next-hint">下一步:把 <span class="d d-layer">4</span> 个这样的 Block 摞起来,配上嵌入和输出头 —— 完整 GPT。</p>
+  </section>
+
+  <!-- ============ STEP 6 ============ -->
+  <section class="panel" id="panel5">
+    <h2>Step 6 · 堆成 GPT,跑出结果(破墙)</h2>
+    <p class="lead">
+      把 <span class="d d-layer">4<i>n_layer</i></span> 个 <code>Block</code> 摞起来,前面接嵌入(tok+pos)、后面接 <code>ln_f</code> + <code>lm_head</code> ——
+      这就是完整 GPT 的 forward:
+    </p>
+    <div class="flow">
+      <div class="fc">idx<small>输入字符</small></div>
+      <div class="fa">→</div>
+      <div class="fc">tok_emb + pos_emb<small>内容 + 位置</small></div>
+      <div class="fa">→</div>
+      <div class="fc">4 × Block<small>沟通+思考,带残差/norm</small></div>
+      <div class="fa">→</div>
+      <div class="fc">ln_f<small>末层归一化</small></div>
+      <div class="fa">→</div>
+      <div class="fc">lm_head<small>映射回词表</small></div>
+      <div class="fa">→</div>
+      <div class="fc">logits<small>下一字符打分</small></div>
+    </div>
+
+    <div class="sub-h"><span class="badge">跑起来</span>loss 跌破第 2 章的 2.41</div>
+    <p class="lead" style="margin-bottom:6px">
+      <code>03_transformer.py</code> 每 500 步打印一次 loss。下面的曲线<b>自动播放</b>训练过程,看它<b>穿过</b>第 2 章单头注意力卡住的 <b>2.41</b> 虚线,一路下探到 ~1.9。
+    </p>
+    <div class="btn-row">
+      <button class="btn" id="lossReplay" onclick="lossPlay()">▶ 重播动画</button>
+    </div>
+    <div class="loss-wrap"><svg id="lossSvg" viewBox="0 0 780 240"></svg></div>
+    <div class="loss-leg">
+      <span><i style="border-top-style:solid;border-color:var(--accent)"></i>完整 Transformer(本章)val loss</span>
+      <span><i style="border-top-style:dashed;border-color:#9a948a"></i>第 2 章单头 ≈ 2.41</span>
+    </div>
+    <div class="note" id="lossNote"></div>
+    <p class="lead" style="margin:6px 0 14px;font-size:12px">(示意曲线:数量级与趋势对得上 <code>03_transformer.py</code> 的实际打印,非逐位精确复现。)</p>
+
+    <div class="note" style="border-style:solid;background:#fff">
+      🎯 <b>结果:破墙。</b>多头(看多种关系)+ FFN(逐位置思考)+ 残差/LayerNorm(堆得动 4 层),
+      <code>val loss</code> 跌破第 2 章的 <code>2.41</code>,逼近 <code>~1.9</code> —— 采样开始有"词"和对话结构,不再是纯字母汤。
+      这就是 nanoGPT 的内核。
+    </div>
+    <p class="next-hint">点右下角「完成 🎉」收下整章 —— 你已经从零搭出一个 GPT。</p>
+  </section>
+
+  <!-- ============ 上一步 / 下一步 ============ -->
+  <div class="nav">
+    <button class="btn ghost" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<script>
+/* =====================================================================
+   步骤切换(与 01/02 页一致:tab + 上一步/下一步 + #step-N 深链)
+   ===================================================================== */
+const LAST = 5;
+let cur = 0;
+const tabs = document.querySelectorAll('.step-tab');
+const panels = ['panel0','panel1','panel2','panel3','panel4','panel5'].map(id=>document.getElementById(id));
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+
+function goto(i){
+  cur = Math.max(0, Math.min(LAST, i));
+  tabs.forEach(t=>t.classList.toggle('active', +t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active', idx===cur));
+  prevBtn.disabled = cur===0;
+  nextBtn.textContent = cur===LAST ? '完成 🎉' : '下一步 →';
+  if(cur===0) setSplit(4);
+  if(cur===1) initHeads();
+  if(cur===2) catStep(0);
+  if(cur===3) ffnStep(0);
+  if(cur===4) setRes(true);
+  if(cur===5) lossPlay();
+  const hash = '#step-'+(cur+1);
+  if(location.hash !== hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function stepFromHash(){
+  const m = /^#step-(\d+)$/.exec(location.hash);
+  if(!m) return 0;
+  const n = parseInt(m[1],10)-1;
+  return (n>=0 && n<=LAST) ? n : 0;
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+prevBtn.addEventListener('click',()=>goto(cur-1));
+nextBtn.addEventListener('click',()=>{ if(cur===LAST){ celebrate(); } else { goto(cur+1); } });
+
+/* =====================================================================
+   STEP 1:切蛋糕 —— n_embd=128 切成 n_head 份,head_size=128/n_head
+   ===================================================================== */
+const N_EMBD = 128;
+function setSplit(nh){
+  document.querySelectorAll('#splitBtns .btn').forEach(b=>{
+    const m=/(\d+) 头/.exec(b.textContent); b.classList.toggle('primary', m && +m[1]===nh);
+  });
+  const hs = N_EMBD/nh;
+  const bar = document.getElementById('splitBar'); bar.innerHTML='';
+  for(let k=0;k<nh;k++){
+    const seg=document.createElement('div'); seg.className='seg';
+    seg.innerHTML = `<div class="sn">head ${k+1}</div>`+(nh<=8?`<div class="sh">${hs} 维</div>`:'');
+    bar.appendChild(seg);
+  }
+  document.getElementById('splitSum').innerHTML =
+    `<span class="d d-nhead">${nh}<i>n_head</i></span> × <span class="d d-head">${hs}<i>head_size</i></span> = `
+    +`<b>128</b> <span style="color:var(--ink2)">= n_embd(拼回去,总料不变)</span>`;
+  const note=document.getElementById('splitNote');
+  if(nh===4) note.innerHTML='<b>本章设定。</b>4 个头各 32 维,拼起来正好 128。这正是 <code>head_size = n_embd / n_head = 128/4 = 32</code>。';
+  else if(nh===1) note.innerHTML='1 头 = 退回第 2 章那种<b>单头</b>:head_size 就等于整个 n_embd=128,只有一种注意力视角。';
+  else note.innerHTML=`${nh} 个头,每头 <b>${hs}</b> 维。头越多→每头越薄(视角多但单头弱);头越少→每头越厚(单头强但视角少)。总和永远是 128。`;
+}
+
+/* =====================================================================
+   STEP 2:多头热力图 —— 4 个头各自一张下三角注意力(示意,体现"各看各的")
+   ===================================================================== */
+const T3 = 8;
+const HEADS = [
+  {n:'头 1', d:'盯紧"前一个词"', score:(i,j)=> (j===i-1?4: j===i?0.5: 0)+0.05 },
+  {n:'头 2', d:'回看"句首/远处"', score:(i,j)=> (j===0?3.5: 0.3) },
+  {n:'头 3', d:'均匀回看(近似平均)', score:(i,j)=> 1 },
+  {n:'头 4', d:'盯紧"自己"(当前位置)', score:(i,j)=> (j===i?4: 0.2) },
+];
+let headSel = 0;
+function heatColor(t){
+  t=Math.max(0,Math.min(1,t));
+  const r=Math.round(240-23*t), g=Math.round(238-119*t), b=Math.round(230-143*t);
+  return {bg:`rgb(${r},${g},${b})`, fg: t>0.55?'#fff':'#6B6B68'};
+}
+function headMatrix(h){           // 下三角 + 逐行 softmax
+  const M=[];
+  for(let i=0;i<T3;i++){
+    let ex=[],sum=0;
+    for(let j=0;j<T3;j++){ if(j>i){ ex.push(null); continue; } const e=Math.exp(h.score(i,j)); ex.push(e); sum+=e; }
+    M.push(ex.map(e=> e===null? -Infinity : e/sum));
+  }
+  return M;
+}
+function renderHead(){
+  const h=HEADS[headSel], M=headMatrix(h);
+  const host=document.getElementById('heat');
+  host.style.gridTemplateColumns=`repeat(${T3},1fr)`; host.innerHTML='';
+  for(let i=0;i<T3;i++)for(let j=0;j<T3;j++){
+    const c=document.createElement('div'); c.className='hc'; const v=M[i][j];
+    if(v===-Infinity){ c.classList.add('mask'); }
+    else{ const col=heatColor(v); c.style.background=col.bg; c.style.color=col.fg; c.style.borderColor='transparent';
+      c.textContent = v<0.04?'':v.toFixed(2); }
+    host.appendChild(c);
+  }
+  document.querySelectorAll('#headTabs .head-tab').forEach((el,i)=>el.classList.toggle('on', i===headSel));
+  document.getElementById('headNote').innerHTML =
+    `<b>${h.n} · ${h.d}</b>:这个头的 <code>wei</code> 把注意力主要压在${
+      headSel===0?'<b>对角线下方一格</b>(每个位置看它前一个)':
+      headSel===1?'<b>第 0 列</b>(每个位置都回看句首)':
+      headSel===2?'<b>整个下三角</b>(过去各位置差不多平均)':
+      '<b>主对角线</b>(每个位置主要看自己)'
+    }。同一句话,4 个头给出 4 张完全不同的表 —— 这就是"各看各的"。`;
+}
+function initHeads(){
+  const tb=document.getElementById('headTabs'); tb.innerHTML='';
+  HEADS.forEach((h,i)=>{
+    const el=document.createElement('div'); el.className='head-tab'+(i===headSel?' on':'');
+    el.innerHTML=`<div class="ht-n">${h.n}</div><div class="ht-d">${h.d}</div>`;
+    el.addEventListener('click',()=>{ headSel=i; renderHead(); });
+    tb.appendChild(el);
+  });
+  renderHead();
+}
+
+/* =====================================================================
+   STEP 3:拼接 + 投影 —— 4×32 → cat 128 → proj 128
+   ===================================================================== */
+function catStep(n){
+  document.querySelectorAll('#catBtns .btn').forEach((b,i)=>b.classList.toggle('primary', i===n));
+  const row=document.getElementById('catRow'); row.innerHTML='';
+  const note=document.getElementById('catNote');
+  if(n===0){
+    for(let k=0;k<4;k++){
+      const s=document.createElement('div'); s.className='hstrip';
+      s.innerHTML=`head ${k+1}<br><b>32 维</b>`; row.appendChild(s);
+    }
+    note.innerHTML='<b>① 各自输出。</b>4 个头各吐一根 <span class="d d-head">32<i>head_size</i></span> 维向量,彼此独立。';
+  }
+  if(n===1){
+    for(let k=0;k<4;k++){
+      const s=document.createElement('div'); s.className='hstrip';
+      s.innerHTML=`head ${k+1}<br><b>32</b>`; row.appendChild(s);
+      if(k<3){ const op=document.createElement('span'); op.className='op'; op.textContent='+'; row.appendChild(op); }
+    }
+    const eq=document.createElement('span'); eq.className='op'; eq.textContent='='; row.appendChild(eq);
+    const box=document.createElement('div'); box.className='catbox emb'; box.innerHTML='cat<br><b>128 维</b>'; row.appendChild(box);
+    note.innerHTML='<b>② 拼接。</b><code>torch.cat(..., dim=-1)</code> 沿特征维首尾相接:32×4 = <span class="d d-emb">128<i>n_embd</i></span>,正好回到主干维度。';
+  }
+  if(n===2){
+    const box=document.createElement('div'); box.className='catbox'; box.innerHTML='cat<br><b>128</b>'; row.appendChild(box);
+    const op=document.createElement('span'); op.className='op'; op.textContent='→'; row.appendChild(op);
+    const pj=document.createElement('div'); pj.className='catbox'; pj.style.minWidth='90px';
+    pj.innerHTML='proj<br><small style="color:var(--ink2)">Linear 128→128</small>'; row.appendChild(pj);
+    const op2=document.createElement('span'); op2.className='op'; op2.textContent='→'; row.appendChild(op2);
+    const out=document.createElement('div'); out.className='catbox emb'; out.innerHTML='输出<br><b>128 维</b>'; row.appendChild(out);
+    note.innerHTML='<b>③ 投影融合。</b>拼接只是"摆在一起",<code>proj</code> 这个 <span class="d d-emb">128</span>×<span class="d d-emb">128</span> 线性层让各头信息<b>互相融合</b>,再交给下一层。进 128、出 128,接口不变。';
+  }
+}
+
+/* =====================================================================
+   STEP 4:FeedForward —— 放大 → ReLU → 压回(逐位置)
+   ===================================================================== */
+function ffnStep(n){
+  document.querySelectorAll('#ffnBtns .btn').forEach((b,i)=>b.classList.toggle('primary', i===n));
+  const row=document.getElementById('ffnRow'); row.innerHTML='';
+  const note=document.getElementById('ffnNote');
+  function box(d,t,wide,h){ const e=document.createElement('div'); e.className='ffn-box'+(wide?' wide':'');
+    e.style.height=(h||66)+'px'; e.innerHTML=`<div class="fb-d">${d}</div>`+(t?`<div class="fb-t">${t}</div>`:''); return e; }
+  function arr(txt){ const a=document.createElement('span'); a.className='op'; a.style.fontSize='18px'; a.textContent=txt||'→'; return a; }
+  if(n===0){ row.appendChild(box('128','输入 x',false,66));
+    note.innerHTML='<b>① 输入。</b>每个位置一根 <span class="d d-emb">128<i>n_embd</i></span> 维向量(多头刚加工完的结果)。'; }
+  if(n===1){ row.appendChild(box('128','x',false,66)); row.appendChild(arr()); row.appendChild(box('512','放大 4×',true,96));
+    note.innerHTML='<b>② 拓宽。</b>第一个 <code>Linear(128, 4·128)</code> 把维度<b>放大 4 倍</b>到 512 —— 给"思考"腾出更大的草稿纸。'; }
+  if(n===2){ row.appendChild(box('512','ReLU 掐掉负数',true,96));
+    note.innerHTML='<b>③ 非线性。</b><code>ReLU</code> 把负数清零。<b>这一步最关键</b>:没有它,两个 Linear 叠起来还是一个线性变换,等于白叠。'; }
+  if(n===3){ row.appendChild(box('512','',true,96)); row.appendChild(arr()); row.appendChild(box('128','压回 n_embd',false,66));
+    note.innerHTML='<b>④ 压回。</b>第二个 <code>Linear(4·128, 128)</code> 把维度压回 <span class="d d-emb">128</span> —— 方便下一步和原输入做残差相加。'; }
+}
+
+/* =====================================================================
+   STEP 5:残差开关 —— 开=梯度高速公路直达底层;关=逐层衰减(梯度消失)
+   ===================================================================== */
+const RES_N = 6;
+function setRes(on){
+  document.querySelectorAll('#resBtns .btn').forEach((b,i)=>b.classList.toggle('primary', i===(on?0:1)));
+  const host=document.getElementById('resStack'); host.innerHTML='';
+  for(let k=RES_N;k>=1;k--){                 // 顶层 Block 6 在上,底层 Block 1 在下
+    const el=document.createElement('div'); el.className='res-layer'+(on?' on':'');
+    if(!on) el.style.opacity=(0.22+0.78*(k-1)/(RES_N-1)).toFixed(2);  // 越往底层越淡 = 梯度越传不到
+    el.innerHTML=`<span class="hw"></span>Block ${k}<span class="res-cap">x = x + 子层(x)</span>`;
+    host.appendChild(el);
+  }
+  document.getElementById('resNote').innerHTML = on
+    ? '<b>残差开:</b>每层都是 <code>x = x + 子层(x)</code>,那个 <b>+</b> 是一条<b>梯度高速公路</b>(橙色竖条),梯度能从顶层一路直达底层 —— 所以 <span class="d d-layer">4</span> 层、几十层都堆得动。'
+    : '<b>残差关:</b>没有 <code>+</code> 这条直通路,梯度逐层相乘<b>越传越小</b>,底层几乎收不到信号(图中越往下越淡)—— 这就是<b>梯度消失</b>,深网络根本训不动。';
+}
+
+/* =====================================================================
+   STEP 6:loss 曲线 —— 逐个检查点,穿过第 2 章 2.41,下探到 ~1.9
+   ===================================================================== */
+const LOSS_ITERS=[0,1000,2000,3000,4999];
+const LOSS_GPT =[4.17,2.55,2.12,1.99,1.90];   // 示意:数量级/趋势对得上,非精确复现
+const CH2_FLOOR=2.41, LY_MIN=1.8, LY_MAX=4.3;
+const NL=LOSS_ITERS.length;
+// 坐标按 viewBox 780×240 排布(接近容器宽高比,等比缩放、绝不横向拉伸)
+const lx=i=>50+(i/(NL-1))*690;
+const ly=v=>16+(LY_MAX-v)/(LY_MAX-LY_MIN)*194;
+function lossNoteFor(n){
+  const note=document.getElementById('lossNote'); if(!note) return;
+  const v=LOSS_GPT[n];
+  if(n===0) note.innerHTML='<b>step 0</b>:还没训练,loss ≈ <code>4.17</code> = <code>ln(65)</code>,等于"65 个字符里瞎猜"。';
+  else if(v>=CH2_FLOOR) note.innerHTML=`<b>step ${LOSS_ITERS[n]}</b>:loss ≈ <code>${v.toFixed(2)}</code>,正在逼近第 2 章那道 2.41 的线。`;
+  else note.innerHTML=`<b>step ${LOSS_ITERS[n]}</b>:loss ≈ <code>${v.toFixed(2)}</code> —— <b style="color:var(--accent)">已跌破 2.41!</b>多头 + FFN + 堆深带来的提升,采样开始有"词"和对话结构。`;
+}
+function lossDraw(prog){            // prog ∈ [0, NL-1] 连续,支持半段插值
+  const svg=document.getElementById('lossSvg'); if(!svg) return;
+  let s=''; const wy=ly(CH2_FLOOR);
+  // 参考线 + 坐标轴标签(固定,不随动画变)
+  s+=`<line x1="50" y1="${wy}" x2="740" y2="${wy}" stroke="#9a948a" stroke-width="1.5" stroke-dasharray="6 4"/>`;
+  s+=`<text x="738" y="${wy-6}" text-anchor="end" font-size="11" fill="#9a948a" font-family="monospace">第2章单头 ≈ 2.41</text>`;
+  [2.0,2.5,3.0,3.5,4.0].forEach(v=>{ const y=ly(v); s+=`<text x="44" y="${y+3}" text-anchor="end" font-size="10" fill="#b5afa3" font-family="monospace">${v.toFixed(1)}</text>`; });
+  LOSS_ITERS.forEach((it,i)=>{ s+=`<text x="${lx(i)}" y="233" text-anchor="middle" font-size="10" fill="#b5afa3" font-family="monospace">${it}</text>`; });
+  // 折线:画到 prog 处(含最后一截半段)
+  const full=Math.min(NL-1, Math.floor(prog+1e-9));
+  let pts=[];
+  for(let i=0;i<=full;i++) pts.push([lx(i), ly(LOSS_GPT[i])]);
+  if(prog>full && full<NL-1){
+    const f=prog-full;
+    pts.push([ lx(full)+(lx(full+1)-lx(full))*f, ly(LOSS_GPT[full]+(LOSS_GPT[full+1]-LOSS_GPT[full])*f) ]);
+  }
+  if(pts.length>1) s+=`<polyline points="${pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}" fill="none" stroke="#D97757" stroke-width="2.5"/>`;
+  // 已到达的检查点:圆点 + 数字
+  for(let i=0;i<=full;i++){
+    s+=`<circle cx="${lx(i)}" cy="${ly(LOSS_GPT[i])}" r="4" fill="#D97757"/>`;
+    s+=`<text x="${lx(i)}" y="${ly(LOSS_GPT[i])-9}" text-anchor="middle" font-size="10.5" fill="#8a3d23" font-family="monospace">${LOSS_GPT[i].toFixed(2)}</text>`;
+  }
+  svg.innerHTML=s;
+  lossNoteFor(full);
+}
+let lossRAF=null;
+function lossPlay(){
+  if(lossRAF) cancelAnimationFrame(lossRAF);
+  const DUR=2200, start=performance.now();
+  function frame(now){
+    const t=Math.min(1,(now-start)/DUR);
+    const ease=1-Math.pow(1-t,2);     // ease-out,落点更有"减速到位"的手感
+    lossDraw(ease*(NL-1));
+    if(t<1) lossRAF=requestAnimationFrame(frame); else { lossRAF=null; lossDraw(NL-1); }
+  }
+  lossRAF=requestAnimationFrame(frame);
+}
+
+/* =====================================================================
+   通关庆祝:横幅 + confetti(纯 vanilla,与 02 一致)
+   ===================================================================== */
+function showCongrats(){
+  const old=document.getElementById('congrats'); if(old) old.remove();
+  const el=document.createElement('div'); el.id='congrats'; el.className='congrats';
+  el.innerHTML='🎉 完整 Transformer · 通关!<span>多头 · FFN · 残差 · LayerNorm,你已搭出 GPT 内核</span>';
+  document.body.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>el.remove(),500); }, 3400);
+}
+function launchConfetti(){
+  const cv=document.createElement('canvas');
+  cv.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9999';
+  document.body.appendChild(cv);
+  const ctx=cv.getContext('2d'); cv.width=window.innerWidth; cv.height=window.innerHeight;
+  const colors=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const parts=[];
+  for(let i=0;i<160;i++) parts.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    r:4+Math.random()*5,c:colors[i%colors.length],vx:(Math.random()-0.5)*3.2,vy:2+Math.random()*4,
+    rot:Math.random()*Math.PI,vr:(Math.random()-0.5)*0.3,rect:Math.random()<0.55});
+  const start=performance.now(), DUR=3800;
+  function frame(now){
+    const t=now-start; ctx.clearRect(0,0,cv.width,cv.height);
+    const fade=t>DUR-900?Math.max(0,(DUR-t)/900):1; ctx.globalAlpha=fade;
+    parts.forEach(p=>{ p.x+=p.vx;p.y+=p.vy;p.vy+=0.06;p.rot+=p.vr;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot);ctx.fillStyle=p.c;
+      if(p.rect) ctx.fillRect(-p.r,-p.r*0.6,p.r*2,p.r*1.2);
+      else{ctx.beginPath();ctx.arc(0,0,p.r,0,Math.PI*2);ctx.fill();} ctx.restore(); });
+    ctx.globalAlpha=1;
+    if(t<DUR) requestAnimationFrame(frame); else cv.remove();
+  }
+  requestAnimationFrame(frame);
+}
+function celebrate(){ showCongrats(); launchConfetti(); }
+
+/* =====================================================================
+   名词气泡(全站统一组件)
+   ===================================================================== */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent;
+    const def=el.dataset.def||'';
+    const key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def
+      +(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect();
+    const tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8;
+    if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw;
+    if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el));
+    el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* 初始化 */
+goto(stepFromHash());
+window.addEventListener('hashchange',()=>goto(stepFromHash()));
+</script>
+</body>
+</html>

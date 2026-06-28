@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM from Scratch · 从零手写大语言模型</title>
+<style>
+  /* ============ 全局基础样式(暖色变量,全站统一)============ */
+  :root{
+    --bg:#F0EEE6;          /* 暖米色背景 */
+    --card:#FAF9F5;        /* 卡片底 */
+    --border:#E5E2D9;      /* 淡边框 */
+    --accent:#D97757;      /* 陶土橙 强调色 */
+    --accent-soft:#F2D9CE; /* 浅陶土 */
+    --ink:#1A1A18;         /* 正文 */
+    --ink2:#6B6B68;        /* 次要文字 */
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:980px;margin:0 auto;padding:48px 24px 80px;}
+
+  /* ============ 顶部标题区 ============ */
+  header{margin-bottom:36px;}
+  .eyebrow{
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:18px;
+  }
+  h1{font-family:var(--serif);font-weight:600;font-size:36px;line-height:1.25;margin:0 0 12px;}
+  h1 .dot{color:var(--accent);}
+  .subtitle{color:var(--ink2);font-size:16px;max-width:680px;margin:0;}
+  .subtitle code{
+    font-family:var(--mono);font-size:13px;
+    background:var(--card);border:1px solid var(--border);
+    padding:2px 6px;border-radius:6px;color:var(--accent);
+  }
+
+  /* ============ 阶段分组 ============ */
+  .phase-sec{margin-top:40px;}
+  .phase-title{
+    display:flex;align-items:baseline;gap:12px;margin-bottom:16px;flex-wrap:wrap;
+  }
+  .phase-title .pt-num{
+    font-family:var(--mono);font-size:12px;font-weight:700;
+    color:var(--accent);letter-spacing:.5px;
+  }
+  .phase-title h2{font-family:var(--serif);font-size:24px;font-weight:600;margin:0;}
+  .phase-title .pt-state{
+    font-family:var(--mono);font-size:11px;font-weight:700;color:var(--ink2);
+    background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:999px;padding:3px 10px;
+  }
+
+  /* ============ 章节卡片栅格 ============ */
+  .chapters{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
+    gap:22px;
+  }
+  .card{
+    background:var(--card);border:1px solid var(--border);
+    border-radius:18px;padding:24px 24px 20px;
+    transition:transform .25s ease,box-shadow .25s ease,border-color .25s ease;
+    display:flex;flex-direction:column;
+  }
+  .card:hover{transform:translateY(-3px);border-color:#cfc9ba;box-shadow:0 10px 28px rgba(26,26,24,.06);}
+  .card-head{display:flex;align-items:baseline;gap:10px;margin-bottom:4px;flex-wrap:wrap;}
+  .ch-num{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);letter-spacing:.5px;}
+  .card h3{font-family:var(--serif);font-size:20px;font-weight:600;margin:6px 0 8px;}
+  .card h3 a{color:var(--ink);text-decoration:none;transition:color .2s ease;}
+  .card h3 a:hover{color:var(--accent);}
+  .card .desc{color:var(--ink2);font-size:14px;margin:0 0 16px;}
+  .card .desc code{
+    font-family:var(--mono);font-size:12.5px;
+    background:#F4F2EA;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);
+  }
+
+  /* ============ 步骤列表(深链)============ */
+  .steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;}
+  .card .steps{margin-top:auto;}
+  .steps li a{
+    display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);
+    font-size:13.5px;background:#fff;border:1px solid var(--border);border-radius:10px;
+    padding:9px 12px;transition:all .2s ease;
+  }
+  .steps li a:hover{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);color:var(--accent);}
+  .steps li a .sn{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;width:46px;}
+  .steps li a .st{flex:1;}
+  .steps li a .arrow{color:var(--ink2);transition:color .2s ease,transform .2s ease;}
+  .steps li a:hover .arrow{color:var(--accent);transform:translateX(3px);}
+  .card-foot{
+    margin-top:16px;padding-top:14px;border-top:1px solid var(--border);
+    font-size:12.5px;color:var(--ink2);
+  }
+  .card-foot a{color:var(--accent);text-decoration:none;font-weight:600;}
+  .card-foot a:hover{text-decoration:underline;}
+
+  /* ============ 锁定 / 占位卡片 ============ */
+  .card.locked{cursor:default;}
+  .card.locked:hover{transform:none;border-color:var(--border);box-shadow:none;}
+  .card.locked h3{color:var(--ink2);}
+  .tag-soon{
+    font-family:var(--mono);font-size:11px;font-weight:700;color:var(--ink2);
+    background:#F4F2EA;border:1px dashed var(--border);border-radius:999px;
+    padding:3px 10px;display:inline-block;
+  }
+  .card.locked .desc{margin-bottom:14px;}
+  .soon-hint{
+    margin-top:auto;font-size:12.5px;color:var(--ink2);
+    background:#F4F2EA;border:1px dashed var(--border);border-radius:10px;
+    padding:10px 12px;text-align:center;cursor:pointer;
+    transition:border-color .2s ease,color .2s ease;
+  }
+  .soon-hint:hover{border-color:var(--accent);color:var(--accent);}
+  .soon-hint code{font-family:var(--mono);font-size:11.5px;color:var(--accent);}
+
+  /* ============ 页脚 ============ */
+  footer{margin-top:48px;padding-top:22px;border-top:1px solid var(--border);font-size:13px;color:var(--ink2);}
+  footer b{color:var(--accent);font-weight:600;}
+  .progress{font-family:var(--mono);font-size:12px;color:var(--ink2);margin-top:6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ 顶部标题区 ============ -->
+  <header>
+    <span class="eyebrow">llm-from-scratch · 总入口</span>
+    <h1>LLM from Scratch <span class="dot">·</span> 从零手写大语言模型</h1>
+    <p class="subtitle">
+      一条完整的学习之旅:从最朴素的 <code>bigram</code> 基线起步,经自注意力搭出最小可训练的
+      nanoGPT,再扩展到 124M 规模与 <code>SFT + LoRA</code> 微调。
+      每一章都配交互式可视化 —— 先看懂直觉,再读代码。
+    </p>
+    <p style="margin-top:16px">
+      <a href="glossary.html" style="display:inline-flex;align-items:center;gap:7px;text-decoration:none;
+        font-size:14px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--border);
+        border-radius:12px;padding:9px 16px;transition:all .2s ease"
+        onmouseover="this.style.borderColor='#D97757';this.style.color='#D97757'"
+        onmouseout="this.style.borderColor='#E5E2D9';this.style.color='#1A1A18'">
+        📖 名词表 · 不懂的术语点这里 →
+      </a>
+      <a href="notes.html" style="display:inline-flex;align-items:center;gap:7px;text-decoration:none;
+        font-size:14px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--border);
+        border-radius:12px;padding:9px 16px;margin-left:10px;transition:all .2s ease"
+        onmouseover="this.style.borderColor='#D97757';this.style.color='#D97757'"
+        onmouseout="this.style.borderColor='#E5E2D9';this.style.color='#1A1A18'">
+        🥚 学习札记 · 彩蛋小故事 →
+      </a>
+    </p>
+  </header>
+
+  <!-- ============ PHASE 1 · nanoGPT ============ -->
+  <section class="phase-sec">
+    <div class="phase-title">
+      <span class="pt-num">PHASE 1 · nanoGPT</span>
+      <h2>第一阶段 · nanoGPT</h2>
+    </div>
+
+    <div class="chapters">
+
+      <!-- 第 1 章 · Bigram -->
+      <section class="card">
+        <div class="card-head"><span class="ch-num">CHAPTER 01</span></div>
+        <h3><a href="01_bigram_crossentropy_viz.html#step-1">第 1 章 · Bigram 基线</a></h3>
+        <p class="desc">
+          最朴素的语言模型。一口气理解 tokenizer / batch / forward /
+          <code>cross_entropy</code> / 训练循环这条主线。
+        </p>
+        <ul class="steps">
+          <li><a href="01_bigram_crossentropy_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">一个 batch 的 x / y 错位</span><span class="arrow">→</span></a></li>
+          <li><a href="01_bigram_crossentropy_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">三维 logits 摊平 (B,T,C)</span><span class="arrow">→</span></a></li>
+          <li><a href="01_bigram_crossentropy_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">单题 cross_entropy 拆解</span><span class="arrow">→</span></a></li>
+          <li><a href="01_bigram_crossentropy_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">loss = -ln(p) 的直觉</span><span class="arrow">→</span></a></li>
+          <li><a href="01_bigram_crossentropy_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">训练循环:不断转的闭环</span><span class="arrow">→</span></a></li>
+        </ul>
+        <div class="card-foot">共 5 步 · <a href="01_bigram_crossentropy_viz.html#step-1">从第一步开始 →</a></div>
+      </section>
+
+      <!-- 第 2 章 · 自注意力 -->
+      <section class="card">
+        <div class="card-head"><span class="ch-num">CHAPTER 02</span></div>
+        <h3><a href="02_attention_viz.html#step-1">第 2 章 · 自注意力</a></h3>
+        <p class="desc">
+          给模型装上"往回看"的能力。从"对过去做平均"出发,一步步升级成
+          由内容算权重的自注意力,打破 bigram 的 <code>2.5</code> 天花板。
+        </p>
+        <ul class="steps">
+          <li><a href="02_attention_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">往回看:每个位置看过去(因果)</span><span class="arrow">→</span></a></li>
+          <li><a href="02_attention_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">数据的形状:B · T · C</span><span class="arrow">→</span></a></li>
+          <li><a href="02_attention_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">用矩阵做"对过去做平均"</span><span class="arrow">→</span></a></li>
+          <li><a href="02_attention_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">Q / K / V:三种角色</span><span class="arrow">→</span></a></li>
+          <li><a href="02_attention_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">算注意力权重(打分→softmax)</span><span class="arrow">→</span></a></li>
+          <li><a href="02_attention_viz.html#step-6"><span class="sn">STEP 6</span><span class="st">加权聚合 · forward 全貌</span><span class="arrow">→</span></a></li>
+        </ul>
+        <div class="card-foot">共 6 步 · <a href="02_attention_viz.html#step-1">从第一步开始 →</a></div>
+      </section>
+
+      <!-- 第 3 章 · 完整 Transformer -->
+      <section class="card">
+        <div class="card-head"><span class="ch-num">CHAPTER 03</span></div>
+        <h3><a href="03_transformer_viz.html#step-1">第 3 章 · 完整 Transformer</a></h3>
+        <p class="desc">四块新积木拼出 GPT:<code>多头</code>(同时看多种关系)、<code>FFN</code>(逐位置思考)、<code>残差 + LayerNorm</code>(让深网络训得动),再摞成多层。val loss 从 2.41 掉到 ~1.9。</p>
+        <ul class="steps">
+          <li><a href="03_transformer_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">切蛋糕:128 维 → 4 个头</span><span class="arrow">→</span></a></li>
+          <li><a href="03_transformer_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">每个头各看各的(分化)</span><span class="arrow">→</span></a></li>
+          <li><a href="03_transformer_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">拼回去 · 头数怎么选</span><span class="arrow">→</span></a></li>
+          <li><a href="03_transformer_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">FeedForward:逐位置思考</span><span class="arrow">→</span></a></li>
+          <li><a href="03_transformer_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">残差 + LayerNorm:堆得动</span><span class="arrow">→</span></a></li>
+          <li><a href="03_transformer_viz.html#step-6"><span class="sn">STEP 6</span><span class="st">堆成 GPT · 跌破 2.41</span><span class="arrow">→</span></a></li>
+        </ul>
+        <div class="card-foot">共 6 步 · <a href="03_transformer_viz.html#step-1">从第一步开始 →</a></div>
+      </section>
+
+      <!-- 整机俯瞰 · 全景收尾 -->
+      <section class="card">
+        <div class="card-head"><span class="ch-num">整机俯瞰 · 全景</span></div>
+        <h3><a href="04_gpt_machine_viz.html#part-1">把零件拼成整机:一个字符流过 GPT</a></h3>
+        <p class="desc">第 1–3 章的零件拼成整台 tiny GPT(≈0.8M)。两段全自动动画:<code>① 装机</code>(训练把所有权重调到位)+ <code>② 跑起来</code>(前向传播 + 采样,预设开头自回归生成)。</p>
+        <ul class="steps">
+          <li><a href="04_gpt_machine_viz.html#part-1"><span class="sn">PART 1</span><span class="st">🔧 装机:训练把权重调到位</span><span class="arrow">→</span></a></li>
+          <li><a href="04_gpt_machine_viz.html#part-2"><span class="sn">PART 2</span><span class="st">▶ 跑起来:前向 + 采样生成</span><span class="arrow">→</span></a></li>
+        </ul>
+        <div class="card-foot">全自动播放 · <a href="04_gpt_machine_viz.html#part-1">进整机俯瞰 →</a></div>
+      </section>
+
+    </div>
+  </section>
+
+  <!-- ============ PHASE 1 · 124M(占位)============ -->
+  <section class="phase-sec">
+    <div class="phase-title">
+      <span class="pt-num">PHASE 1 · 124M</span>
+      <h2>第一阶段 · 124M 模型</h2>
+      <span class="pt-state">🔒 即将上线</span>
+    </div>
+    <div class="chapters">
+      <section class="card locked">
+        <div class="card-head"><span class="ch-num">规模化</span></div>
+        <h3>把 nanoGPT 放大到 GPT-2 124M</h3>
+        <p class="desc">同一套架构放大到 124M 参数,体会更大规模下的训练与工程取舍。</p>
+        <div class="soon-hint" data-soon role="button" tabindex="0">
+          敬请期待:对应 <code>phase1-124m/</code> 的可视化正在路上。
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <!-- ============ PHASE 2 · SFT + LoRA(占位)============ -->
+  <section class="phase-sec">
+    <div class="phase-title">
+      <span class="pt-num">PHASE 2 · SFT + LoRA</span>
+      <h2>第二阶段 · 监督微调</h2>
+      <span class="pt-state">🔒 即将上线</span>
+    </div>
+    <div class="chapters">
+      <section class="card locked">
+        <div class="card-head"><span class="ch-num">对齐</span></div>
+        <h3>SFT + LoRA:让模型学会"听话"</h3>
+        <p class="desc">在预训练模型上做监督微调(SFT),并用 LoRA 做高效低秩微调。</p>
+        <div class="soon-hint" data-soon role="button" tabindex="0">
+          敬请期待:对应 <code>phase2-sft-lora/</code> 的可视化正在路上。
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <!-- ============ 页脚 ============ -->
+  <footer>
+    一个从零理解大语言模型的教学项目 —— 先<b>看懂直觉</b>,再读代码。
+    全部页面均为单文件、零依赖,离线双击即可打开。遇到不懂的术语,查 <a href="glossary.html" style="color:var(--accent);text-decoration:none;font-weight:600">名词表</a>;
+    想看边角料故事,翻 <a href="notes.html" style="color:var(--accent);text-decoration:none;font-weight:600">学习札记 🥚</a>。
+    <div class="progress">进度:第 1 章 Bigram、第 2 章 自注意力、第 3 章 完整 Transformer 已上线 · 124M 与 SFT+LoRA 筹备中</div>
+  </footer>
+
+</div>
+
+<script>
+  /* 占位卡片:点击/回车给出"即将上线"提示,不跳转 */
+  (function(){
+    document.querySelectorAll('[data-soon]').forEach(function(el){
+      function notify(){
+        var orig = el.innerHTML;
+        el.innerHTML = '🚧 这个阶段还在打磨中,先把已上线的内容吃透吧!';
+        setTimeout(function(){ el.innerHTML = orig; }, 1800);
+      }
+      el.addEventListener('click', notify);
+      el.addEventListener('keydown', function(e){
+        if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); notify(); }
+      });
+    });
+  })();
+</script>
+</body>
+</html>

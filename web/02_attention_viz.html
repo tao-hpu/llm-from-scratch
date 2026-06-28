@@ -1,0 +1,1450 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自注意力 图解 · 02_attention</title>
+<style>
+  /* ============ 全局基础样式(与全站共用暖色变量)============ */
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+    --c-q:#a3548c; --bg-q:#F6E6F0;     /* query 紫 */
+    --c-k:#3a63c0; --bg-k:#E5EBF9;     /* key 蓝 */
+    --c-v:#3f7d63; --bg-v:#E4EFE9;     /* value 绿 */
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:920px;margin:0 auto;padding:32px 24px 90px;}
+
+  /* ============ 返回首页 ============ */
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  /* ============ 顶部标题区 ============ */
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:700px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  /* ============ 步骤导航 ============ */
+  .steps-nav{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:26px 0 20px;}
+  @media(max-width:560px){.steps-nav{grid-template-columns:repeat(2,1fr);}}
+  .step-tab{min-width:0;background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 14px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13.5px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  /* ============ 超参速查条(每页常驻)============ */
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+
+  /* 维度色标:凡是出现维度数字都套它,颜色与 hp-bar 一一对应,数字永不裸奔 */
+  .d{display:inline-flex;align-items:baseline;gap:3px;font-family:var(--mono);font-weight:700;
+    padding:0 5px;border-radius:6px;line-height:1.5;white-space:nowrap;}
+  .d i{font-style:normal;font-size:9.5px;font-weight:600;opacity:.9;letter-spacing:.2px;}
+  .d-batch{color:#b8512f;background:#F7E6DE;}   /* batch_size 句子数 */
+  .d-block{color:#3f7d63;background:#E4EFE9;}   /* block_size 位置数 T */
+  .d-emb{color:#3a63c0;background:#E5EBF9;}     /* n_embd 维度 C */
+  .d-head{color:#a3548c;background:#F6E6F0;}    /* head_size 头维度 */
+  .d-vocab{color:#a87b1f;background:#FAEFD6;}   /* vocab_size 词表 */
+
+  /* ============ 面板卡片 ============ */
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 22px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    display:flex;align-items:center;gap:7px;}
+  .next-hint::before{content:"↳";font-size:15px;}
+
+  /* 渐进展开:深问题默认收起,点开才看 —— 让主线保持干净(见可视化规范「图形优先」) */
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig+.dig{margin-top:8px;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+  .dig .dig-body ul{margin:6px 0 0;padding-left:18px;}
+  .dig .dig-body li{margin:3px 0;}
+
+  /* ============ 通用按钮 ============ */
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.ghost{background:transparent;}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;}
+
+  /* ============ 上一步 / 下一步 ============ */
+  .nav{display:flex;justify-content:space-between;margin-top:24px;}
+
+  /* ============ 子标题 ============ */
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:24px 0 4px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  /* ============ 标签(tag)============ */
+  .tag{display:inline-block;padding:1px 9px;border-radius:20px;font-size:13px;font-weight:600;}
+  .t-q{color:var(--c-q);background:var(--bg-q);}
+  .t-k{color:var(--c-k);background:var(--bg-k);}
+  .t-v{color:var(--c-v);background:var(--bg-v);}
+  .muted{color:var(--ink2);}
+
+  /* ============ S1:因果序列 ============ */
+  .seq8{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px;}
+  .scell{width:50px;height:50px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:18px;font-weight:600;border:1px solid var(--border);
+    background:#fff;cursor:pointer;transition:.25s;color:var(--ink2);}
+  .scell.see{background:var(--accent-soft);border-color:#e8c4b5;color:#8a3d23;}
+  .scell.cur{box-shadow:0 0 0 2px var(--accent);transform:translateY(-3px);}
+  .scell.future{opacity:.32;}
+  .scell .pi{position:absolute;}
+  .seq-caption{font-size:14px;margin:10px 0 2px;min-height:24px;}
+  .seq-caption b{color:var(--accent);}
+  .pos-idx{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:2px;}
+  .pos-idx span{width:50px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--ink2);}
+
+  /* ============ S2:矩阵 ============ */
+  .matwrap{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:14px 0;width:100%;}
+  .label-sm{font-size:13px;color:var(--ink2);text-align:center;margin-bottom:6px;}
+  .mgrid{display:inline-grid;gap:5px;}
+  /* Step 3 矩阵:固定大格子,a 约占面板 1/3;a@b=c 自然左对齐排开,不强行铺满 */
+  .mb-a .cell,.mb-b .cell,.mb-c .cell{width:88px;}
+  .cell{width:56px;height:42px;display:flex;align-items:center;justify-content:center;
+    border-radius:8px;font-family:var(--mono);font-size:15px;background:#fff;
+    border:1px solid var(--border);transition:.4s;}
+  .cell.zero{color:#c9c3b5;background:#F7F5EE;}
+  .cell.hot{background:var(--accent-soft);border-color:#e8c4b5;color:#8a3d23;font-weight:600;}
+  .op{font-size:26px;color:var(--ink2);margin:0 4px;}
+  /* S2 行点击拆解 */
+  .cell.rowsel{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important;}
+  .cell.rowcontrib{box-shadow:0 0 0 2px var(--c-v);}
+  .cell.clickable{cursor:pointer;}
+  .cell.clickable:hover{border-color:var(--accent);}
+  .dim-hint{font-size:13px;color:var(--ink2);margin:12px 0 0;}
+  .dim-hint b{color:var(--accent);}
+  #matBreak{display:none;margin-top:14px;background:#fff;border:1px solid var(--accent-soft);
+    border-radius:12px;padding:14px 16px;font-size:14px;}
+  #matBreak .bk-head{margin-bottom:6px;}
+  #matBreak .bk-row{display:block;font-family:var(--mono);font-size:13.5px;color:var(--ink);
+    margin-top:3px;white-space:pre-wrap;}
+  #matBreak b{color:var(--accent);}
+  .pill-row{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0;}
+  .pill{flex:1;min-width:210px;background:#fff;border:1px solid var(--border);border-radius:12px;padding:15px 16px;}
+  .pill h4{margin:0 0 6px;font-size:15px;font-family:var(--serif);}
+  .pill .role{font-family:var(--mono);font-size:12px;color:var(--ink2);margin-bottom:4px;}
+
+  /* ============ S3:x → q/k/v 投影演示 ============ */
+  .proj{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:16px 0 8px;
+    background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px 16px;}
+  .proj-left{text-align:center;}
+  .proj-cap{font-size:12px;color:var(--ink2);margin-top:6px;}
+  .proj-branch{font-size:24px;color:var(--ink2);}
+  .proj-right{display:flex;flex-direction:column;gap:8px;}
+  .proj-lane{display:flex;align-items:center;gap:8px;}
+  .proj-mat{font-family:var(--mono);font-size:12.5px;font-weight:700;border-radius:8px;padding:6px 10px;white-space:nowrap;}
+  .proj-mat small{display:block;font-weight:400;font-size:9.5px;opacity:.8;}
+  .proj-mat.mq{color:var(--c-q);background:var(--bg-q);}
+  .proj-mat.mk{color:var(--c-k);background:var(--bg-k);}
+  .proj-mat.mv{color:var(--c-v);background:var(--bg-v);}
+  .proj-arr{color:var(--ink2);}
+  .proj-role{font-family:var(--serif);font-weight:600;font-size:16px;margin-left:4px;}
+  .vrow{display:inline-flex;gap:4px;}
+  .vrow .vc{width:34px;height:30px;border-radius:6px;border:1px solid var(--border);background:#FAF9F5;
+    display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;
+    transition:all .35s ease;}
+  .vrow .vc.empty{color:#c9c3b5;}
+  .vrow .vc.cq{border-color:var(--c-q);color:var(--c-q);background:var(--bg-q);}
+  .vrow .vc.ck{border-color:var(--c-k);color:var(--c-k);background:var(--bg-k);}
+  .vrow .vc.cv{border-color:var(--c-v);color:var(--c-v);background:var(--bg-v);}
+  /* S3 bigram→attention 升级对比 */
+  .cmp{display:flex;flex-direction:column;gap:8px;margin:10px 0 4px;}
+  .cmp-row{background:#fff;border:1px solid var(--border);border-radius:10px;padding:11px 14px;
+    font-size:13.5px;font-family:var(--mono);}
+  .cmp-row small{display:block;font-family:system-ui,sans-serif;color:var(--ink2);font-size:12px;margin-top:6px;line-height:1.6;}
+  .cmp-row small code{font-size:11px;}
+  .cmp-tag{display:inline-block;font-size:11px;font-weight:700;border-radius:6px;padding:2px 8px;
+    margin-right:8px;background:#F4F2EA;color:var(--ink2);}
+  .cmp-tag.hot{background:var(--accent);color:#fff;}
+  .cmp-arr{color:var(--ink2);}
+  .cmp-row b{color:var(--accent);}
+
+  /* S5 参数真身对比表 */
+  .truth{width:100%;border-collapse:collapse;margin:10px 0 4px;font-size:13px;}
+  .truth th,.truth td{border:1px solid var(--border);padding:8px 11px;text-align:left;vertical-align:top;}
+  .truth th{background:#F4F2EA;font-family:system-ui,sans-serif;font-weight:700;color:var(--ink);}
+  .truth td{font-family:var(--mono);}
+  .truth td.lbl{font-family:system-ui,sans-serif;color:var(--ink2);background:#FBFAF6;white-space:nowrap;}
+  .truth .sum{font-weight:700;color:var(--accent);}
+  .truth tr.total td{background:#FBF3EF;}
+  .ghost-list{margin:6px 0 0;padding-left:18px;font-family:system-ui,sans-serif;font-size:12.5px;color:var(--ink2);line-height:1.7;}
+  .ghost-list code{font-size:11.5px;}
+
+  /* ============ S4:热力图(整张表占满面板宽度)============ */
+  #heat{display:grid;width:100%;gap:5px;margin-top:12px;}
+  .hc{width:auto;height:48px;border-radius:7px;display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:13px;font-weight:600;border:1px solid var(--border);transition:.35s;}
+  .hc.mask{background:#EFECE3;color:#bcb6a6;border-style:dashed;}
+
+  /* ============ S5:forward 流程 ============ */
+  .flow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:14px 0 4px;}
+  .flow .fc{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--accent);
+    background:#fff;border:1px solid var(--accent-soft);border-radius:9px;padding:8px 11px;text-align:center;line-height:1.4;}
+  .flow .fc small{display:block;color:var(--ink2);font-weight:400;font-size:10.5px;margin-top:2px;}
+  .flow .fa{color:var(--ink2);font-size:18px;}
+  .chain{font-size:14.5px;line-height:2.05;margin:4px 0;}
+
+  /* S5 (A) 聚合交互:复用 .cell/.mgrid/.op,只加容器与拆解框 */
+  .agg{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:10px 0 4px;}
+  #aggBreak{display:none;margin-top:14px;background:#fff;border:1px solid var(--accent-soft);
+    border-radius:12px;padding:14px 16px;font-size:14px;}
+  #aggBreak .bk-head{margin-bottom:6px;}
+  #aggBreak .bk-row{display:block;font-family:var(--mono);font-size:13px;color:var(--ink);margin-top:3px;white-space:pre-wrap;}
+  #aggBreak b{color:var(--accent);}
+  /* S5 (C) 参数真身 mini-grid(随机 ↔ 训练 toggle)*/
+  .truths{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:8px 0 12px;width:100%;}
+  @media(max-width:600px){ .truths{grid-template-columns:repeat(3,1fr);} }
+  .tcard{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 11px;text-align:center;}
+  .tcard .tname{font-family:var(--mono);font-size:11.5px;font-weight:700;color:var(--ink);}
+  .tcard .tmini{display:grid;gap:2px;margin:7px auto 0;width:max-content;}
+  .tcard .tmini i{width:12px;height:12px;border-radius:2px;display:block;transition:background .5s ease;}
+  .tcard .tsize{font-size:10px;color:var(--ink2);margin-top:6px;font-family:var(--mono);}
+
+  /* ============ STEP 2(新增):数据的形状 (B,T,C) ============ */
+  .shape-sub{font-size:13px;color:var(--ink2);margin:6px 0 10px;}
+  .axB{color:#b8512f;font-weight:700;}  .axT{color:#3f7d63;font-weight:700;}  .axC{color:#3a63c0;font-weight:700;}
+  /* batch 网格:B 行 × T 列 */
+  .bgrid-wrap{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin:8px 0 6px;overflow-x:auto;}
+  .bgrid-cols{display:flex;gap:6px;margin:0 0 4px 30px;}
+  .bgrid-cols span{width:34px;text-align:center;font-family:var(--mono);font-size:10.5px;color:var(--ink2);}
+  .brow{display:flex;align-items:center;gap:6px;margin:4px 0;}
+  .brow .rlab{width:24px;font-family:var(--mono);font-size:10.5px;color:var(--ink2);text-align:right;}
+  .bcell{width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:15px;border:1px solid var(--border);background:#FAF9F5;color:var(--ink);
+    cursor:pointer;transition:.18s;flex-shrink:0;}
+  .bcell:hover{border-color:var(--accent);}
+  .bcell.picked{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .bmore{font-family:var(--mono);font-size:11px;color:var(--ink2);margin:6px 0 0 30px;}
+  /* 格子 → C 维向量弹出 */
+  #vecPop{display:none;margin:6px 0 2px;background:#fff;border:1px solid #cdd8f2;border-radius:12px;padding:13px 15px;}
+  #vecPop .vp-head{font-size:13.5px;margin-bottom:8px;}
+  #vecPop .vp-vec{display:inline-flex;gap:4px;flex-wrap:wrap;align-items:center;}
+  #vecPop .vp-vec .vc{width:38px;height:30px;border-radius:6px;border:1px solid #cdd8f2;background:#E5EBF9;
+    color:#3a63c0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11.5px;}
+  #vecPop .vp-more{font-family:var(--mono);font-size:11.5px;color:var(--ink2);margin-left:4px;}
+  /* 形状流水线 */
+  .pipe{display:flex;align-items:stretch;gap:6px;flex-wrap:wrap;margin:10px 0 4px;}
+  .pstage{flex:1;min-width:92px;background:#fff;border:1px solid var(--border);border-radius:11px;
+    padding:9px 8px;cursor:pointer;text-align:center;transition:.18s;}
+  .pstage:hover{border-color:#cfc9ba;}
+  .pstage.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
+  .pstage .pst-name{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--ink);}
+  .pstage .pst-shape{font-family:var(--mono);font-size:12.5px;margin-top:5px;}
+  /* 谁定哪根轴 chips */
+  .axchips{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 2px;}
+  .axchip{cursor:pointer;border:1px solid var(--border);background:#fff;border-radius:9px;padding:7px 11px;
+    font-family:var(--mono);font-size:12px;font-weight:700;transition:.18s;text-align:left;}
+  .axchip:hover{border-color:#cfc9ba;}
+  .axchip.on{box-shadow:0 0 0 1px currentColor;}
+  .axchip small{display:block;font-weight:400;font-size:10.5px;color:var(--ink2);margin-top:2px;}
+  /* STEP 6 (D):loss 曲线 */
+  .loss-wrap{background:#fff;border:1px solid var(--border);border-radius:14px;padding:12px 14px 4px;margin:8px 0 4px;}
+  .loss-wrap svg{width:100%;height:auto;display:block;}
+  .loss-leg{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin:2px 0 0;}
+  .loss-leg i{display:inline-block;width:18px;height:0;border-top-width:3px;vertical-align:middle;margin-right:5px;}
+
+  /* ============ 名词气泡(全站统一组件)============ */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:264px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;
+    font-family:system-ui,-apple-system,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);
+    font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);
+    text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* ============ 通关庆祝 ============ */
+  .congrats{position:fixed;left:50%;top:24%;transform:translate(-50%,-50%) scale(.92);
+    z-index:10000;pointer-events:none;text-align:center;background:#fff;border:1px solid var(--accent);
+    box-shadow:0 8px 30px rgba(217,119,87,.25);border-radius:16px;padding:18px 28px;
+    font-family:var(--serif);font-size:22px;font-weight:600;color:var(--accent);
+    opacity:0;transition:opacity .45s ease,transform .45s ease;}
+  .congrats.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+  .congrats span{display:block;margin-top:6px;font-family:system-ui,sans-serif;font-size:13px;font-weight:400;color:var(--ink2);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <!-- ============ 顶部标题区 ============ -->
+  <header>
+    <span class="filename">02_attention_viz.html</span>
+    <h1>自注意力:让每个位置学会"往回看"</h1>
+    <p class="subtitle">
+      配套 <code>02_attention.py</code>。上一章 bigram 只看前 1 个字符,撞在 <code>loss ≈ 2.5</code> 的墙上。
+      这一章一步步搭出自注意力 —— 六步看懂直觉,再回去读代码就豁然开朗。
+    </p>
+  </header>
+
+  <!-- ============ 步骤导航 ============ -->
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">往回看 = 因果</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">数据的形状 B·T·C</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">矩阵做平均</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">Q / K / V</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">算注意力权重</div></div>
+    <div class="step-tab" data-step="5"><div class="num">STEP 6</div><div class="label">聚合 · 全貌</div></div>
+  </div>
+
+  <!-- 超参速查(常驻,每步都看得到)-->
+  <div class="hp-bar">
+    <span class="hp-label">超参速查</span>
+    <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">batch_size <b>32</b> <i>句子数</i></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">block_size <b>8</b> <i>位置数 T</i></span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">n_embd <b>32</b> <i>维度 C</i></span>
+    <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">head_size <b>32</b> <i>头维度</i></span>
+    <span class="hp-note">⚠ 三个 32 含义不同,纯属撞脸;block_size 是 8</span>
+  </div>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>Step 1 · 核心想法:让每个位置"往回看"它的过去</h2>
+    <p class="lead">
+      bigram 的天花板,在于它做预测时<b>只能看前 1 个字符</b>。<span class="term" data-term="自注意力 · self-attention" data-key="self-attention" data-def="序列里每个位置,按相关性从其它位置聚合信息,得到融合上下文的新表示。q、k、v 都来自同一序列,故称 self。">自注意力</span>的想法很简单:
+      让第 <code>t</code> 个位置,能参考它<b>前面所有</b>位置(<code>0..t</code>)。
+      <b>点下面任意一个位置</b>,看它能看到谁。
+    </p>
+    <p class="note" style="border-style:solid;background:#fff">
+      📜 <b>出处</b>:自注意力来自 2017 年的
+      <span class="term" data-term="Attention Is All You Need" data-key="attention-paper" data-def="2017 年 Google 提出 Transformer 的奠基论文:用自注意力取代 RNN/CNN,引入多头注意力与位置编码。GPT/BERT 都源于它。">《Attention Is All You Need》</span>
+      —— Transformer 的奠基之作。本章搭的是它的核心零件(单头自注意力),第 3 关会完整复现整套架构。
+    </p>
+
+    <div class="pos-idx" id="posIdx"></div>
+    <div class="seq8" id="seq8"></div>
+    <p class="seq-caption" id="seqCaption"></p>
+
+    <div class="pill-row">
+      <div class="pill">
+        <h4 style="color:var(--accent)">只看过去 = <span class="term" data-term="因果掩码 · causal mask" data-key="causal-mask" data-def="预测下一个字符时不能偷看未来:每个位置只允许看 0..t。靠下三角把未来位置设为 -∞ 实现。">因果(causal)</span></h4>
+        预测"下一个字符"时,<b>未来的答案不能偷看</b>。所以每个位置只允许看 <code>0..t</code>,看不到 <code>t+1</code> 之后。
+      </div>
+      <div class="pill">
+        <h4 style="color:var(--accent)">最朴素的"参考过去" = 平均</h4>
+        先不讲复杂的:把能看到的那些位置的向量<b>取平均</b>,就是一种最简单的"往回看"。
+      </div>
+    </div>
+
+    <div class="note" style="border-style:solid;background:#fff">
+      💡 这"最多往回看几个 token"就是 <code>block_size</code> = <span class="d d-block">8<i>block</i></span> ——
+      也就是大家天天挂嘴边的<span class="term" data-term="上下文窗口 · context window" data-key="block-size" data-def="模型一次能看到的最大 token 数 = block_size。超出窗口的更早历史会被截断,模型看不见。这就是新闻里说的「上下文长度」。">上下文窗口</span>(context window)。本章设成 8,只为把直觉一眼看清。
+    </div>
+    <details class="dig">
+      <summary>上下文窗口能多大?它和 batch_size 是一回事吗?</summary>
+      <div class="dig-body">
+        GPT-2 是 1024,如今 <b>100 万 token 已是标配</b> —— 原理一样:再长也只是个<b>固定上限</b>,
+        超出窗口的更早历史模型看不见(代码 <code>generate</code> 里 <code>idx[:, -block_size:]</code> 就是在裁这个)。<br>
+        ⚠️ 它和 <code>batch_size</code> 不是一回事:<code>block_size</code>=<span class="d d-block">8<i>block</i></span> 是"<b>往回看几个 token</b>",
+        <code>batch_size</code>=<span class="d d-batch">32<i>batch</i></span> 是"<b>同时并行几条句子</b>"。
+      </div>
+    </details>
+    <p class="next-hint">下一步:先把喂进去的数据"<b>形状</b>"看清 —— <b>B、T、C</b> 和那几个撞脸的 <b>32</b> 分别是谁。</p>
+  </section>
+
+  <!-- ============ STEP 2(新增):数据的形状 (B,T,C) ============ -->
+  <section class="panel" id="panelShape">
+    <h2>Step 2 · 数据的形状:B、T、C(以及那几个撞脸的 32)</h2>
+    <p class="lead">
+      动手搭注意力前,先看清喂进去的数据长什么"形状"。代码里张量都按 <code>(B, T, C)</code> 三个大写字母标注 ——
+      <b>拨一拨下面三组交互</b>,把它们和那几个 <code>32</code> 一次对清楚。
+    </p>
+
+    <div class="sub-h"><span class="badge">A</span>一个 batch 长什么样:<span class="axB">B</span> 条句子 × <span class="axT">T</span> 个位置</div>
+    <p class="shape-sub">
+      每次训练,<code>get_batch</code> 从全书<b>随机取 <span class="axB">B</span> 个起点</b>,每个起点<b>连抓 <span class="axT">T</span> 个字符</b>。
+      点「🎲 再取一个 batch」换一批;<b>点任意一个格子</b>,看它其实是一根向量。
+    </p>
+    <div class="btn-row" id="batchBtns">
+      <button class="btn primary" onclick="newBatch()">🎲 再取一个 batch</button>
+    </div>
+    <div class="bgrid-wrap">
+      <div class="bgrid-cols" id="bgridCols"></div>
+      <div id="bgridRows"></div>
+      <div class="bmore">⋮ 这里只画 5 条,真实一个 batch 有 <span class="axB">batch_size = 32</span> 条,32 条<b>并行</b>一起算</div>
+    </div>
+    <div id="vecPop"></div>
+    <div class="note">
+      <span class="axB">B = Batch</span> 一批几条句子(并行)= <code>batch_size</code> ·
+      <span class="axT">T = Time</span> 一条几个位置 = <code>block_size</code> ·
+      <span class="axC">C = Channels</span> 每个位置的向量多长(下面 B 段细说)。
+    </div>
+
+    <div class="sub-h"><span class="badge">B</span><span class="axC">C</span> 会变:形状沿着网络一层层流动</div>
+    <p class="shape-sub">点每一站,看 <code>(B,T,C)</code> 里的 <span class="axC">C</span> 怎么变 —— <b><span class="axB">B</span>、<span class="axT">T</span> 一路不变,只有 <span class="axC">C</span> 在变</b>。或点「▶ 一路跑到 logits」自动走一遍。</p>
+    <div class="btn-row" id="pipeBtns">
+      <button class="btn primary" onclick="pipeAnim()">▶ 一路跑到 logits</button>
+    </div>
+    <div class="pipe" id="pipe">
+      <div class="pstage on" onclick="pipeStage(0)"><div class="pst-name">idx</div><div class="pst-shape">(<span class="axB">B</span>,<span class="axT">T</span>,<b>—</b>)</div></div>
+      <div class="pstage" onclick="pipeStage(1)"><div class="pst-name">+emb</div><div class="pst-shape">(<span class="axB">B</span>,<span class="axT">T</span>,<b class="axC">32</b>)</div></div>
+      <div class="pstage" onclick="pipeStage(2)"><div class="pst-name">q/k/v</div><div class="pst-shape">(<span class="axB">B</span>,<span class="axT">T</span>,<b class="axC">32</b>)</div></div>
+      <div class="pstage" onclick="pipeStage(3)"><div class="pst-name">out</div><div class="pst-shape">(<span class="axB">B</span>,<span class="axT">T</span>,<b class="axC">32</b>)</div></div>
+      <div class="pstage" onclick="pipeStage(4)"><div class="pst-name">logits</div><div class="pst-shape">(<span class="axB">B</span>,<span class="axT">T</span>,<b class="axC">65</b>)</div></div>
+    </div>
+    <div class="note" id="pipeNote"></div>
+
+    <div class="sub-h"><span class="badge">C</span>那几个 <code>32</code>(和一个 <code>8</code>)分别定哪根轴</div>
+    <div class="axchips" id="axChips">
+      <div class="axchip" style="color:#b8512f" onclick="axChip(0)">batch_size = 32<small>→ B 句子数</small></div>
+      <div class="axchip" style="color:#3f7d63" onclick="axChip(1)">block_size = 8<small>→ T 位置数</small></div>
+      <div class="axchip" style="color:#3a63c0" onclick="axChip(2)">n_embd = 32<small>→ C 嵌入维度</small></div>
+      <div class="axchip" style="color:#a3548c" onclick="axChip(3)">head_size = 32<small>→ C 头维度</small></div>
+    </div>
+    <div class="note" id="axNote"></div>
+
+    <div class="sub-h" style="color:var(--accent)">⚠️ 别把 Q / K / V 对到 <span class="axB">B</span> / <span class="axT">T</span> / <span class="axC">C</span> 三根轴上</div>
+    <p class="shape-sub" style="margin-bottom:8px">
+      <code>Q</code>、<code>K</code>、<code>V</code> 是<b>三个张量</b>(三种角色),<b>不是</b>三根轴各分一个。同一个 <code>x</code> 复制 3 份、各用自己的 <code>W</code> 重调,得到的 q / k / v <b>各自都是完整的 <code>(B,T,32)</code></b>:
+    </p>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin:2px 0 8px">
+      <div style="font-family:var(--mono);font-size:13px;text-align:center;background:#F4F2EA;border:1px solid var(--border);border-radius:8px;padding:10px 13px">x<br><b>(B,T,32)</b></div>
+      <div style="font-size:20px;color:var(--ink2)">→</div>
+      <div style="font-size:12px;color:var(--ink2);line-height:1.5">复制 3 份,<br>各用自己的 W 重调</div>
+      <div style="font-size:20px;color:var(--ink2)">→</div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-family:var(--mono);font-size:13px;font-weight:700">
+        <span style="color:var(--c-q);background:var(--bg-q);border-radius:7px;padding:5px 12px">Q&nbsp;(B,T,32)</span>
+        <span style="color:var(--c-k);background:var(--bg-k);border-radius:7px;padding:5px 12px">K&nbsp;(B,T,32)</span>
+        <span style="color:var(--c-v);background:var(--bg-v);border-radius:7px;padding:5px 12px">V&nbsp;(B,T,32)</span>
+      </div>
+    </div>
+    <div class="note">
+      三个都是 <b>32×8×32 的完整立方体</b>,没有谁"只分到一根轴"。正因如此,<code>q @ kᵀ</code> 才能拿两个完整张量两两位置算相关、得到 <span class="axB">B</span>×<span class="axT">T</span>×<span class="axT">T</span> 的分数表。
+      <b>("三个"角色 和 "32" 维是两个无关的东西:把 head_size 改成 30,还是<b>三</b>张表,只是每个向量 30 个数。Q/K/V 的完整讲解在 <b>Step 4</b>。)</b>
+    </div>
+    <details class="dig">
+      <summary>训练时 B、T 永远等于 batch_size、block_size 吗?</summary>
+      <div class="dig-body">
+        训练时<b>是</b>(一个 batch 就是 32×8)。但代码写的是 <code>B, T, C = x.shape</code>,<b>动态从形状里读</b>、不写死 ——
+        因为<b>采样生成</b>时不一样:<code>generate</code> 一次只喂 1 条,且上下文从 1 个字符慢慢长到 8。那时 <span class="axB">B</span>=1、<span class="axT">T</span> 从 1 涨到 8。
+        所以严谨说:<b>B/T 是"这批数据当前实际的条数 / 长度"</b>,训练时<b>恰好</b>等于那两个超参。
+      </div>
+    </details>
+    <details class="dig">
+      <summary><span class="axC">C</span> 是"纯动态"随便变的吗?</summary>
+      <div class="dig-body">
+        不是,它和 B/T 的"动态"是两码事:<br>
+        · <b>B / T</b> 随<b>喂进来的数据</b>变(训练 32×8,采样可能 1×3);<br>
+        · <b>C</b> 随<b>走到网络第几层</b>变,<b>和数据无关</b> —— 给定结构,每一层的 C 是多少都是<b>写死、确定</b>的(嵌入处 32、logits 处 65)。<br>
+        一句话:<b>每一层有它自己固定的 C</b>,不是随机乱跳。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>这一批整数(idx)是怎么从文本文件读进来的?</summary>
+      <div class="dig-body">
+        <code>02_attention.py</code> 开头四步,把一本书变成可训练的整数:<br>
+        ① <code>open(path, "r", encoding="utf-8")</code> —— <code>"r"</code> = <b>read 只读模式</b>(只读不写;<code>"w"</code> 才是写入并清空原文件)。<br>
+        ② <code>text = f.read()</code> —— 把<b>整本书一次性读成一条长字符串</b>(含所有换行、空格、标点),所以 <code>text</code> 是一整条不断行的长字符串。<br>
+        ③ <code>sorted(set(text))</code> 去重排序得词表;<code>encode</code> 把每个字符换成整数 id → 整条文本变一长串数字。<br>
+        ④ <code>torch.tensor(...)</code> 变张量,<code>get_batch</code> 再从中随机切出上面那个 <span class="axB">B</span>×<span class="axT">T</span> 的整数表。
+      </div>
+    </details>
+
+    <p class="next-hint">形状这把尺子拿稳了,下一步:怎么用<b>一次矩阵乘法</b>,既"只看过去"又"取平均"?</p>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="panel" id="panel1">
+    <h2>Step 3 · 用一个矩阵,实现"对过去做平均"</h2>
+    <p class="lead">
+      这正是 <code>02_attention.py</code> A 段做的事。一个下三角、再归一化的权重矩阵 <code>a</code>,
+      乘上输入 <code>b</code>,就一次性完成"只看过去 + 取平均"。点按钮一步步看 <code>a</code> 怎么来。
+    </p>
+    <div class="note" style="border-style:solid;background:#fff">
+      ⚠️ 这一步是 <code>02_attention.py</code> <b>A 段的纯演示</b>:用固定数字讲清"下三角加权平均"这套数学,<b>不训练、也不是模型本体</b>。真正带 Q/K/V、会被训练的注意力从 <b>Step 4</b> 起。
+    </div>
+    <details class="dig">
+      <summary>为什么是 3×3?这 9 个格子是什么?</summary>
+      <div class="dig-body">
+        <b>9 个格子 = 权重表 <code>a</code>,大小 <code>3×3</code>。</b>它是"<b>位置 × 位置</b>":行 = 哪个位置在看,列 = 它在看哪个位置。
+        两边都是 3,是因为这个演示只取了序列的<b>前 3 个位置</b>(如 "To be or" 的 <code>T o ␣</code>)。<br>
+        点第 4 个按钮「算 <code>c=a@b</code>」后,右边出现的 <b><code>b</code> 是 <code>3×2</code>(6 格)</b>:3 个位置,每个位置一个 2 个数的向量。
+        所以 <b>位置数</b>定 <code>a</code> 的行列(<code>3×3</code>)、定 <code>b</code> 的行(3);<b>每个向量多少个数</b>只定 <code>b</code> 的列(2)。<br>
+        真实尺寸:位置数 = <code>block_size</code>=<span class="d d-block">8<i>block</i></span>、向量长度 = <code>head_size</code>=<span class="d d-head">32<i>head</i></span>,
+        这张 <code>a</code> 就是 <b>8×8</b> —— 即 <b>Step 5</b> 的热力图。
+      </div>
+    </details>
+
+    <div class="btn-row" id="matBtns">
+      <button class="btn" onclick="matStep(0)">0 · 全是 1</button>
+      <button class="btn" onclick="matStep(1)">1 · 下三角</button>
+      <button class="btn" onclick="matStep(2)">2 · 每行归一化</button>
+      <button class="btn" onclick="matStep(3)">3 · 算 c = a @ b</button>
+    </div>
+
+    <div class="matwrap">
+      <div class="mb-a">
+        <div class="label-sm">权重 a (3×3)</div>
+        <div class="mgrid" id="matA" style="grid-template-columns:repeat(3,1fr)"></div>
+      </div>
+      <div id="bzone" style="display:none"><span class="op">@</span></div>
+      <div id="bgrid-wrap" class="mb-b" style="display:none">
+        <div class="label-sm">输入 b (3 位置 × 2 维)</div>
+        <div class="mgrid" id="matB" style="grid-template-columns:repeat(2,1fr)"></div>
+      </div>
+      <div id="czone" style="display:none"><span class="op">=</span></div>
+      <div id="cgrid-wrap" class="mb-c" style="display:none">
+        <div class="label-sm">输出 c</div>
+        <div class="mgrid" id="matC" style="grid-template-columns:repeat(2,1fr)"></div>
+      </div>
+    </div>
+    <p class="dim-hint" id="dimHint" style="display:none">
+      💡 <b>b 的 6 个格子</b> = 3 个位置 × 每位置 2 维。格子里 <b>0–5 只是 <code>torch.arange</code> 随手填的占位数</b>(好让你心算平均),真实代码里这里是各位置的 value 向量。<b>维度取 2 也只是为了好画,真实是 head_size = <span class="d d-head">32<i>head</i></span> 维</b>,逻辑一模一样。
+    </p>
+    <div class="note" id="matnote"></div>
+    <div id="matBreak"></div>
+
+    <div class="pill-row" style="margin-top:18px">
+      <div class="pill">
+        <h4 style="color:var(--c-k)"><span class="term" data-term="下三角 · lower-triangular" data-key="tril" data-def="对角线及左下保留,右上全为 0 的方阵(torch.tril)。这里用来屏蔽未来位置,管的是「哪些权重必须为 0」。">下三角</span> ▾ 管「因果」</h4>
+        管 <b>权重在哪里 = 0</b>。右上角恒为 0 → <span class="muted">未来位置被钉死,谁也偷看不到。</span>
+      </div>
+      <div class="pill">
+        <h4 style="color:var(--c-v)"><span class="term" data-term="归一化 · normalize" data-key="normalize" data-def="每行除以该行的和,使每行加起来 = 1,变成一组权重。管的是「尺度」,和因果(哪些为 0)互相独立。">归一化</span> ▾ 管「平均」</h4>
+        管 <b>权重总量 = 1</b>。每行和为 1 → <span class="muted">是加权平均,输出和输入同量级,不会越往后越爆。</span>
+      </div>
+    </div>
+    <p class="next-hint">下一步:均匀平均太"蠢"——每个过去位置一视同仁。怎么让"<b>谁相关就多看谁</b>"?</p>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="panel" id="panel2">
+    <h2>Step 4 · 升级:把"死平均"换成"按内容加权"——Q / K / V</h2>
+    <p class="lead">
+      上一步的权重是<b>写死的</b>(每个过去位置一样多)。真实语言里,有的词更该被关注。
+      我们想让权重<b>由内容算出来</b>。办法:把<b>同一个</b>输入 <code>x</code>,投影成三种角色。
+      像在图书馆找书 ——
+    </p>
+    <div class="pill-row">
+      <div class="pill">
+        <h4 style="color:var(--c-q)">Query (q)</h4>
+        <div class="role">我在找什么</div>
+        心里的检索词:<br>"我要找讲<b>恐龙</b>的内容"
+      </div>
+      <div class="pill">
+        <h4 style="color:var(--c-k)">Key (k)</h4>
+        <div class="role">我宣传自己是什么</div>
+        书脊上的标签:<br>"本书关于:<b>恐龙</b>"
+      </div>
+      <div class="pill">
+        <h4 style="color:var(--c-v)">Value (v)</h4>
+        <div class="role">你看我,我给你什么</div>
+        翻开后的正文:<br>真正被取走的信息
+      </div>
+    </div>
+    <div class="note">
+      代码里就是三个 <code>nn.Linear</code>:<code>self.query / self.key / self.value</code>,把同一个 <code>x</code>
+      投影成 <span class="tag t-q">q</span>、<span class="tag t-k">k</span>、<span class="tag t-v">v</span>。
+      <b>这三个投影矩阵,就是这一层真正要训练的参数。</b>
+    </div>
+    <details class="dig">
+      <summary>为什么 k、v 要分开,不合成一个?</summary>
+      <div class="dig-body">
+        因为"<b>我宣传的标签</b>"和"<b>我实际给的货</b>"可以不同 —— 标签(key)为了好被搜到,正文(value)才是真信息。
+      </div>
+    </details>
+
+    <div class="sub-h"><span class="badge">★</span>那 x 到底怎么变成 q / k / v?</div>
+    <p class="lead" style="margin-bottom:12px">
+      <b>先说 x 是什么。</b>每个位置(每个 token)进注意力前,已经是一根向量:
+      <code>x = tok_emb + pos_emb</code>(内容嵌入 + <span class="term" data-term="位置嵌入 · positional embedding" data-key="positional-embedding" data-def="注意力本身看不出顺序,所以给「第几个位置」也学一个向量,加到 token 嵌入上,模型才知道谁先谁后。">位置嵌入</span>),长度 <code>n_embd=32</code>。
+      8 个位置就是 8 根 x。它是"这个 token、在这个位置"的数字表示,是还没分角色的<b>原料</b>。
+      (注意:这里没有"用户提问"—— attention 里的 query 是<b>每个位置自己</b>发出的,只是个比喻。)
+    </p>
+    <p class="lead" style="margin:0 0 8px"><b>这根 x 是从第 1 章"升级"来的</b>(对比一下就懂它的前因):</p>
+    <div class="cmp">
+      <div class="cmp-row">
+        <span class="cmp-tag">第1章 bigram</span>token id <span class="cmp-arr">─查表→</span> <b>logits(<span class="d d-vocab">65<i>vocab</i></span>)</b>
+        <small>嵌入表 <span class="d d-vocab">65<i>vocab</i></span>×<span class="d d-vocab">65<i>vocab</i></span>,<b>查出来直接就是得分</b>;没有语义空间、没有位置(只看 1 个字符,顺序无意义)。见 <code>01_bigram.py</code> 的 <code>BigramLanguageModel</code></small>
+      </div>
+      <div class="cmp-row">
+        <span class="cmp-tag hot">第2章 attention</span>token id <span class="cmp-arr">─查表→</span> <span class="d d-emb">32<i>n_embd</i></span>维向量 <b>＋位置向量</b> <span class="cmp-arr">─注意力→ ─lm_head→</span> logits(<span class="d d-vocab">65<i>vocab</i></span>)
+        <small>嵌入表改成 <span class="d d-vocab">65<i>vocab</i></span>×<span class="d d-emb">32<i>n_embd</i></span>,<b>先进 <span class="d d-emb">32<i>n_embd</i></span> 维语义空间</b>(还不是得分);位置另学一份加进来;混合完最后才用 <code>lm_head</code> 映射回 <span class="d d-vocab">65<i>vocab</i></span> 维得分。见 <code>02_attention.py</code> 的 <code>forward</code></small>
+      </div>
+    </div>
+    <p class="lead" style="margin:8px 0 14px">
+      所以 <code>x = tok_emb + pos_emb</code> <b>只在第 2 章才有</b>:第 1 章嵌入一步出得分;第 2 章把它拆成「嵌入 → 注意力 → lm_head」,中间那个 <span class="d d-emb">32<i>n_embd</i></span> 维向量才是 attention 处理的 <code>x</code>。
+    </p>
+    <p class="lead" style="margin-bottom:14px">
+      <b>再说怎么变。</b>x 变成 q/k/v,靠一次<b>线性投影</b>(其实就是矩阵乘法):
+      <code>q = x @ Wq</code>、<code>k = x @ Wk</code>、<code>v = x @ Wv</code>。三个权重矩阵各不相同,
+      代码里就是三个 <code>nn.Linear(n_embd, head_size)</code>。它们<b>不是谁手写的规则</b> ——
+      出生时随机初始化,训练中被梯度一点点学出来。下面拨一下看(x 画成 4 维方便上屏,真实是 <code>n_embd=32</code> 维 —— 注意是<b>维度</b>,不是 batch_size):
+    </p>
+
+    <div class="proj">
+      <div class="proj-left">
+        <div class="vrow" id="pjX"></div>
+        <div class="proj-cap">x(输入向量)· 这 <b>4 个数是随手填的占位</b><br>(4 个独立的数 2、0、1、3,不是"2013")<br>真实是 <b>n_embd=32</b> 个(维度,非 batch),挑小数好心算</div>
+      </div>
+      <div class="proj-branch">→</div>
+      <div class="proj-right">
+        <div class="proj-lane">
+          <span class="proj-mat mq">× Wq<small>可训练矩阵</small></span><span class="proj-arr">▶</span>
+          <div class="vrow" id="pjQ"></div><span class="proj-role" style="color:var(--c-q)">q</span>
+        </div>
+        <div class="proj-lane">
+          <span class="proj-mat mk">× Wk<small>可训练矩阵</small></span><span class="proj-arr">▶</span>
+          <div class="vrow" id="pjK"></div><span class="proj-role" style="color:var(--c-k)">k</span>
+        </div>
+        <div class="proj-lane">
+          <span class="proj-mat mv">× Wv<small>可训练矩阵</small></span><span class="proj-arr">▶</span>
+          <div class="vrow" id="pjV"></div><span class="proj-role" style="color:var(--c-v)">v</span>
+        </div>
+      </div>
+    </div>
+    <div class="btn-row" id="projBtns">
+      <button class="btn primary" onclick="projGo()">▶ 投影一下(x × W → q,k,v)</button>
+      <button class="btn" onclick="projInit()">复位</button>
+    </div>
+    <div class="note" id="projNote"></div>
+    <div class="note" style="border-style:solid;background:#fff">
+      一次<b>线性投影</b> = 输出的每个数字,都是输入 x 所有数字的一个<b>加权组合</b>(权重就是矩阵里的数)。
+      同一个 x 过三个不同矩阵,被"调"出三种不同向量 —— <b>不是把 x 切成三段,而是把整根 x 重新组合三次。</b>
+    </div>
+
+    <details class="dig">
+      <summary>q/k/v 凭什么"思路不一样"?哪张是 Q,谁定的?</summary>
+      <div class="dig-body">
+        <b>不一样,是练出来的:</b><code>Wq/Wk/Wv</code> 初始化是<b>三组不同的随机数</b>,所以 q/k/v 出生就天生不同
+        (因为<b>矩阵不同</b>,不是因为输入不同 —— 它们仨用<b>同一根 x</b>)。训练只为降"预测下一字符"的 loss,
+        它不懂 query/key/value,但三个能独立拧的旋钮让梯度下降<b>试出</b>"一个擅长发问、一个擅长被检索、一个擅长搬运"最省 loss。<br>
+        <b>但"哪张是 Q"是写死的,不是模型自己选:</b>角色由"输出被塞进公式哪个槽位"决定 ——
+        <code>q = x @ Wq</code> 的输出被放去"当发问方点积",<code>v = x @ Wv</code> 被放去"被聚合",
+        这些槽位<b>训练前就由程序员钉死</b>(<code>self.query=…</code>/<code>self.value=…</code>)。涌现的只是<b>每张表把自己那份活干好</b>,模型内部从不会分不清谁是谁。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>"三个 QKV" 和维度 head_size 是一回事吗?q/k/v 从哪段数据算?</summary>
+      <div class="dig-body">
+        <b>是两个无关的轴:</b>"<b>三</b>"=有几种<b>角色</b>(query/key/value,架构写死=3);
+        <span class="d d-head">32<i>head_size</i></span>=每个向量<b>多长</b>(超参,可调)。把 head_size 改成 30,
+        还是<b>恰好三张表</b>,只是每个 q/k/v 从 32 个数变 30 个 —— <b>不会变成"30 个 QKV"</b>。想要第 4 种角色得换架构,拉维度做不到。<br>
+        <b>另外:q、k、v 全部只从输入段 <code>idx[:,0:8]</code> 算</b>;偏移 1 的目标段 <code>idx[:,1:9]</code> 只在最末尾给 logits 当"标准答案"判分,<b>从不进入</b> q/k/v。好比 "the cat sat on the ___",答案 "mat" 只判对错,不掺进你的思考。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>为什么偏偏是 QKV?是为将来 SFT 问答"挖的坑"吗?</summary>
+      <div class="dig-body">
+        一个常见的<b>因果倒置</b>,正过来:
+        <ul>
+          <li><b>QKV(2017)为机器翻译而生</b>,解决<b>当下</b>问题:每个位置<b>按内容去别处取相关信息</b>。而问答
+            <span class="term" data-term="SFT · 监督微调" data-key="sft" data-def="Supervised Fine-Tuning:预训练之后,用「问→答」成对数据继续训练同一批参数,把模型调成「以助手口吻回答」的姿态。能力是预训练就建好的,SFT 只拧风格。">SFT</span>(2022)<b>晚了五年</b> —— 不可能"先挖坑等填"。</li>
+          <li><b>"3" 照搬查字典结构:</b><span class="tag t-q">Query</span> 找什么 · <span class="tag t-k">Key</span> 怎么宣传自己 · <span class="tag t-v">Value</span> 取走的内容。Q、K 分开是因为"<b>按什么匹配</b>"和"<b>匹配上给什么</b>"本是两件事。</li>
+          <li><b>SFT 不"填坑"</b>:它只是续训同一批参数(含 <code>Wq/Wk/Wv</code>),把预训练早已长出的"抓上下文"能力调成助手口吻。<b>能力是预训练建的,SFT 只拧风格。</b></li>
+          <li><b>能换成别的吗?换过。</b>RNN/CNN/加性注意力都做过同样的事。QKV 胜在<b>能并行、表达力强、好堆叠</b>,不是"适合问答"。问答能力来自"<b>规模 × 预训练一个通用机制</b>"。</li>
+        </ul>
+        一句话:<b>不是挖坑等填料,而是造了把通用瑞士军刀,后来发现它能开的罐头远超当年只想削的那个苹果。</b>
+      </div>
+    </details>
+
+    <p class="next-hint">下一步:有了 <b>q</b> 和 <b>k</b>,怎么算出"谁该多看谁"的那张权重表?</p>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="panel" id="panel3">
+    <h2>Step 5 · 算注意力权重:打分 → 缩放 → 掩码 → softmax</h2>
+    <p class="lead">
+      用 8 个位置演示注意力分数表 <code>wei</code>(8×8)。
+      第 <code>i</code> 行第 <code>j</code> 列 = "位置 i 对位置 j 的关注度"。逐步点四个按钮看它怎么成形。
+    </p>
+
+    <div class="btn-row" id="heatBtns">
+      <button class="btn" onclick="heatStep(0)">1 · q·k 打分</button>
+      <button class="btn" onclick="heatStep(1)">2 · ÷√d 缩放</button>
+      <button class="btn" onclick="heatStep(2)">3 · 因果掩码</button>
+      <button class="btn" onclick="heatStep(3)">4 · softmax</button>
+    </div>
+    <div id="heat"></div>
+    <div class="note" id="heatnote"></div>
+
+    <div class="note" style="border-style:solid;background:#fff">
+      <b>看穿这一步:</b>最终的 <code>wei</code> 就是 Step 3 那个矩阵 <code>a</code> 的"<b>活</b>"版本 ——
+      同守两条铁律:① <span class="term" data-term="因果掩码 · causal mask" data-key="causal-mask" data-def="把未来位置的分数设为 -∞,softmax 后权重变 0,从而看不到未来。靠下三角实现。">因果</span>(右上为 0)② <b>每行和为 1</b>(<span class="term" data-term="softmax" data-key="softmax" data-def="把一组打分变成和为 1 的概率分布:每个数取 exp 再除以总和。分数越大概率越大。">softmax</span>)。唯一升级:权重不再写死,而是 <span class="term" data-term="点积 · dot product" data-key="dot-product" data-def="两个等长向量对应元素相乘再求和,得一个标量。越大表示两向量越对齐,用来衡量 query 和 key 的相关性。"><code>q·k</code></span> 由内容算出来的。
+    </div>
+
+    <details class="dig">
+      <summary>第 ② 步为什么非要 ÷√d 不可?</summary>
+      <div class="dig-body">
+        分数 <code>q·k</code> 是 <b><span class="d d-head">32<i>head_size</i></span> 个乘积相加</b>,摆动幅度天然 ≈ <code>√32 ≈ 5.66</code> —— <b>维度越大点积越容易爆炸</b>。
+        而 <span class="term" data-term="softmax" data-key="softmax" data-def="把一组打分变成和为 1 的概率分布:每个数取 exp 再除以总和。分数越大概率越大。">softmax</span> 对大数极敏感:分数差 ±5.7,<code>exp</code> 后差约 6 万倍,权重塌成只认一个位置的 one-hot →
+        <span class="term" data-term="梯度消失 · vanishing gradient" data-key="vanishing" data-def="梯度变得极小,参数几乎不更新、模型学不动。softmax 过于尖锐(某项概率≈1)时发生。">梯度消失</span>,学不动。
+        <code>÷√head_size</code>(代码 <code>* head_size**-0.5</code>)把摆幅拉回 ~1,让 softmax 不论维度多大都待在<b>能学习的温和区间</b>。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>代码里 transpose / masked_fill / register_buffer 在干嘛?</summary>
+      <div class="dig-body">
+        都在 <code>Head.forward</code>:<br>
+        ① <code>k.transpose(-2,-1)</code>:把 <code>k</code> 从 <span class="d d-block">8<i>T</i></span>×<span class="d d-head">32<i>head</i></span> 对调成 <span class="d d-head">32<i>head</i></span>×<span class="d d-block">8<i>T</i></span>,
+        这样 <code>q @ kᵀ</code> 才乘得出 <span class="d d-block">8<i>T</i></span>×<span class="d d-block">8<i>T</i></span> 分数表。<b>只为形状对得上,不改数值。</b><br>
+        ② <code>masked_fill(tril==0, -inf)</code>:就是<b>掩码</b>,把未来位置填 -∞,softmax 后归零。<br>
+        ③ 那张 <code>tril</code> 用 <code>register_buffer</code> 挂成<b>常量</b>(不训练,但随 <code>.to(device)</code> 搬家),区别于会被梯度拧的 <code>nn.Parameter</code>。
+      </div>
+    </details>
+    <p class="next-hint">下一步:有了权重表 <b>wei</b>,拿它去聚合 <b>value</b>,得到每个位置的新向量。</p>
+  </section>
+
+  <!-- ============ STEP 6 ============ -->
+  <section class="panel" id="panel4">
+    <h2>Step 6 · 加权聚合,与一次 forward 的全貌</h2>
+    <p class="lead">
+      最后一步:用权重表 <code>wei</code> 去对所有 <code>value</code> 加权求和,
+      <code>out = wei @ v</code> —— 这正好对应 Step 3 的 <code>c = a @ b</code>。
+      每个位置由此得到一根"<b>已经看过它的历史</b>"的新向量。
+    </p>
+
+    <div class="sub-h"><span class="badge">A</span>聚合:out = wei @ v(点一行,看它怎么把历史揉成一根新向量)</div>
+    <p class="lead" style="margin-bottom:6px">
+      和 Step 3 的 <code>c = a @ b</code> 是<b>同一件事</b> —— 用权重表 <code>wei</code> 对 <code>value</code> 加权求和。
+      唯一不同:这里的权重<b>不再均匀</b>(是 Step 5 按相关性算出来的),相关的位置占比大。<b>点 <code>wei</code> 任意一行</b>,看 <code>out</code> 那一行怎么来。
+    </p>
+    <div class="agg">
+      <div>
+        <div class="label-sm">权重 wei(4×4,每行和=1)</div>
+        <div class="mgrid" id="aggWei" style="grid-template-columns:repeat(4,1fr)"></div>
+      </div>
+      <span class="op">@</span>
+      <div>
+        <div class="label-sm">value v(4 位置 × 3 维示意)</div>
+        <div class="mgrid" id="aggV" style="grid-template-columns:repeat(3,1fr)"></div>
+      </div>
+      <span class="op">=</span>
+      <div>
+        <div class="label-sm">out(4 × 3)</div>
+        <div class="mgrid" id="aggOut" style="grid-template-columns:repeat(3,1fr)"></div>
+      </div>
+    </div>
+    <div id="aggBreak"></div>
+    <p class="lead" style="margin:14px 0 0;font-size:13px">
+      <code>out</code> 就是每个位置"<b>看过历史后</b>"的新向量。权重均匀 → 就是 Step 3 的死平均;权重由内容算出来 → 才叫<b>注意力</b>。
+    </p>
+
+    <details class="dig">
+      <summary><code>wei @ v</code> 在算什么?<code>wei</code> 是不是就"全部"了,<code>out</code> 只是 <code>v</code> 的拷贝?</summary>
+      <div class="dig-body">
+        注意力分<b>两半</b>,角色完全不同:<br>
+        ① <b>算权重(路由)</b>:<code>q·k → 缩放 → 掩码 → softmax</code> 得到 <code>wei</code> —— 一张"<b>谁看谁、各看多少</b>"的调度表,
+        每行是<b>和为 1 的比例,本身不含任何内容</b>。两个意思天差地别的句子也可能算出相同的 <code>wei</code>,真正区分它们的是 <code>v</code>。
+        所以 <code>wei</code> <b>不是"全部"</b>,它是"空的",内容全在 <code>v</code> 里。<br>
+        ② <b>搬内容(聚合)</b>:<code>wei @ v</code> 才是<b>信息真正跨位置流动</b>的一步,也是注意力的主戏。<br>
+        <code>out</code> <b>不是拷贝</b>,是<b>加权混合出的新向量</b>。看上面 <code>out</code> 任意一行:若该行权重是 <code>[0.7, 0.2, 0.1]</code>,
+        则 <code>out = 0.7·v₀ + 0.2·v₁ + 0.1·v₂</code> —— 一根<b>原来不存在</b>的向量,既不是 <code>v₀</code> 也不是任何单行 <code>v</code>。
+        只有当某个权重 = 1、其余 = 0(硬注意力)时,<code>out</code> 才恰好等于某一行 <code>v</code>,那才叫"拷贝";一般 softmax 出来都是小数,所以是<b>混合</b>。
+      </div>
+    </details>
+    <details class="dig">
+      <summary><code>out</code> 的形状(高、宽)是怎么定的?</summary>
+      <div class="dig-body">
+        矩阵乘法 <code>(m×n) @ (n×p) = (m×p)</code>。这里 <code>wei</code> 是 <code>T×T</code>,<code>v</code> 是 <code>T×</code><span class="d d-head">head_size</span>,
+        所以 <code>out = wei @ v</code> 是 <code>T×</code><span class="d d-head">head_size</span>:<br>
+        · <b><code>out</code> 的高 = <code>wei</code> 的高</b>(<code>T</code> 个位置,每个位置输出一行结果);<br>
+        · <b><code>out</code> 的宽 = <code>v</code> 的宽</b>(<span class="d d-head">head_size</span>,每个位置混出的新向量仍是 <span class="d d-head">head_size</span> 维)。<br>
+        中间那个 <code>T</code> 被<b>消掉</b>了 —— 这正是"把 <code>T</code> 个 value 沿位置维<b>加权求和、压成一根</b>"的数学体现:
+        聚合前每个位置面对 <code>T</code> 个历史向量,聚合后只剩它自己那一根。
+      </div>
+    </details>
+
+    <div class="sub-h"><span class="badge">B</span>放进模型:一次 forward 走完整条路</div>
+    <p class="lead" style="margin-bottom:8px">代码里 <code>AttentionLanguageModel.forward</code> 就是这条链:</p>
+    <div class="flow">
+      <div class="fc">idx<small>输入字符</small></div>
+      <div class="fa">→</div>
+      <div class="fc">tok_emb + pos_emb<small>内容 + 位置</small></div>
+      <div class="fa">→</div>
+      <div class="fc">自注意力头<small>q,k,v → wei → wei@v</small></div>
+      <div class="fa">→</div>
+      <div class="fc">lm_head<small>映射回词表</small></div>
+      <div class="fa">→</div>
+      <div class="fc">logits<small>下一字符打分</small></div>
+    </div>
+    <div class="note" style="border-style:solid;background:#fff">
+      🔑 <b>全章其实就两个 <code>forward</code>,而且是<b>承上启下</b>的 —— 抓住这点就抓住了第 2 章。</b>
+      <table class="truth" style="margin:8px 0 4px">
+        <tr><th>谁的 forward</th><th>干的事</th><th>角色</th></tr>
+        <tr>
+          <td class="lbl"><code>Head</code><br>.forward</td>
+          <td>一个<b>零件</b>:输入 <span class="d d-emb">32<i>n_embd</i></span> 的向量 → q·k、缩放、掩码、softmax、<code>wei@v</code> → 输出 <span class="d d-head">32<i>head</i></span> 的"看过历史"向量。<b>这是本章全新的东西。</b></td>
+          <td class="sum">启下<br><small style="font-family:system-ui;color:var(--ink2)">新机制</small></td>
+        </tr>
+        <tr>
+          <td class="lbl"><code>Attention<br>LM</code><br>.forward</td>
+          <td><b>总装线</b>:嵌入(tok+pos)→ <b>调用</b> <code>Head.forward</code> → <code>lm_head</code> 映射回词表 → <code>cross_entropy</code>。<b>这就是第 1 章那条老骨架,只多插了一行 <code>x = sa_head(x)</code>。</b></td>
+          <td class="sum">承上<br><small style="font-family:system-ui;color:var(--ink2)">老骨架</small></td>
+        </tr>
+      </table>
+      <p class="lead" style="margin:6px 0 0;font-size:13px">
+        <b>外层承接 bigram</b>(嵌入→logits→交叉熵一字没改),<b>内层启出新本事</b>(把"看过去"封成零件)。bigram 只有一个 forward,因为它没有零件可调用。
+      </p>
+    </div>
+
+    <details class="dig">
+      <summary>那 <code>loss</code> 到底怎么从 <code>logits</code> 算出来?(慢动作)</summary>
+      <div class="dig-body">
+        <code>logits</code> 是 <span class="d d-batch">32<i>B</i></span>×<span class="d d-block">8<i>T</i></span>×<span class="d d-vocab">65<i>vocab</i></span>,<code>targets</code> 是 <span class="d d-batch">32<i>B</i></span>×<span class="d d-block">8<i>T</i></span>(每位置"真正下一个字符"id,偏移 1)。
+        <span class="term" data-term="交叉熵 · cross entropy" data-key="cross-entropy" data-def="衡量「预测概率分布」和「正确答案」的差距:把模型给正确字符的概率 p 取 -log(p)。p 越高损失越小。">交叉熵</span> 只认"一摞预测+一摞答案",先<b>摊平</b>成 <b>(256, 65)</b> 和 <b>(256,)</b> ——
+        <b><span class="d d-batch">32</span>×<span class="d d-block">8</span>=256 道独立的"预测下一字符"小考题</b>。<br>
+        逐题:65 个分数 → softmax → 取"正确答案"被分到的概率 <code>p</code> → 损失 <code>-log(p)</code>(p 越高越不扣分);256 题取平均 = 那个 <code>loss</code>。<br>
+        <b>和第 1 章 bigram 同一行、同一算法</b> —— 区别只是 bigram 的 65 个分数只看当前 1 个字符,attention 的分数来自<b>已吸收前文</b>的向量。<b>判分没变,被判的预测信息更足了。</b>
+      </div>
+    </details>
+    <details class="dig">
+      <summary>为什么要多一个 <code>pos_emb</code> 位置嵌入?</summary>
+      <div class="dig-body">
+        注意力本身<b>看不见顺序</b> —— 把输入打乱,输出只会跟着一起打乱,权重不变。
+        所以要额外加一份"<span class="term" data-term="位置嵌入 · positional embedding" data-key="positional-embedding" data-def="注意力本身看不出顺序,所以给「第几个位置」也学一个向量,加到 token 嵌入上,模型才知道谁先谁后。">位置信息</span>"告诉模型"这是第几个位置",<code>x = tok_emb + pos_emb</code> 就是把内容和位置相加。
+      </div>
+    </details>
+
+    <div class="sub-h"><span class="badge">C</span>参数真身:训练到底练出了什么</div>
+    <p class="lead" style="margin-bottom:6px">
+      和第 1 章那张 6×6 表一样,训练的产物就是<b>一堆数字旋钮</b>。第 2 章的"真身"是<b>这 6 块矩阵</b> ——
+      出生是随机雪花,训练后被梯度调出结构。<b>点按钮看"训练前 → 训练后"。</b>
+    </p>
+    <div class="btn-row" id="truthBtns">
+      <button class="btn" onclick="setTruth(false)">训练前(随机雪花)</button>
+      <button class="btn primary" onclick="setTruth(true)">训练后(有结构)</button>
+    </div>
+    <div class="truths" id="truths"></div>
+    <p class="lead" style="margin:2px 0 0;font-size:12.5px">
+      (格子是<b>示意</b>,不是真实数值;真实每块更大,如 <code>token_emb</code> 是 <span class="d d-vocab">65<i>vocab</i></span>×<span class="d d-emb">32<i>n_embd</i></span>。
+      <code>q/k/v/wei/out</code> 都<b>不在</b>这 6 块里 —— 它们是现算的中间产物,不是被训练的旋钮。)
+    </p>
+    <details class="dig">
+      <summary>这 6 块各多大?参数量怎么算(对照 bigram)?</summary>
+      <div class="dig-body">
+        和 bigram 用<b>同一个</b>交叉熵、<b>同一套</b>梯度下降,只是<b>旋钮变多了</b>:
+        <table class="truth">
+          <tr><th>模型</th><th>训练出来的"旋钮"(参数真身)</th><th>规模</th></tr>
+          <tr>
+            <td class="lbl">第1章<br>bigram</td>
+            <td><code>token_embedding_table</code><br><small style="font-family:system-ui;color:var(--ink2)">一张 <span class="d d-vocab">65<i>vocab</i></span>×<span class="d d-vocab">65<i>vocab</i></span> 表,既是"内容"又直接是"下一字符打分"</small></td>
+            <td class="sum"><span class="d d-vocab">65</span>×<span class="d d-vocab">65</span><br>≈ 4,225</td>
+          </tr>
+          <tr>
+            <td class="lbl">第2章<br>attention</td>
+            <td>
+              <code>token_embedding</code> <span class="d d-vocab">65<i>vocab</i></span>×<span class="d d-emb">32<i>n_embd</i></span><br>
+              <code>position_embedding</code> <span class="d d-block">8<i>block</i></span>×<span class="d d-emb">32<i>n_embd</i></span><br>
+              <code>Wq</code>/<code>Wk</code>/<code>Wv</code> 各 <span class="d d-emb">32<i>n_embd</i></span>×<span class="d d-head">32<i>head</i></span><br>
+              <code>lm_head</code> <span class="d d-head">32<i>head</i></span>×<span class="d d-vocab">65<i>vocab</i></span>
+            </td>
+            <td class="sum">2080+256<br>+1024×3<br>+2080<br>≈ 9,488</td>
+          </tr>
+        </table>
+      </div>
+    </details>
+    <details class="dig">
+      <summary>这些维度谁定的、越大越好吗?head_size 必须等于 n_embd 吗?</summary>
+      <div class="dig-body">
+        <span class="d d-emb">32<i>n_embd</i></span> 和 <span class="d d-head">32<i>head</i></span> 都是<b>你自己设的超参(容量旋钮)</b>:维度越大能塞的信息越多 ——
+        但<b>不是无脑越大越好</b>,参数算力跟着涨、数据少会过拟合。取 32 是<b>玩具级</b>(GPT-2 是 768,GPT-3 是 12288)。<br>
+        <b>head_size 不"必须等于" n_embd:</b><code>nn.Linear(n_embd, head_size)</code> 里<b>输入被钉死成 <span class="d d-emb">32<i>n_embd</i></span></b>,
+        <b>输出 <span class="d d-head">head_size</span> 随你挑</b>。本章<b>单头</b>图省事才设相等;第 3 章<b>多头</b>时每个头取 <code>head_size = n_embd / 头数</code>(更小),拼起来才凑回 <span class="d d-emb">32<i>n_embd</i></span>。<br>
+        方向上:<b>比 n_embd 小</b>是常用的(多头压缩,每头看一个子空间);<b>比 n_embd 大基本是冗余</b> —— 输出再多也只是 <span class="d d-emb">32<i>n_embd</i></span> 维输入的线性组合,装不下更多信息。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>哪些"不是真身"?(q / k / v / wei / out 别记混)</summary>
+      <div class="dig-body">
+        它们每来一个输入就<b>现算一遍</b>,从不存储,梯度下降也不直接拧:
+        <ul class="ghost-list">
+          <li><code>q</code> / <code>k</code> / <code>v</code> 向量 —— 拿旋钮 <code>Wq/Wk/Wv</code> 乘 <code>x</code> 临时算的。</li>
+          <li>得分表 <code>wei</code> 和它的 softmax 权重 —— 当场算的中间结果。<b>"那张表"不是参数。</b></li>
+          <li><code>out</code> —— <code>Head.forward</code> 的返回值,是"看过历史"的新向量;<b>不是三张权重表</b>,真身 <code>Wq/Wk/Wv</code> 一直留在模块里。</li>
+          <li>被拧的只有矩阵 <code>W</code>(旋钮),<code>q/k/v/wei/out</code> 全是"旋钮+输入"算出的咖啡。</li>
+        </ul>
+      </div>
+    </details>
+    <details class="dig">
+      <summary>本章出现了两个 softmax,别混</summary>
+      <div class="dig-body">
+        ① Step 5 内部那次,作用在 <code>wei</code> 上,决定"对每个历史位置关注多少";
+        ② 最末尾那次,作用在 <code>logits</code>(65 个)上,决定"下一个字符是谁" ——
+        <b>第 ② 个才和 bigram 结尾那次是同一个</b>。softmax 自己没有参数。
+      </div>
+    </details>
+
+    <div class="sub-h"><span class="badge">D</span>跑起来:loss 怎么跌破 bigram 那道 2.47 的墙</div>
+    <p class="lead" style="margin-bottom:6px">
+      <code>02_attention.py</code> 训练 5000 步。点「<b>▶ 跑训练</b>」,看注意力的 loss 一路下探,<b>穿过</b> bigram 卡死的 <b>2.47</b> 虚线 —— 这就是这一章的兑现。
+    </p>
+    <div class="btn-row" id="lossBtns">
+      <button class="btn primary" onclick="trainLoss()">▶ 跑训练</button>
+      <button class="btn" onclick="resetLoss()">复位</button>
+    </div>
+    <div class="loss-wrap"><svg id="lossSvg" viewBox="0 0 780 240"></svg></div>
+    <div class="loss-leg">
+      <span><i style="border-top-style:solid;border-color:var(--accent)"></i>attention(本章)val loss</span>
+      <span><i style="border-top-style:dashed;border-color:#9a948a"></i>bigram 的墙 ≈ 2.47</span>
+      <span style="margin-left:auto;font-family:var(--mono)">step <b id="lossStepEl" style="color:var(--ink)">0</b> · loss <b id="lossValEl" style="color:var(--accent)">4.17</b></span>
+    </div>
+    <div class="note" id="lossNote"></div>
+    <p class="lead" style="margin:6px 0 14px;font-size:12px">(示意曲线:数量级与趋势对得上 <code>02_attention.py</code> 的实际打印,非逐位精确复现。)</p>
+
+    <div class="note" style="border-style:solid;background:#fff">
+      🎯 <b>结果:打破 2.5 的墙。</b>装上注意力后,每个位置都能参考前文,
+      <code>val loss</code> 终于跌破 bigram 那道 <code>2.47</code> 的天花板。这就是这一章的兑现。
+    </div>
+    <p class="next-hint">点右下角「完成 🎉」收下这一章。</p>
+  </section>
+
+  <!-- ============ 上一步 / 下一步 ============ -->
+  <div class="nav">
+    <button class="btn ghost" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<script>
+/* =====================================================================
+   步骤切换(与 01 页一致:tab + 上一步/下一步 + #step-N 深链)
+   ===================================================================== */
+const LAST = 5;
+let cur = 0;
+const tabs = document.querySelectorAll('.step-tab');
+// 显示顺序:Step 1=panel0,Step 2=panelShape(新增),Step 3..6=panel1..4
+const panels = ['panel0','panelShape','panel1','panel2','panel3','panel4'].map(id=>document.getElementById(id));
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+
+function goto(i){
+  cur = Math.max(0, Math.min(LAST, i));
+  tabs.forEach(t=>t.classList.toggle('active', +t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active', idx===cur));
+  prevBtn.disabled = cur===0;
+  nextBtn.textContent = cur===LAST ? '完成 🎉' : '下一步 →';
+  if(cur===0) initSeq();
+  if(cur===1) initShape();
+  if(cur===2) matStep(0);
+  if(cur===3) projInit();
+  if(cur===4) heatStep(0);
+  if(cur===5){ renderAgg(null); setTruth(true); resetLoss(); }
+  const hash = '#step-'+(cur+1);
+  if(location.hash !== hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function stepFromHash(){
+  const m = /^#step-(\d+)$/.exec(location.hash);
+  if(!m) return 0;
+  const n = parseInt(m[1],10)-1;
+  return (n>=0 && n<=LAST) ? n : 0;
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+prevBtn.addEventListener('click',()=>goto(cur-1));
+nextBtn.addEventListener('click',()=>{ if(cur===LAST){ celebrate(); } else { goto(cur+1); } });
+
+/* 一组步骤按钮:点谁谁高亮(primary),其余中性 —— 与全站按钮规则一致 */
+function setActiveBtn(containerId, n){
+  document.querySelectorAll('#'+containerId+' .btn').forEach((b,i)=>
+    b.classList.toggle('primary', i===n));
+}
+
+/* =====================================================================
+   STEP 1:因果序列 —— 点位置 t,高亮 0..t,灰掉未来
+   ===================================================================== */
+const CHARS = ['T','o','␣','b','e','␣','o','r'];
+let selPos = CHARS.length-1;
+function initSeq(){
+  const idxRow = document.getElementById('posIdx');
+  idxRow.innerHTML = CHARS.map((_,i)=>`<span>t=${i}</span>`).join('');
+  renderSeq();
+}
+function renderSeq(){
+  const row = document.getElementById('seq8');
+  row.innerHTML = CHARS.map((ch,i)=>{
+    let cls='scell';
+    if(i<selPos) cls+=' see';
+    else if(i===selPos) cls+=' see cur';
+    else cls+=' future';
+    return `<div class="${cls}" data-i="${i}">${ch}</div>`;
+  }).join('');
+  row.querySelectorAll('.scell').forEach(c=>
+    c.addEventListener('click',()=>{ selPos=+c.dataset.i; renderSeq(); }));
+  document.getElementById('seqCaption').innerHTML =
+    `位置 <b>t=${selPos}</b>(字符 "${CHARS[selPos]}")能看到 <b>${selPos+1}</b> 个位置(0..${selPos},橙色),`
+    + `看不到后面 <b>${CHARS.length-1-selPos}</b> 个未来位置(灰色)。`;
+}
+
+/* =====================================================================
+   STEP 2(新增):数据的形状 (B,T,C)
+   ===================================================================== */
+const SHAKE = "First Citizen: Before we proceed any further, hear me speak. All: Speak, speak. First Citizen: You are all resolved rather to die than to famish? You know Caius Marcius is chief enemy to the people.";
+const BROWS = 5;     // 只画 5 条代表(旁注"共 32 条")
+const TLEN = 8;      // block_size
+let batchSeed = 0;
+let pickedCell = null;
+const showChar = c => (c===' ' ? '␣' : c);
+function batchStarts(){
+  const max = SHAKE.length - TLEN, st=[];
+  for(let r=0;r<BROWS;r++) st.push(((batchSeed*131 + r*617 + 7) % max + max) % max);
+  return st;
+}
+function initShape(){
+  pickedCell = null;
+  if(pipeTimer){ clearInterval(pipeTimer); pipeTimer=null; }
+  document.getElementById('vecPop').style.display='none';
+  renderBatch(); pipeStage(0); axChip(-1);
+}
+function renderBatch(){
+  const starts = batchStarts();
+  document.getElementById('bgridCols').innerHTML =
+    Array.from({length:TLEN},(_,j)=>`<span>t=${j}</span>`).join('');
+  const host = document.getElementById('bgridRows'); host.innerHTML='';
+  starts.forEach((s,r)=>{
+    const row=document.createElement('div'); row.className='brow';
+    let cells = `<span class="rlab">${r}</span>`;
+    for(let j=0;j<TLEN;j++){
+      const ch = showChar(SHAKE[s+j]);
+      const pk = pickedCell && pickedCell[0]===r && pickedCell[1]===j;
+      cells += `<div class="bcell${pk?' picked':''}" data-r="${r}" data-j="${j}" data-ch="${ch}">${ch}</div>`;
+    }
+    row.innerHTML = cells; host.appendChild(row);
+  });
+  host.querySelectorAll('.bcell').forEach(c=>c.addEventListener('click',()=>{
+    pickedCell=[+c.dataset.r,+c.dataset.j]; renderBatch(); showVec(c.dataset.ch);
+  }));
+}
+function newBatch(){ batchSeed++; pickedCell=null; document.getElementById('vecPop').style.display='none'; renderBatch(); }
+function vhash(ch,i){ const x=Math.sin((ch.charCodeAt(0)||32)*12.9898 + i*78.233)*43758.5453; return ((x-Math.floor(x))*2-1).toFixed(2); }
+function showVec(ch){
+  const pop=document.getElementById('vecPop'); pop.style.display='block';
+  let boxes=''; for(let i=0;i<8;i++) boxes+=`<div class="vc">${vhash(ch,i)}</div>`;
+  pop.innerHTML =
+    `<div class="vp-head">字符 <b>"${ch}"</b> 进模型后,不是<b>一个</b>数,而是一根 <span class="axC">C 维</span>向量(查嵌入表得到):</div>`
+    +`<div class="vp-vec">${boxes}<span class="vp-more">… 共 n_embd=32 个数</span></div>`
+    +`<div class="shape-sub" style="margin:8px 0 0">于是整个 batch 从 <span class="axB">B</span>×<span class="axT">T</span> 的<b>整数表</b>,长成 <span class="axB">B</span>×<span class="axT">T</span>×<span class="axC">C</span> 的<b>向量立方体</b> —— 这就是 <code>(B,T,C)</code>。(格子里数字是随手示意,非真实权重)</div>`;
+}
+const PIPE_NOTE = [
+  '<b>idx</b>:刚取出的 batch,只有 <span class="axB">B</span>×<span class="axT">T</span> 个<b>整数 id</b> —— 还<b>没有 C</b>,每个位置就是一个字符编号。',
+  '<b>嵌入后</b>:每个 id 查表换成 <span class="axC">C = n_embd = 32</span> 维向量,再加位置向量。<span class="axC">C</span> 从无到有 = <b>32</b>。',
+  '<b>投影后</b>:x 过三个 <code>nn.Linear</code> 变出 q、k、v 三个张量,<b>各自</b>形状都是 <span class="axB">B</span>×<span class="axT">T</span>×<span class="axC">32</span>(这里 <span class="axC">C = head_size</span>)。',
+  '<b>聚合后</b>:<code>wei @ v</code> 得到每个位置"看过历史"的新向量,形状不变,<span class="axC">C = head_size = 32</span>。',
+  '<b>映射回词表</b>:<code>lm_head</code> 把 <span class="axC">C</span> 从 32 变成 <span class="axC">vocab_size = 65</span> —— 每个位置对"下一个字符是谁"的 65 个打分。',
+];
+function pipeStage(n){
+  document.querySelectorAll('#pipe .pstage').forEach((el,i)=>el.classList.toggle('on', i===n));
+  document.getElementById('pipeNote').innerHTML = PIPE_NOTE[n];
+}
+const AX_NOTE = [
+  '<span class="axB">batch_size = 32 → B</span>:一个 batch <b>并行几条句子</b>。改成 64 不影响 T / C。',
+  '<span class="axT">block_size = 8 → T</span>:一条句子<b>几个位置</b>(往回看几个 token)。注意它是 <b>8,不是 32</b>。',
+  '<span class="axC">n_embd = 32 → C</span>:嵌入后每个位置向量<b>多长</b>。和 batch_size 同为 32,纯属撞脸。',
+  '<span class="axC">head_size = 32 → C</span>:注意力头输出向量<b>多长</b>。单头时设得和 n_embd 一样,多头会更小。',
+];
+function axChip(n){
+  document.querySelectorAll('#axChips .axchip').forEach((el,i)=>el.classList.toggle('on', i===n));
+  document.getElementById('axNote').innerHTML = n<0
+    ? '点上面任意一个超参,看它定的是 <span class="axB">B</span> / <span class="axT">T</span> / <span class="axC">C</span> 哪根轴。'
+    : AX_NOTE[n];
+}
+/* 流水线动画:从 idx 一路点亮到 logits,看 C 怎么逐层变 */
+let pipeTimer=null;
+function pipeAnim(){
+  if(pipeTimer){ clearInterval(pipeTimer); pipeTimer=null; }
+  let i=0; pipeStage(0);
+  pipeTimer=setInterval(()=>{
+    i++;
+    if(i>4){ clearInterval(pipeTimer); pipeTimer=null; return; }
+    pipeStage(i);
+  }, 950);
+}
+
+/* =====================================================================
+   STEP 3:A 段矩阵
+   ===================================================================== */
+const A_ones=[[1,1,1],[1,1,1],[1,1,1]];
+const A_tril=[[1,0,0],[1,1,0],[1,1,1]];
+const A_norm=[[1,0,0],[0.5,0.5,0],[0.3333,0.3333,0.3333]];
+const MB=[[0,1],[2,3],[4,5]];
+const MC=[[0,1],[1,2],[2,3]];
+const f2=v=>(v===0?'0':(Number.isInteger(v)?v.toString():v.toFixed(2)));
+function renderMat(id,data,opt,onRowClick){
+  const g=document.getElementById(id); g.innerHTML='';
+  data.forEach((row,ri)=>row.forEach(v=>{
+    const c=document.createElement('div'); c.className='cell';
+    if(v===0) c.classList.add('zero');
+    else if(opt==='hot') c.classList.add('hot');
+    c.textContent=f2(v);
+    if(onRowClick){ c.classList.add('clickable'); c.addEventListener('click',()=>onRowClick(ri)); }
+    g.appendChild(c);
+  }));
+}
+function clearRowMarks(){
+  document.querySelectorAll('#matA .cell,#matB .cell,#matC .cell')
+    .forEach(c=>c.classList.remove('rowsel','rowcontrib'));
+}
+function markRow(gridId,rowIdx,cls){
+  const cols = gridId==='matA'?3:2;
+  const cells=document.getElementById(gridId).children;
+  for(let ci=0;ci<cols;ci++){ const el=cells[rowIdx*cols+ci]; if(el) el.classList.add(cls); }
+}
+const wf=v=>(Math.abs(v-1/3)<0.02?'⅓':(v===0.5?'½':(v===1?'1':v.toFixed(2))));
+function showBreakdown(i){
+  clearRowMarks();
+  markRow('matC',i,'rowsel'); markRow('matA',i,'rowsel');
+  for(let k=0;k<=i;k++) markRow('matB',k,'rowcontrib');
+  const a=A_norm[i]; let t1=[],t2=[];
+  for(let k=0;k<=i;k++){ t1.push(wf(a[k])+'·b'+k); t2.push(wf(a[k])+'·['+MB[k].join(',')+']'); }
+  const box=document.getElementById('matBreak'); box.style.display='block';
+  box.innerHTML='<div class="bk-head"><b>c 第 '+i+' 行</b>(位置 '+i+' 的新向量)= 它能看到的 '+(i+1)
+    +' 个位置,按权重加权求和:</div>'
+    +'<span class="bk-row">c['+i+'] = '+t1.join(' + ')+'</span>'
+    +'<span class="bk-row">     = '+t2.join(' + ')+'</span>'
+    +'<span class="bk-row">     = [<b>'+MC[i].join(', ')+'</b>]</span>';
+}
+function showCalc(on){
+  ['bzone','bgrid-wrap','czone','cgrid-wrap'].forEach(id=>
+    document.getElementById(id).style.display = on?'block':'none');
+}
+function matStep(n){
+  setActiveBtn('matBtns', n);
+  const note=document.getElementById('matnote');
+  showCalc(false);
+  document.getElementById('matBreak').style.display='none';
+  document.getElementById('dimHint').style.display='none';
+  if(n===0){ renderMat('matA',A_ones);
+    note.innerHTML='起点:<code>torch.ones(3,3)</code> 全是 1,还没有任何约束。'; }
+  if(n===1){ renderMat('matA',A_tril);
+    note.innerHTML='<b style="color:var(--c-k)">下三角</b>:<code>torch.tril</code> 把右上角清成 0 → 位置 i 对"未来"(j&gt;i)权重恒为 0。<b>这就是因果。</b>'; }
+  if(n===2){ renderMat('matA',A_norm);
+    note.innerHTML='<b style="color:var(--c-v)">归一化</b>:每行 ÷ 该行的和 → 每行加起来 = 1。第2行 [½,½];第3行 [⅓,⅓,⅓]。<b>变成了"平均"。</b>'; }
+  if(n===3){ renderMat('matA',A_norm); showCalc(true);
+    renderMat('matB',MB,'hot'); renderMat('matC',MC,'hot',showBreakdown);
+    document.getElementById('dimHint').style.display='block';
+    note.innerHTML='<code>c = a @ b</code> = 加权求和。<b>👆 点 c 的任意一行</b>,看它怎么由 b 的几行加权求和而来 ↓'; }
+}
+
+/* =====================================================================
+   STEP 3:x → q/k/v 线性投影演示
+   同一个 x,过三个不同的(确定性)矩阵,得到三个不同向量。
+   ===================================================================== */
+const PX=[2,0,1,3];
+const WQ=[[1,0,-1,0],[0,1,0,1],[1,1,0,-1],[0,-1,1,0]];
+const WK=[[0,1,1,0],[1,0,-1,1],[-1,1,0,0],[1,0,1,-1]];
+const WV=[[1,1,0,1],[0,-1,1,0],[1,0,1,1],[0,1,-1,0]];
+function matvec(x,W){ const out=[]; for(let j=0;j<4;j++){ let s=0; for(let i=0;i<4;i++) s+=x[i]*W[i][j]; out.push(s);} return out; }
+function renderVrow(id,arr,filled,cls){
+  const g=document.getElementById(id); g.innerHTML='';
+  arr.forEach(v=>{ const c=document.createElement('div');
+    c.className='vc'+(filled?(cls?' '+cls:''):' empty');
+    c.textContent=filled?v:'?'; g.appendChild(c); });
+}
+function projInit(){
+  renderVrow('pjX',PX,true);
+  renderVrow('pjQ',[0,0,0,0],false);
+  renderVrow('pjK',[0,0,0,0],false);
+  renderVrow('pjV',[0,0,0,0],false);
+  document.getElementById('projNote').innerHTML=
+    '点下面按钮:把<b>同一个 x</b> 分别乘以 Wq、Wk、Wv,看它变出三个不同的向量。';
+  document.querySelectorAll('#projBtns .btn').forEach((b,i)=>b.classList.toggle('primary', i===0));
+}
+function projGo(){
+  renderVrow('pjQ',matvec(PX,WQ),true,'cq');
+  renderVrow('pjK',matvec(PX,WK),true,'ck');
+  renderVrow('pjV',matvec(PX,WV),true,'cv');
+  document.getElementById('projNote').innerHTML=
+    '同一个 <b>x = [2,0,1,3]</b> 过三个不同矩阵 → 得到三个不同向量 q、k、v。'
+    +'每个输出数字 = x 那 4 个数的一个<b>加权组合</b>(权重藏在 W 里)。'
+    +'这三个矩阵<b>随机初始化、训练中学出来,没人手写</b>。';
+  document.querySelectorAll('#projBtns .btn').forEach((b,i)=>b.classList.toggle('primary', i===1));
+}
+
+/* =====================================================================
+   STEP 4:热力图
+   ===================================================================== */
+const T=8;
+let raw=[];
+for(let i=0;i<T;i++){ raw[i]=[]; for(let j=0;j<T;j++){
+  raw[i][j]=(Math.sin(i*1.3+j*2.1)*0.5+0.5)*18-2;
+}}
+const dscale=Math.sqrt(32);
+function heatColor(v,min,max){
+  const t=Math.max(0,Math.min(1,(v-min)/(max-min||1)));
+  const r=Math.round(240-23*t), g=Math.round(238-119*t), b=Math.round(230-143*t);
+  return {bg:`rgb(${r},${g},${b})`, fg: t>0.55?'#fff':'#6B6B68'};
+}
+function renderHeat(data,opt){
+  const h=document.getElementById('heat');
+  h.style.gridTemplateColumns=`repeat(${T},1fr)`; h.innerHTML='';
+  let flat=[].concat(...data).filter(v=>isFinite(v));
+  const min=Math.min(...flat), max=Math.max(...flat);
+  for(let i=0;i<T;i++)for(let j=0;j<T;j++){
+    const c=document.createElement('div'); c.className='hc';
+    let v=data[i][j];
+    if(v===-Infinity){ c.classList.add('mask'); c.textContent='-∞'; }
+    else { const col=heatColor(v,min,max); c.style.background=col.bg; c.style.color=col.fg; c.style.borderColor='transparent';
+      c.textContent = opt==='prob' ? (v<0.005?'':v.toFixed(2)) : v.toFixed(opt==='scaled'?1:0); }
+    h.appendChild(c);
+  }
+}
+function heatStep(n){
+  setActiveBtn('heatBtns', n);
+  const note=document.getElementById('heatnote');
+  if(n===0){ renderHeat(raw,'raw');
+    note.innerHTML='<b>① q·k 打分</b>:每个 query 和每个 key 点积。格子越深 = 越相关。现在是满表(8×8 全有值)。'; }
+  if(n===1){ const s=raw.map(r=>r.map(v=>v/dscale)); renderHeat(s,'scaled');
+    note.innerHTML='<b>② 缩放</b>:全部 ÷ √32 ≈ 5.66。数值被压小,防止下一步 softmax 被推到极端(梯度消失)。'; }
+  if(n===2){ const s=raw.map((r,i)=>r.map((v,j)=> j>i? -Infinity : v/dscale)); renderHeat(s,'scaled');
+    note.innerHTML='<b>③ 因果掩码</b>:右上角(未来,j&gt;i)设成 -∞。下一步 exp(-∞)=0,它们权重变 0。<b>这就是 Step 3 的下三角。</b>'; }
+  if(n===3){
+    const out=[];
+    for(let i=0;i<T;i++){ let row=[],ex=[],sum=0;
+      for(let j=0;j<T;j++){ const v=j>i?-Infinity:raw[i][j]/dscale; const e=v===-Infinity?0:Math.exp(v); ex.push(e); sum+=e; }
+      for(let j=0;j<T;j++) row.push(ex[j]/sum); out.push(row);
+    }
+    renderHeat(out,'prob');
+    note.innerHTML='<b>④ softmax</b>:每行变成和为 1 的权重(逐行看,加起来 = 1)。<b>这就是 Step 3 的归一化。</b>这张表就是最终 <code>wei</code>,拿去 <code>wei @ v</code> 加权求和。'; }
+}
+
+/* =====================================================================
+   STEP 5 (A):聚合 out = wei @ v —— 点 wei 一行,看 out 怎么加权求和
+   ===================================================================== */
+const AGG_TOK=['T','o','␣','b'];
+const AGG_WEI=[[1,0,0,0],[0.3,0.7,0,0],[0.2,0.1,0.7,0],[0.1,0.5,0.1,0.3]];
+const AGG_V=[[2,0,1],[1,3,0],[0,1,2],[3,1,1]];
+function aggRow(i){ const o=[0,0,0]; for(let j=0;j<=i;j++)for(let d=0;d<3;d++)o[d]+=AGG_WEI[i][j]*AGG_V[j][d]; return o; }
+const awf=v=>(v===0?'0':(Number.isInteger(v)?''+v:v.toFixed(2)));
+function renderAgg(sel){
+  const W=document.getElementById('aggWei'); W.innerHTML='';
+  AGG_WEI.forEach((row,ri)=>row.forEach(v=>{
+    const c=document.createElement('div');
+    c.className='cell clickable'+(v===0?' zero':'')+(sel===ri?' rowsel':'');
+    c.textContent=awf(v);
+    c.addEventListener('click',()=>renderAgg(ri));
+    W.appendChild(c);
+  }));
+  const Vg=document.getElementById('aggV'); Vg.innerHTML='';
+  AGG_V.forEach((row,ri)=>row.forEach(v=>{
+    const c=document.createElement('div');
+    c.className='cell'+(sel!=null&&ri<=sel&&AGG_WEI[sel][ri]>0?' rowcontrib':'');
+    c.textContent=v; Vg.appendChild(c);
+  }));
+  const Og=document.getElementById('aggOut'); Og.innerHTML='';
+  for(let i=0;i<4;i++){ aggRow(i).forEach(v=>{
+    const c=document.createElement('div'); c.className='cell hot'+(sel===i?' rowsel':'');
+    c.textContent=v.toFixed(1); Og.appendChild(c);
+  }); }
+  const box=document.getElementById('aggBreak'); box.style.display='block';
+  if(sel==null){ box.innerHTML='<div class="bk-head">👆 点 <b>wei</b> 任意一行,看 <b>out</b> 那一行怎么由 value 加权求和而来。</div>'; return; }
+  let terms=[], nums=[];
+  for(let j=0;j<=sel;j++){ if(AGG_WEI[sel][j]===0) continue;
+    terms.push(awf(AGG_WEI[sel][j])+'·v'+j);
+    nums.push(awf(AGG_WEI[sel][j])+'·['+AGG_V[j].join(',')+']'); }
+  const o=aggRow(sel);
+  box.innerHTML='<div class="bk-head"><b>out 第 '+sel+' 行</b>(位置 '+sel+' "'+AGG_TOK[sel]+'" 看过历史后的新向量)= 它能看到的位置按 wei 加权求和:</div>'
+    +'<span class="bk-row">out['+sel+'] = '+terms.join(' + ')+'</span>'
+    +'<span class="bk-row">       = '+nums.join(' + ')+'</span>'
+    +'<span class="bk-row">       = [<b>'+o.map(v=>v.toFixed(1)).join(', ')+'</b>]</span>';
+}
+
+/* STEP 5 (C):参数真身 mini-grid —— 训练前(随机)↔ 训练后(有结构) */
+const TRUTHS=[
+  {name:'token_emb',size:'65×32'},{name:'pos_emb',size:'8×32'},
+  {name:'Wq',size:'32×32'},{name:'Wk',size:'32×32'},
+  {name:'Wv',size:'32×32'},{name:'lm_head',size:'32×65'},
+];
+const TG_R=6, TG_C=6;
+let truthTrained=true;
+function truthColor(t){ t=Math.max(0,Math.min(1,t)); return `rgb(${Math.round(247-32*t)},${Math.round(230-112*t)},${Math.round(222-143*t)})`; }
+function truthNoise(a){ const x=Math.sin(a*127.1)*43758.5453; return x-Math.floor(x); }
+function renderTruths(){
+  const host=document.getElementById('truths'); host.innerHTML='';
+  TRUTHS.forEach((m,mi)=>{
+    let cells='';
+    for(let i=0;i<TG_R;i++)for(let j=0;j<TG_C;j++){
+      const t = truthTrained ? (0.5+0.45*Math.sin(i*0.9+j*1.25+mi*1.7)) : truthNoise(mi*97+i*13+j*7+1);
+      cells+=`<i style="background:${truthColor(t)}"></i>`;
+    }
+    const card=document.createElement('div'); card.className='tcard';
+    card.innerHTML=`<div class="tname">${m.name}</div>`
+      +`<div class="tmini" style="grid-template-columns:repeat(${TG_C},1fr)">${cells}</div>`
+      +`<div class="tsize">${m.size}</div>`;
+    host.appendChild(card);
+  });
+}
+function setTruth(trained){
+  truthTrained=trained;
+  document.querySelectorAll('#truthBtns .btn').forEach((b,i)=>b.classList.toggle('primary', i===(trained?1:0)));
+  renderTruths();
+}
+
+/* =====================================================================
+   STEP 6 (D):loss 曲线 —— 像第 1 章那样平滑生长 + 移动圆点,穿过 2.47 墙
+   ===================================================================== */
+const L_START=Math.log(65), L_WALL=2.47, L_FLOOR=2.31, L_TAU=380, L_SMAX=5000;
+const LY_MIN=2.2, LY_MAX=4.3;
+const lcX=s=>44+s/L_SMAX*716;
+const lcY=v=>16+(LY_MAX-v)/(LY_MAX-LY_MIN)*198;
+// 示意曲线:指数下降 → 收敛到 ~2.31 的地板,叠加极小抖动更像真实曲线(非逐位精确复现)
+function lossAt(s){ const base=L_FLOOR+(L_START-L_FLOOR)*Math.exp(-s/L_TAU); const wob=s>150?0.012*Math.sin(s/120):0; return Math.max(L_FLOOR,base+wob); }
+let lossRAF=null;
+function drawLoss(upto){
+  const svg=document.getElementById('lossSvg'); if(!svg) return;
+  let s='';
+  const wy=lcY(L_WALL);
+  s+=`<line x1="44" y1="${wy.toFixed(1)}" x2="760" y2="${wy.toFixed(1)}" stroke="#9a948a" stroke-width="1.5" stroke-dasharray="6 4"/>`;
+  s+=`<text x="758" y="${(wy-6).toFixed(1)}" text-anchor="end" font-size="12" fill="#9a948a" font-family="monospace">bigram 墙 2.47</text>`;
+  [2.5,3.0,3.5,4.0].forEach(v=>{ const y=lcY(v); s+=`<text x="38" y="${(y+3).toFixed(1)}" text-anchor="end" font-size="11" fill="#b5afa3" font-family="monospace">${v.toFixed(1)}</text>`; });
+  [0,1000,2000,3000,4000,5000].forEach(it=>{ s+=`<text x="${lcX(it).toFixed(1)}" y="232" text-anchor="middle" font-size="11" fill="#b5afa3" font-family="monospace">${it}</text>`; });
+  let d=''; const N=140;
+  for(let i=0;i<=N;i++){ const ss=upto*(i/N); d+=(i===0?'M':'L')+lcX(ss).toFixed(1)+','+lcY(lossAt(ss)).toFixed(1)+' '; }
+  s+=`<path d="${d}" fill="none" stroke="#D97757" stroke-width="2.5"/>`;
+  const lv=lossAt(upto);
+  s+=`<circle cx="${lcX(upto).toFixed(1)}" cy="${lcY(lv).toFixed(1)}" r="5" fill="#D97757" stroke="#fff" stroke-width="2"/>`;
+  svg.innerHTML=s;
+  const stepEl=document.getElementById('lossStepEl'), valEl=document.getElementById('lossValEl');
+  if(stepEl) stepEl.textContent=Math.round(upto);
+  if(valEl) valEl.textContent=lv.toFixed(2);
+  const note=document.getElementById('lossNote');
+  if(upto<5) note.innerHTML='<b>起点</b>:还没训练,loss ≈ <code>4.17</code> = <code>ln(65)</code>,等于"<b>65 个字符里瞎猜</b>"。点「▶ 跑训练」看它往下掉。';
+  else if(lv>=L_WALL) note.innerHTML=`<b>训练中</b>:loss ≈ <code>${lv.toFixed(2)}</code>,正在逼近 bigram 那道 2.47 的墙……`;
+  else note.innerHTML=`loss ≈ <code>${lv.toFixed(2)}</code> —— <b style="color:var(--accent)">已跌破 2.47!</b>这是只看 1 个字符的 bigram 永远到不了的地方。`;
+}
+function resetLoss(){ if(lossRAF){ cancelAnimationFrame(lossRAF); lossRAF=null; } drawLoss(0); }
+function trainLoss(){
+  if(lossRAF){ cancelAnimationFrame(lossRAF); lossRAF=null; }
+  const DUR=2800, t0=performance.now();
+  function frame(now){
+    const t=Math.min(1,(now-t0)/DUR);
+    const e=1-Math.pow(1-t,2);   // ease-out:前段快、后段慢,贴合真实 loss 曲线
+    drawLoss(L_SMAX*e);
+    if(t<1) lossRAF=requestAnimationFrame(frame); else lossRAF=null;
+  }
+  lossRAF=requestAnimationFrame(frame);
+}
+
+/* =====================================================================
+   通关庆祝:横幅 + confetti(纯 vanilla)
+   ===================================================================== */
+function showCongrats(){
+  const old=document.getElementById('congrats'); if(old) old.remove();
+  const el=document.createElement('div'); el.id='congrats'; el.className='congrats';
+  el.innerHTML='🎉 第 2 章 · 自注意力 通关!<span>从"往回看"到加权聚合,你已看懂整条链路</span>';
+  document.body.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>el.remove(),500); }, 3400);
+}
+function launchConfetti(){
+  const cv=document.createElement('canvas');
+  cv.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9999';
+  document.body.appendChild(cv);
+  const ctx=cv.getContext('2d'); cv.width=window.innerWidth; cv.height=window.innerHeight;
+  const colors=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const parts=[];
+  for(let i=0;i<160;i++) parts.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    r:4+Math.random()*5,c:colors[i%colors.length],vx:(Math.random()-0.5)*3.2,vy:2+Math.random()*4,
+    rot:Math.random()*Math.PI,vr:(Math.random()-0.5)*0.3,rect:Math.random()<0.55});
+  const start=performance.now(), DUR=3800;
+  function frame(now){
+    const t=now-start; ctx.clearRect(0,0,cv.width,cv.height);
+    const fade=t>DUR-900?Math.max(0,(DUR-t)/900):1; ctx.globalAlpha=fade;
+    parts.forEach(p=>{ p.x+=p.vx;p.y+=p.vy;p.vy+=0.06;p.rot+=p.vr;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot);ctx.fillStyle=p.c;
+      if(p.rect) ctx.fillRect(-p.r,-p.r*0.6,p.r*2,p.r*1.2);
+      else{ctx.beginPath();ctx.arc(0,0,p.r,0,Math.PI*2);ctx.fill();} ctx.restore(); });
+    ctx.globalAlpha=1;
+    if(t<DUR) requestAnimationFrame(frame); else cv.remove();
+  }
+  requestAnimationFrame(frame);
+}
+function celebrate(){ showCongrats(); launchConfetti(); }
+
+/* =====================================================================
+   名词气泡(全站统一组件):.term 元素 hover/点击弹出定义,链到名词表
+   data-term=显示名  data-def=一句话定义  data-key=glossary 锚点
+   ===================================================================== */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent;
+    const def=el.dataset.def||'';
+    const key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def
+      +(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect();
+    const tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8;
+    if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw;
+    if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el));
+    el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* 初始化 */
+goto(stepFromHash());
+window.addEventListener('hashchange',()=>goto(stepFromHash()));
+</script>
+</body>
+</html>

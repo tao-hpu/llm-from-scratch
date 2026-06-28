@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>名词表 · LLM from Scratch</title>
+<style>
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;scroll-behavior:smooth;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:880px;margin:0 auto;padding:32px 24px 90px;}
+
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  header{margin-bottom:18px;}
+  .eyebrow{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:680px;margin:0;}
+
+  /* 快速跳转条 */
+  .toc{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0 8px;}
+  .toc a{font-family:var(--mono);font-size:12.5px;text-decoration:none;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);border-radius:999px;
+    padding:5px 12px;transition:all .2s ease;}
+  .toc a:hover{border-color:var(--accent);color:var(--accent);}
+
+  .sec-h{font-family:var(--serif);font-size:20px;font-weight:600;margin:34px 0 8px;
+    padding-bottom:8px;border-bottom:1px solid var(--border);}
+  .sec-h .sh-num{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);margin-right:8px;}
+
+  .gentry{background:var(--card);border:1px solid var(--border);border-radius:14px;
+    padding:18px 20px;margin:12px 0;scroll-margin-top:20px;transition:border-color .25s ease,box-shadow .25s ease;}
+  .gentry:target{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
+  .gentry h3{font-family:var(--serif);font-size:18px;margin:0 0 2px;}
+  .gentry .en{font-family:var(--mono);font-size:12.5px;color:var(--accent);font-weight:600;}
+  .gentry p{margin:8px 0 0;font-size:14.5px;color:var(--ink);}
+  .gentry p.also{font-size:13px;color:var(--ink2);margin-top:8px;}
+  .gentry code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .gentry b{color:var(--accent);font-weight:600;}
+
+  footer{margin-top:48px;padding-top:22px;border-top:1px solid var(--border);font-size:13px;color:var(--ink2);}
+  footer a{color:var(--accent);text-decoration:none;font-weight:600;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <header>
+    <span class="eyebrow">llm-from-scratch · 名词表 glossary</span>
+    <h1>名词表 · 一句话讲清那些术语</h1>
+    <p class="subtitle">
+      各章节里出现的关键词,都在这里有一条简短、面向直觉的解释。正文中带<span style="border-bottom:1px dashed var(--accent);color:var(--accent)">虚线下划线</span>的词,
+      鼠标悬停会弹出气泡,点"更多"就跳到这里对应词条。
+    </p>
+  </header>
+
+  <div class="toc">
+    <a href="#tensor">张量</a><a href="#batch">batch</a><a href="#embedding">嵌入</a>
+    <a href="#tokenizer">tokenizer</a><a href="#default">缺省</a><a href="#block-size">上下文长度</a>
+    <a href="#n_embd">嵌入维度</a>
+    <a href="#logits">logits</a><a href="#softmax">softmax</a><a href="#normalize">归一化</a>
+    <a href="#cross-entropy">交叉熵</a><a href="#gradient">梯度</a><a href="#vanishing">梯度消失</a>
+    <a href="#zero-grad">梯度清零</a><a href="#optimizer">优化器</a>
+    <a href="#self-attention">自注意力</a><a href="#qkv">Q/K/V</a><a href="#dot-product">点积</a>
+    <a href="#tril">下三角</a><a href="#causal-mask">因果掩码</a><a href="#scaling">缩放</a>
+    <a href="#positional-embedding">位置嵌入</a><a href="#multi-head">多头注意力</a><a href="#sft">SFT</a>
+    <a href="#mlp">MLP</a><a href="#feedforward">FeedForward</a><a href="#relu">ReLU</a><a href="#residual">残差连接</a>
+    <a href="#layernorm">LayerNorm</a><a href="#block">Block</a><a href="#dropout">Dropout</a>
+    <a href="#forward">前向传播</a><a href="#sampling">采样</a><a href="#autoregressive">自回归</a>
+    <a href="#attention-paper">Attention Is All You Need</a>
+  </div>
+
+  <!-- ============ 基础概念 ============ -->
+  <div class="sec-h"><span class="sh-num">A</span>基础概念</div>
+
+  <div class="gentry" id="tensor">
+    <h3>张量 <span class="en">tensor</span></h3>
+    <p>多维数组,深度学习里数据的基本容器。标量是 0 维、向量 1 维、矩阵 2 维,再高维就统称张量。
+    形如 <code>(B, T, C)</code> 的数据就是一个 3 维张量:B 个序列 × 每序列 T 个位置 × 每位置 C 维向量。</p>
+  </div>
+
+  <div class="gentry" id="batch">
+    <h3>批 <span class="en">batch / batch_size</span></h3>
+    <p>一次喂给模型<b>并行处理</b>的一组样本。<code>batch_size=32</code> 表示一次处理 32 条序列。
+    批越大,梯度估计越稳,但越吃显存。注意它和"向量维度"是两码事 —— 一个是"几条样本",一个是"每个 token 几个数字"。</p>
+  </div>
+
+  <div class="gentry" id="embedding">
+    <h3>嵌入 <span class="en">embedding</span></h3>
+    <p>把离散的 token(整数 id)映射成一个<b>可训练的稠密向量</b>。<code>nn.Embedding</code> 本质是一张查找表:
+    第 i 行就是第 i 个 token 的向量。训练让语义相近的 token 拥有相近的向量。</p>
+  </div>
+
+  <div class="gentry" id="tokenizer">
+    <h3>分词器 <span class="en">tokenizer</span></h3>
+    <p>把文本和数字互相转换的工具:<code>encode</code> 把字符串变成整数 id 序列,<code>decode</code> 反过来。
+    本项目用最简单的"字符级"切分 —— 每个字符一个 id。</p>
+  </div>
+
+  <div class="gentry" id="default">
+    <h3>缺省 / 默认参数 <span class="en">default argument</span></h3>
+    <p>函数定义时给参数设的<b>默认值</b>,调用时不传就用它。例如 <code>forward(self, idx, targets=None)</code>
+    里 <code>targets</code> 缺省为 <code>None</code> —— 只想前向出 logits、不算 loss 时,就不传 targets。</p>
+  </div>
+
+  <div class="gentry" id="block-size">
+    <h3>上下文长度 <span class="en">block_size / context length</span></h3>
+    <p>模型一次能看到的<b>最大 token 数</b>。<code>block_size=8</code> 意味着每个位置最多回看前 8 个字符;
+    更早的历史会被截断(generate 时要 <code>idx[:, -block_size:]</code>)。这是注意力的"视野上限"。</p>
+  </div>
+
+  <div class="gentry" id="n_embd">
+    <h3>嵌入维度 <span class="en">n_embd</span></h3>
+    <p>每个 token 用<b>多长的向量</b>来表示,本项目 <code>n_embd=32</code>。它决定了 token_embedding、
+    位置表、<code>Wq/Wk/Wv</code> 的形状。⚠️ 本章里它和 <a href="#batch" style="color:var(--accent)">batch_size</a>、
+    head_size <b>数值都撞成 32,但含义完全不同</b>:一个是"每个 token 几个数字(维度)",
+    一个是"一次几条句子",一个是"注意力头的输出宽度"。看到 32 先问"这是谁的 32"。</p>
+  </div>
+
+  <!-- ============ 损失与训练 ============ -->
+  <div class="sec-h"><span class="sh-num">B</span>损失与训练</div>
+
+  <div class="gentry" id="logits">
+    <h3>logits</h3>
+    <p>模型最后一层输出的、<b>未经 softmax</b> 的原始打分。可正可负,数值大小代表"倾向";
+    过 softmax 后才变成概率。形状常见为 <code>(B, T, vocab_size)</code> —— 每个位置对词表里每个字符都打一个分。</p>
+  </div>
+
+  <div class="gentry" id="softmax">
+    <h3>softmax</h3>
+    <p>把一组任意实数(打分)变成一组<b>和为 1 的正数</b>(概率分布):每个数取 <code>exp</code> 再除以总和。
+    分数越大,概率越大。它天生保证"每行加起来 = 1"。</p>
+  </div>
+
+  <div class="gentry" id="normalize">
+    <h3>归一化 <span class="en">normalize</span></h3>
+    <p>把一组数按比例缩放,使其满足某种总量约束。本项目里特指"<b>每行除以该行的和</b>",
+    让每行加起来 = 1,从而变成一组权重(概率分布)。softmax 内部做的也是这件事。
+    它管的是"尺度",和"哪些位置为 0"(因果)是两件正交的事。</p>
+  </div>
+
+  <div class="gentry" id="cross-entropy">
+    <h3>交叉熵 <span class="en">cross_entropy</span></h3>
+    <p>分类任务的损失函数。先对 logits 做 softmax 得概率,取<b>正确类别</b>的概率 p,
+    <code>loss = -ln(p)</code>。模型越确信正确答案(p→1),loss→0;越瞎猜,loss 越大。
+    随机初始时 loss ≈ <code>ln(vocab_size)</code>。</p>
+  </div>
+
+  <div class="gentry" id="gradient">
+    <h3>梯度 <span class="en">gradient</span></h3>
+    <p>loss 对每个参数的偏导数,指出"参数往哪个方向调、loss 下降最快"。
+    <code>loss.backward()</code> 负责把它算出来,优化器再据此更新参数。</p>
+  </div>
+
+  <div class="gentry" id="vanishing">
+    <h3>梯度消失 <span class="en">vanishing gradient</span></h3>
+    <p>梯度在传播中变得<b>极小</b>,参数几乎不更新、模型学不动。
+    softmax 过于"尖锐"(某一项概率接近 1)时就会发生 —— 这正是注意力要对分数做<a href="#scaling" style="color:var(--accent)">缩放</a>的原因。</p>
+  </div>
+
+  <div class="gentry" id="zero-grad">
+    <h3>梯度清零 <span class="en">zero_grad</span></h3>
+    <p>PyTorch 的梯度默认<b>累加</b>(backward 把新梯度加到旧的上)。所以每轮训练开头必须先
+    <code>optimizer.zero_grad()</code> 清零,否则会带着上一轮的陈旧方向越走越偏。
+    顺序:<code>zero_grad → backward → step</code>。</p>
+  </div>
+
+  <div class="gentry" id="optimizer">
+    <h3>优化器 <span class="en">optimizer / AdamW</span></h3>
+    <p>拿到梯度后,真正决定"每个参数走多大一步"的算法。<code>AdamW</code> 是 Adam 的改良版(带权重衰减),
+    是当下训练 Transformer 的常用默认选择。<code>lr</code>(学习率)控制步子大小。</p>
+  </div>
+
+  <!-- ============ 注意力机制 ============ -->
+  <div class="sec-h"><span class="sh-num">C</span>注意力机制</div>
+
+  <div class="gentry" id="self-attention">
+    <h3>自注意力 <span class="en">self-attention</span></h3>
+    <p>序列内部每个位置,通过 <a href="#qkv" style="color:var(--accent)">query/key/value</a> 机制,
+    按相关性从其它位置(因果设定下只看过去)<b>聚合信息</b>,得到融合了上下文的新表示。
+    "self"指 q、k、v 都来自同一个序列。</p>
+  </div>
+
+  <div class="gentry" id="qkv">
+    <h3>Q / K / V <span class="en">query / key / value</span></h3>
+    <p>同一个输入经<b>三个不同的线性投影</b>得到的三种角色。<b>query</b>=我在找什么;
+    <b>key</b>=我宣传自己是什么(被检索);<b>value</b>=你看我我给你什么(被取走的信息)。
+    用 query 比对所有 key 算出权重,再用权重聚合 value。</p>
+  </div>
+
+  <div class="gentry" id="dot-product">
+    <h3>点积 <span class="en">dot product</span></h3>
+    <p>两个等长向量对应元素相乘再求和,得到一个标量。结果越大,表示两向量方向越一致。
+    注意力用 <code>q · k</code> 来衡量"query 和 key 有多相关",作为关注分数。</p>
+  </div>
+
+  <div class="gentry" id="tril">
+    <h3>下三角 <span class="en">lower-triangular / tril</span></h3>
+    <p>一个方阵,<b>对角线及其左下方保留,右上方全部为 0</b>。<code>torch.tril</code> 生成。
+    注意力用它做<a href="#causal-mask" style="color:var(--accent)">因果掩码</a>:让第 i 个位置只能看到 0..i,看不到未来。
+    它管的是"哪些位置必须为 0"(结构),和归一化管的"尺度"互相独立。</p>
+  </div>
+
+  <div class="gentry" id="causal-mask">
+    <h3>因果掩码 <span class="en">causal mask</span></h3>
+    <p>在注意力分数里,把"<b>未来位置</b>"设成 <code>-∞</code>,经 softmax 后它们权重变 0。
+    保证预测下一个字符时<b>不能偷看答案</b>。靠<a href="#tril" style="color:var(--accent)">下三角</a>实现:
+    <code>masked_fill(tril==0, -inf)</code>。</p>
+  </div>
+
+  <div class="gentry" id="scaling">
+    <h3>缩放 <span class="en">scaling (÷√d)</span></h3>
+    <p>注意力把 <code>q·k</code> 的分数除以 <code>√head_size</code>。因为点积的方差随维度增大,
+    不缩放会让 softmax 过于尖锐、把权重几乎全压给一个位置,导致<a href="#vanishing" style="color:var(--accent)">梯度消失</a>。
+    除以 √d 把分数尺度拉回正常。</p>
+  </div>
+
+  <div class="gentry" id="positional-embedding">
+    <h3>位置嵌入 <span class="en">positional embedding</span></h3>
+    <p>因为注意力<b>本身看不出顺序</b>(打乱输入,输出只跟着打乱,权重不变),
+    所以额外给"第几个位置"也学一个向量,<b>加到 token 嵌入上</b>,模型才知道谁先谁后。
+    代码:<code>x = tok_emb + pos_emb</code>。</p>
+  </div>
+
+  <div class="gentry" id="multi-head">
+    <h3>多头注意力 <span class="en">multi-head attention</span></h3>
+    <p>把注意力拆成若干个并行的<b>头</b>:每个头在 <a href="#n_embd" style="color:var(--accent)">n_embd</a> 的一个<b>子空间</b>里独立
+    打分聚合(每头 <code>head_size = n_embd / n_head</code> 维),最后把各头输出<b>拼接(cat)</b>再过一个 <code>proj</code> 线性层融合,回到 n_embd。
+    要点:<b>不是把模型加宽,而是把同一块 n_embd 切成几份</b> —— 切几份总料不变,显存/算力基本持平。
+    每个头会在训练中<b>自发分化</b>出不同专长(盯前一词、回看句首、配对括号…),没人指定;
+    这与 <a href="#qkv" style="color:var(--accent)">Q/K/V</a> 那种"公式钦定"的分工不同。本项目<b>第 3 关</b>开始用。</p>
+  </div>
+
+  <div class="gentry" id="sft">
+    <h3>SFT <span class="en">Supervised Fine-Tuning · 监督微调</span></h3>
+    <p>预训练之后的一步:用<b>「问 → 答」成对数据</b>继续训练<b>同一批参数</b>(包括 <a href="#qkv" style="color:var(--accent)">Wq/Wk/Wv</a>),
+    把模型调成"以助手口吻回答"的姿态。要点:<b>"抓相关上下文"的能力是预训练就建好的,SFT 只是在上面拧风格</b> ——
+    它<b>不会</b>"激活" QKV 里某个为问答预留的用途(QKV 2017 年为翻译而生,SFT 2022 年才出现,不存在"提前挖坑")。
+    属于<b>对齐阶段</b>,本项目 Phase 2 才正式动手;这里先建立概念。</p>
+  </div>
+
+  <!-- ============ Transformer 组件(第 3 关)============ -->
+  <div class="sec-h"><span class="sh-num">D</span>Transformer 组件</div>
+
+  <div class="gentry" id="mlp">
+    <h3>MLP <span class="en">multi-layer perceptron · 多层感知机</span></h3>
+    <p>最基础的神经网络:几层<b>全连接(<a href="#default" style="color:var(--accent)">Linear</a>)</b>中间夹<b>非线性</b>(如 <a href="#relu" style="color:var(--accent)">ReLU</a>)。
+    "多层"指它不止一层线性变换。Transformer 里每个 <a href="#block" style="color:var(--accent)">Block</a> 的 <a href="#feedforward" style="color:var(--accent)">FeedForward</a> 就是一个很小的 MLP
+    (<code>Linear → ReLU → Linear</code>),负责对每个位置的向量单独"加工"。</p>
+  </div>
+
+  <div class="gentry" id="feedforward">
+    <h3>FeedForward(FFN) <span class="en">前馈网络</span></h3>
+    <p>Transformer 层里的小 <a href="#mlp" style="color:var(--accent)">MLP</a>:<code>Linear(n_embd, 4·n_embd) → ReLU → Linear(4·n_embd, n_embd)</code>,中间<b>放大 4 倍</b>再压回。
+    它是<b>逐位置(position-wise)</b>的 —— 对每个 token 的向量<b>单独</b>加工,位置之间不交换信息。
+    分工:<b>注意力让 token 互相"沟通",FFN 让每个 token 自己"思考"。</b></p>
+  </div>
+
+  <div class="gentry" id="relu">
+    <h3>ReLU <span class="en">rectified linear unit · 激活函数</span></h3>
+    <p>最常用的<b>非线性激活函数</b>:<code>ReLU(x) = max(0, x)</code>,把负数清零、正数保留。
+    作用是给网络引入<b>非线性</b> —— 没有它,多层 <a href="#default" style="color:var(--accent)">Linear</a> 叠起来在数学上还是<b>一个</b>线性变换,层数白加。</p>
+  </div>
+
+  <div class="gentry" id="residual">
+    <h3>残差连接 <span class="en">residual connection · skip connection</span></h3>
+    <p>把子层的输出<b>加回</b>它的输入:<code>x = x + 子层(x)</code>。那个 <b>+</b> 是一条<b>梯度高速公路</b>,
+    反向传播时梯度能绕过子层直达底层,避免 <a href="#vanishing" style="color:var(--accent)">梯度消失</a>,深网络才堆得动。
+    子层只需学"在原信号上<b>加什么修正</b>"。出自 2015 年 <b>ResNet</b>,Transformer 全靠它。</p>
+  </div>
+
+  <div class="gentry" id="layernorm">
+    <h3>LayerNorm <span class="en">层归一化</span></h3>
+    <p>对<b>每个位置那一根向量</b>(沿特征维)做 <a href="#normalize" style="color:var(--accent)">归一化</a>:减均值、除标准差,把数值拉回稳定范围,深网络训练才不发散。
+    它<b>不跨位置、不跨 batch</b>,与序列长度无关。<b>pre-norm</b>(先 norm 再进子层,<code>x + 子层(ln(x))</code>)比原始 Transformer 的 post-norm 更好训。</p>
+  </div>
+
+  <div class="gentry" id="block">
+    <h3>Block <span class="en">Transformer 层</span></h3>
+    <p>Transformer 的一层 = <b>注意力子层 + FFN 子层</b>,各自带 <a href="#residual" style="color:var(--accent)">残差</a> 和 <a href="#layernorm" style="color:var(--accent)">LayerNorm</a>:
+    <code>x = x + sa(ln1(x))</code> 然后 <code>x = x + ffwd(ln2(x))</code>(沟通 + 思考)。
+    完整 GPT 就是把 <code>n_layer</code> 个 Block 摞起来。</p>
+  </div>
+
+  <div class="gentry" id="dropout">
+    <h3>Dropout <span class="en">随机失活</span></h3>
+    <p>训练时<b>随机丢弃</b>一部分连接(如 10%),逼网络别过度依赖某几条路径,<b>防过拟合</b>。
+    只在训练时生效,推理时关闭。模型变大后(第 3 关)容易死记硬背,所以加了它。</p>
+  </div>
+
+  <div class="gentry" id="forward">
+    <h3>前向传播 <span class="en">forward pass</span></h3>
+    <p>把输入从头到尾过一遍网络、算出输出的过程 —— 这里就是 <code>idx → 嵌入 → Block×N → ln_f → lm_head → logits</code>。
+    <b>训练和推理都要做前向</b>;训练还会接着<b>反向传播</b>更新权重,推理则到 logits 就停、拿去采样。</p>
+  </div>
+
+  <div class="gentry" id="sampling">
+    <h3>采样 <span class="en">sampling</span></h3>
+    <p>按模型输出的<a href="#softmax" style="color:var(--accent)">概率分布</a><b>随机抽</b>一个 token 当下一个字符(代码 <code>torch.multinomial(probs, 1)</code>),
+    <b>不是永远取最高分</b>(argmax)。取最高分会陷入重复死循环;随机采样保多样,所以同一个开头每次生成都可能不同。</p>
+  </div>
+
+  <div class="gentry" id="autoregressive">
+    <h3>自回归 <span class="en">autoregressive</span></h3>
+    <p>把<b>自己刚生成的字符接回输入</b>,再预测下一个,如此循环。GPT 生成文本就是这样<b>一个字一个字滚出来</b>的:
+    每多一个字,就把整条序列重新做一次<a href="#forward" style="color:var(--accent)">前向传播</a>。</p>
+  </div>
+
+  <!-- ============ 里程碑 ============ -->
+  <div class="sec-h"><span class="sh-num">E</span>里程碑</div>
+
+  <div class="gentry" id="attention-paper">
+    <h3>Attention Is All You Need <span class="en">2017 · Vaswani et al.</span></h3>
+    <p>Google 2017 年的论文,提出 <b>Transformer</b> 架构:用自注意力<b>彻底取代 RNN / CNN</b> 来建模序列依赖,
+    并引入<b>多头注意力</b>与<b>位置编码</b>。它是 GPT、BERT 等几乎所有现代大模型的共同基石。
+    本项目第 2 关搭的单头自注意力是它的核心零件,<b>第 3 关会完整复现它的架构</b>(多头 + 残差 + LayerNorm + 前馈网络)。
+    🥚 它的"前世今生"(8 位作者、翻译起源、家谱)有个小故事 → <a href="notes.html#egg-transformer" style="color:var(--accent);font-weight:600">学习札记</a>。</p>
+  </div>
+
+  <footer>
+    名词表会随章节增加而扩充。回到 <a href="index.html">首页</a> · 或继续
+    <a href="01_bigram_crossentropy_viz.html#step-1">第 1 章</a> /
+    <a href="02_attention_viz.html#step-1">第 2 章</a> /
+    <a href="03_transformer_viz.html#step-1">第 3 章</a>。
+  </footer>
+
+</div>
+</body>
+</html>

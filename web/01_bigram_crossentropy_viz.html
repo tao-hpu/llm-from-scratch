@@ -28,6 +28,30 @@
   }
   .wrap{max-width:920px;margin:0 auto;padding:32px 24px 80px;}
 
+  /* ============ 返回首页 ============ */
+  .home-link{
+    display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;
+    transition:all .2s ease;
+  }
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  /* ============ 名词气泡(全站统一组件)============ */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:264px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;
+    font-family:system-ui,-apple-system,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);
+    font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);
+    text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
   /* ============ 顶部标题区 ============ */
   header{margin-bottom:28px;}
   .filename{
@@ -49,14 +73,16 @@
 
   /* ============ 步骤导航 ============ */
   .steps{
-    display:flex;gap:8px;margin:28px 0 20px;flex-wrap:wrap;
+    display:flex;gap:8px;margin:28px 0 20px;flex-wrap:nowrap;
   }
   .step-tab{
-    flex:1;min-width:170px;
+    flex:1 1 0;min-width:0;
     background:var(--card);border:1px solid var(--border);
-    border-radius:12px;padding:12px 14px;cursor:pointer;
+    border-radius:12px;padding:12px 13px;cursor:pointer;
     transition:all .25s ease;text-align:left;
   }
+  /* 窄屏(手机)再允许换行,避免 5 个 tab 挤成一团 */
+  @media(max-width:560px){ .steps{flex-wrap:wrap;} .step-tab{min-width:140px;} }
   .step-tab:hover{border-color:#cfc9ba;}
   .step-tab.active{
     border-color:var(--accent);
@@ -67,8 +93,19 @@
     font-family:var(--mono);font-size:12px;color:var(--accent);
     font-weight:700;letter-spacing:.5px;
   }
-  .step-tab .label{font-size:14px;font-weight:600;margin-top:2px;}
+  .step-tab .label{font-size:13px;font-weight:600;margin-top:2px;line-height:1.35;}
   .step-tab.active .label{color:var(--accent);}
+
+  /* ============ 超参速查条(每页常驻)============ */
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
 
   /* ============ 面板卡片 ============ */
   .panel{
@@ -393,8 +430,9 @@
 <div class="wrap">
 
   <!-- ============ 顶部标题区 ============ -->
+  <a class="home-link" href="index.html">← 返回首页</a>
   <header>
-    <span class="filename">phase1-nanogpt / 01_bigram_crossentropy_viz.html</span>
+    <span class="filename">01_bigram_crossentropy_viz.html</span>
     <h1>logits 摊平 &amp; 交叉熵到底在算什么</h1>
     <p class="subtitle">
       逐步拆解 nanoGPT bigram <code>forward</code> 的最后两行:
@@ -422,6 +460,15 @@
     </div>
   </div>
 
+  <!-- 超参速查(常驻,每步都看得到)-->
+  <div class="hp-bar">
+    <span class="hp-label">超参速查</span>
+    <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">batch_size <b>32</b> <i>句子数</i></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">block_size <b>8</b> <i>位置数 T</i></span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">vocab_size <b>65</b> <i>词表大小 C</i></span>
+    <span class="hp-note">⚠ 本页为看清楚,用 B=2 / T=3 的小例子演示(真实 32 / 8)</span>
+  </div>
+
   <!-- ============ STEP 1 ============ -->
   <section class="panel active" id="panel0">
     <h2>Step 1 · 一个 batch 长什么样:x 和 y 错开一格</h2>
@@ -439,7 +486,7 @@
     </div>
 
     <div class="note">
-      一个 batch 的"题目数" = <b>batch_size × block_size</b> = 2 × 3 = <b>6 道独立的分类题</b>。
+      一个 <span class="term" data-term="批 · batch" data-key="batch" data-def="一次喂给模型并行处理的一组样本。batch_size=32 表示一次处理 32 条序列。它是「几条样本」,和向量维度无关。">batch</span> 的"题目数" = <b>batch_size × block_size</b> = 2 × 3 = <b>6 道独立的分类题</b>。
       真实代码里是 32 × 8 = <b>256 道</b>。每道题都是:在 65 个字符里选出正确的下一个。
     </div>
   </section>
@@ -448,7 +495,7 @@
   <section class="panel" id="panel1">
     <h2>Step 2 · 把三维 logits 摊平成二维分类题</h2>
     <p class="lead">
-      模型对每个位置都吐出一个长度 65 的打分向量,所以 logits 形状是
+      模型对每个位置都吐出一个长度 65 的打分向量,所以 <span class="term" data-term="logits" data-key="logits" data-def="模型最后一层输出的、未经 softmax 的原始打分,可正可负。过 softmax 后才变成概率。">logits</span> 形状是
       <span class="shape-tag" id="shapeTag">(2, 3, 65)</span> —— B 行 × T 列,每格里藏着 65 个数。
       <code>view(B*T, C)</code> 把这个 2×3 网格 <b>拉直成一列</b>,得到 6 道并排的题。
     </p>
@@ -470,7 +517,7 @@
   <section class="panel" id="panel2">
     <h2>Step 3 · 单道题里 cross_entropy 的三步</h2>
     <p class="lead">
-      点一道题,看 cross_entropy 内部发生什么:<b>① softmax</b> 把打分变成概率 →
+      点一道题,看 <span class="term" data-term="交叉熵 · cross_entropy" data-key="cross-entropy" data-def="分类损失:先 softmax 得概率,取正确类别概率 p,loss = -ln(p)。越确信正确答案 loss 越小。">cross_entropy</span> 内部发生什么:<b>① <span class="term" data-term="softmax" data-key="softmax" data-def="把一组打分变成和为 1 的概率分布:每个数取 exp 再除以总和。分数越大概率越大。">softmax</span></b> 把打分变成概率 →
       <b>② 找出正确答案那一类</b> → <b>③ 取它概率的 -log</b>。词表用 6 个示意字符。
     </p>
 
@@ -529,6 +576,10 @@
       </div>
       <div class="avg-terms" id="avgTerms"></div>
       <div class="avg-result" id="avgResult"></div>
+      <div style="font-size:12.5px;color:var(--ink2);margin-top:10px;line-height:1.6">
+        ⚠️ 这个平均(上面那个数)只是<b>这 6 道示意题</b>的 loss —— 它们的 logits 是<b>为演示故意调得偏准的</b>(正确答案概率偏高),所以数字偏小。
+        它<b>不是</b>真实 bigram 的训练 loss(真实起步 ≈4.17、收敛 ~2.5);这里只为看清"<b>多道题的 loss 怎么平均成一个标量</b>"这件事。
+      </div>
     </div>
   </section>
 
@@ -657,7 +708,7 @@
     <!-- (D) zero_grad 提示 -->
     <div class="callout">
       <div class="co-title">⚠ 为什么每轮要先 <code>optimizer.zero_grad()</code>?</div>
-      PyTorch 的梯度是<b>累加</b>的:<code>loss.backward()</code> 会把新梯度<b>加到</b>旧梯度上,而不是覆盖。
+      PyTorch 的<span class="term" data-term="梯度 · gradient" data-key="gradient" data-def="loss 对每个参数的偏导数,指出参数往哪个方向调、loss 下降最快。backward() 负责算它。">梯度</span>是<b>累加</b>的:<code>loss.backward()</code> 会把新梯度<b>加到</b>旧梯度上,而不是覆盖。
       若不清零,这一轮就会带着上一轮的"陈旧方向",越走越偏。所以每圈开头必须先清零。
       <div class="order-flow">
         <span class="oc">zero_grad 清零</span>
@@ -1080,7 +1131,7 @@ renderAvg();
    ===================================================================== */
 const LOOP = [
   { title:'取一批样本',       code:'get_batch("train")', desc:'随机抽 32×8 = 256 个 (x → y) 样本对:xb 是输入,yb 是目标。' },
-  { title:'forward 猜',       code:'model(xb, yb)',      desc:'凭当前参数为每道题吐出 logits(打分)。' },
+  { title:'forward 猜',       code:'model(xb, yb)',      desc:'凭当前参数为每道题吐出 logits(打分)。第一圈参数是随机的,每个字符≈1/65 均等瞎猜 → 起步 loss≈ln(65)≈4.17。' },
   { title:'cross_entropy 打分', code:'_, loss = ...',     desc:'对照答案,把 256 道题压成一个标量 loss(成绩单)。' },
   { title:'backward 算梯度',   code:'loss.backward()',    desc:'反向传播,算出每个参数(开关)该往哪个方向扭。' },
   { title:'step 扭开关',       code:'optimizer.step()',   desc:'照梯度把参数各扭一小步 → 箭头回到第 1 步,开始下一圈。' },
@@ -1399,6 +1450,40 @@ resetLossCurve();
 goto(stepFromHash());
 /* 浏览器前进/后退或外部修改 hash 时跟随跳转 */
 window.addEventListener('hashchange', ()=>{ goto(stepFromHash()); });
+
+/* =====================================================================
+   名词气泡(全站统一组件):.term 元素 hover/点击弹出定义,链到名词表
+   data-term=显示名  data-def=一句话定义  data-key=glossary 锚点
+   ===================================================================== */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent;
+    const def=el.dataset.def||'';
+    const key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def
+      +(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect();
+    const tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8;
+    if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw;
+    if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el));
+    el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
 </script>
 </body>
 </html>

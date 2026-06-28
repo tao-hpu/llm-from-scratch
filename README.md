@@ -11,6 +11,22 @@
 
 ---
 
+## 交互式可视化
+
+除了代码,每一关还配一套**交互式 HTML 可视化**——把抽象的张量、损失、注意力拆成可以亲手拨动的动画,**先看懂直觉,再读代码**。全部单文件、零依赖,**双击 [`web/index.html`](web/index.html) 即可离线打开**。
+
+- [`web/index.html`](web/index.html) — 总入口,扁平列出所有章节
+- [`web/01_bigram_crossentropy_viz.html`](web/01_bigram_crossentropy_viz.html) — 第 1 章:logits 摊平 & 交叉熵
+- [`web/02_attention_viz.html`](web/02_attention_viz.html) — 第 2 章:自注意力,让每个位置"往回看"
+- [`web/03_transformer_viz.html`](web/03_transformer_viz.html) — 第 3 章:完整 Transformer(多头 + FFN + 残差 + LayerNorm)
+- [`web/04_gpt_machine_viz.html`](web/04_gpt_machine_viz.html) — 整机俯瞰:零件拼成 tiny GPT,装机 + 前向/采样全自动动画
+- [`web/glossary.html`](web/glossary.html) — 名词表(术语字典,正文术语 hover 即弹气泡)
+- [`web/notes.html`](web/notes.html) — 学习札记 / 彩蛋:正课之外的小故事(如 Transformer 前世今生:8 作者、翻译起源、家谱)
+
+> 维护/新增可视化页面前,请先读 [`可视化规范.md`](可视化规范.md)——记录了配色、分步导航、按钮、名词气泡等全站约定。
+
+---
+
 ## 为什么要手搓
 
 - 只会用框架(LLaMA-Factory / TRL),你永远是「填配置的操作员」,模型一出问题就抓瞎。
@@ -56,6 +72,36 @@ phase2-sft-lora/     【规划中 / WIP】SFT + LoRA 后训练
 3. **LLaMA-Factory / Unsloth**:配置驱动、省显存,scale 和复现方便
 
 > Phase 2 代码尚未提交,敬请期待。
+
+---
+
+## 训练成果（GPT-2 124M · FineWeb-Edu 10B）
+
+在一张消费级 **RTX 4090（24G）** 上把 124M 模型在 **FineWeb-Edu 10B token** 上完整预训练了一遍,约 **1 天**跑完。
+
+| 项 | 值 |
+|---|---|
+| 参数量 | 124M（GPT-2 small 配置） |
+| 训练数据 | FineWeb-Edu，10B token（GPT-2 BPE，vocab 50257） |
+| 硬件 / 耗时 | 单卡 RTX 4090，约 24 小时 |
+| 训练步数 | 19073 步（cosine 退火，warmup 715） |
+| 验证集 loss | 从随机初始化的 **≈10.9**（即 `ln(50257)` 的随机基线）降到 **3.02**（step 19072，val_loss=3.0211） |
+| 推理 | CUDA / Apple MPS / CPU 通用；`05_sample.py` 内置 KV-cache,Mac MPS 上实测 **~2.5–2.8× 提速** |
+
+**真实续写样本**（`05_sample.py`，prompt = `The history of ancient Rome`，`seed=1337` 可复现）:
+
+```
+The history of ancient Rome, particularly the last one, is quite fascinating.
+The construction in the middle of the third century B.C. is known to have been
+extremely complex. By the time of the construction of the great portico in the
+city of Piazza dela, in about 400 B.C. the remains of an enormous fort, named
+after Theodotus, were being built ... It was built of rock, with mortar being
+mixed together with cement and clay.
+```
+
+句子通顺、扣题、用上了真实世界实体（portico、fort、mortar、B.C. 纪年），结构完整——相比小数据量训练出的「鬼打墙重复」是质的飞跃。
+
+> ⚠️ **它在一本正经地瞎编史实**(Theodotus、"Piazza dela"、纪年全是拼凑)。这是 base 模型的本性:只学会「说得像」,没学会「说得对」。让它「说得对」是 Phase 2 SFT + 知识对齐要做的事。另外它**只会英文**(FineWeb-Edu 全英文语料),给中文 prompt 也只会蹦英文。
 
 ---
 
@@ -127,6 +173,12 @@ python 05_sample.py --ckpt ckpt/latest.pt --prompt "The history of Rome" --n 3
 ## 致谢
 
 整条路线深度参考 Andrej Karpathy 的 [Neural Networks: Zero to Hero](https://karpathy.ai/zero-to-hero.html) 系列、[nanoGPT](https://github.com/karpathy/nanoGPT) 与 [build-nanogpt](https://github.com/karpathy/build-nanogpt)。本仓库在其基础上做了逐行中文重写与讲解,供中文初学者学习。数据集为 [FineWeb-Edu](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu)。
+
+---
+
+## 许可证
+
+本项目以 [MIT License](LICENSE) 开源,可自由学习、修改、再发布。nanoGPT / build-nanogpt 同为 MIT,致谢见上。
 
 ---
 

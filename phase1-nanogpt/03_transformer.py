@@ -28,6 +28,12 @@ n_embd = 128          # 嵌入维度（4090 版：384）
 n_head = 4            # 注意力头数（4090 版：6）；每个头维度 = n_embd / n_head = 32
 n_layer = 4           # 堆几层 Block（4090 版：6）
 dropout = 0.1         # 随机丢弃，防过拟合（4090 版：0.2）
+
+# ---- 形状速查：代码里张量都按 (B, T, C) 三个大写字母标注 ----
+#   B = Batch     一个 batch 有几条序列（并行）       = batch_size = 64
+#   T = Time      一条序列有几个位置 / token          = block_size = 64
+#   C = Channels  每个位置的向量有几个数（特征/通道），随“是哪一步的张量”而变：
+#                 主干 x = n_embd = 128；单个头内部 q/k/v/out = head_size = n_embd//n_head = 32；最后 logits = vocab_size
 lr = 1e-3
 max_iters = 5000
 eval_interval = 500

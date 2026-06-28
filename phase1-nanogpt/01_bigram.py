@@ -52,6 +52,11 @@ val_data = data[n:]
 batch_size = 32        # 一次并行处理多少个序列
 block_size = 8         # 上下文长度：bigram 其实只用最后 1 个，但我们按通用格式准备数据
 
+# ---- 形状速查：代码里张量都按 (B, T, C) 三个大写字母标注 ----
+#   B = Batch     一个 batch 有几条序列（并行）       = batch_size = 32
+#   T = Time      一条序列有几个位置 / token          = block_size = 8
+#   C = Channels  每个位置的向量有几个数（特征/通道）  本文件 = vocab_size = 65（logits 直接就是打分）
+
 def get_batch(split):
     d = train_data if split == "train" else val_data
     # 随机选 batch_size 个起点
