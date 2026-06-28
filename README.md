@@ -165,8 +165,8 @@ python 05_sample.py --ckpt ckpt/latest.pt --prompt "The history of Rome" --n 3
 
 为了保持仓库轻量,训练好的 checkpoint 不放进 git。可按上面的步骤自己训,或直接下载:
 
+- 🤗 **HuggingFace**: [tao-hpu/gpt2-124m-fineweb-edu-10b](https://huggingface.co/tao-hpu/gpt2-124m-fineweb-edu-10b) — 含模型卡
 - 📦 **GitHub Release**: [GPT-2 124M · 10B (val_loss 3.02)](https://github.com/tao-hpu/llm-from-scratch/releases/tag/gpt2-124m-10b) — 475MB,`.pt` 文件
-- 🤗 HuggingFace: _即将上传_
 
 ```bash
 # 下载权重后直接推理(三平台通用)
