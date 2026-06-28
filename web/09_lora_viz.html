@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>手搓 LoRA · 冻结底座,只训 1% 参数</title>
+<style>
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 24px 90px;}
+
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:780px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  .steps-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:26px 0 18px;}
+  .step-tab{background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 14px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13.5px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 20px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:10px;padding:10px 14px;}
+
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;align-items:center;}
+
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:24px 0 6px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  .codepath{font-family:var(--mono);font-size:11.5px;color:var(--ink2);background:#F4F2EA;
+    border:1px solid var(--border);border-radius:8px;padding:5px 10px;display:inline-block;margin-top:10px;}
+  .codepath b{color:var(--accent);}
+
+  /* ===== 续写/回答气泡 ===== */
+  .bubble{border-radius:12px;padding:13px 15px;font-size:13.5px;line-height:1.55;border:1px solid var(--border);margin:8px 0;}
+  .bubble .bh{font-family:var(--mono);font-size:11px;font-weight:700;margin-bottom:5px;}
+  .bubble.base{background:#F4F2EA;} .bubble.base .bh{color:var(--ink2);}
+  .bubble.sft{background:#FBF1EA;border-color:#F0DDD0;} .bubble.sft .bh{color:var(--accent);}
+  .bubble .ans{font-family:var(--mono);font-size:12.5px;color:var(--ink);}
+  .stoptag{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:700;border-radius:6px;padding:1px 7px;margin-left:6px;}
+  .stoptag.no{color:#9a3a22;background:#F3D9CE;} .stoptag.yes{color:#2c6b53;background:#D7EBE0;}
+
+  /* ===== 全量 vs LoRA 对比条 ===== */
+  .vs{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 4px;}
+  .vs .card2{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;}
+  .vs .card2.full{border-color:#cdb8ae;}
+  .vs .card2.lora{border-color:#F0DDD0;background:#FBF1EA;}
+  .vs .card2 .t{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.5px;margin-bottom:8px;}
+  .vs .card2.full .t{color:var(--ink2);} .vs .card2.lora .t{color:var(--accent);}
+  .vs .big{font-family:var(--serif);font-size:24px;font-weight:600;line-height:1.2;}
+  .vs .sub{font-size:12px;color:var(--ink2);margin-top:4px;}
+  @media(max-width:560px){.vs{grid-template-columns:1fr;}}
+
+  /* ===== rank 算账滑块 ===== */
+  .calc{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin:10px 0 4px;}
+  .rk-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .rk-row label{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--ink2);}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;
+    background:linear-gradient(90deg,var(--accent) 0%,var(--accent) 50%,var(--accent-soft) 50%,var(--accent-soft) 100%);
+    outline:none;flex:1;min-width:160px;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.2);}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid #fff;}
+  .rk-val{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--accent);min-width:48px;text-align:center;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:8px;padding:2px 0;}
+  .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px;}
+  .stat{background:#F4F2EA;border:1px solid var(--border);border-radius:10px;padding:11px 13px;text-align:center;}
+  .stat .sv{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--ink);}
+  .stat .sl{font-size:11px;color:var(--ink2);margin-top:3px;}
+  .stat.hi .sv{color:var(--accent);}
+  @media(max-width:560px){.stat-grid{grid-template-columns:1fr;}}
+
+  /* ===== LoRA 层结构图 ===== */
+  .lyr{background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px 18px;margin:10px 0 4px;}
+  .lyr-diagram{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;font-family:var(--mono);}
+  .lbox{border-radius:10px;padding:12px 14px;text-align:center;font-size:13px;font-weight:700;min-width:74px;line-height:1.35;}
+  .lbox small{display:block;font-weight:400;font-size:10px;opacity:.8;margin-top:2px;}
+  .lbox.frozen{background:#ECE9E0;color:var(--ink2);border:1px solid var(--border);}
+  .lbox.frozen .ice{font-weight:400;}
+  .lbox.train{background:#FBE7DC;color:#8a3d23;border:2px solid var(--accent);}
+  .lbox.io{background:#E5EBF9;color:#2c4ea0;border:1px solid #c9d4ee;}
+  .lbox.sum{background:#fff;color:var(--ink);border:2px solid var(--ink);border-radius:50%;width:44px;height:44px;min-width:44px;
+    display:flex;align-items:center;justify-content:center;font-size:20px;padding:0;}
+  .lpath{display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .larrow{color:var(--ink2);font-size:18px;}
+  .lbypass{display:flex;align-items:center;gap:8px;background:#FBF1EA;border:1px dashed var(--accent);border-radius:10px;padding:8px 10px;}
+  .lbypass.off{opacity:.45;border-style:dotted;}
+  .formula{font-family:var(--mono);font-size:14px;text-align:center;margin:14px 0 2px;color:var(--ink);}
+  .formula .frz{color:var(--ink2);} .formula .trn{color:var(--accent);font-weight:700;}
+  .formula .zero{color:#9a3a22;font-weight:700;}
+
+  /* ===== 训练循环 ===== */
+  .flow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 6px;}
+  .flow .fc{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--ink);
+    background:#fff;border:1px solid var(--border);border-radius:9px;padding:9px 12px;text-align:center;line-height:1.35;transition:.25s;}
+  .flow .fc small{display:block;color:var(--ink2);font-weight:400;font-size:10px;margin-top:2px;}
+  .flow .fc.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);transform:translateY(-2px);}
+  .flow .fc.mask{border-color:#a3548c;background:#F6E6F0;}
+  .flow .fa{color:var(--ink2);font-size:16px;}
+  .losswrap{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-top:12px;}
+  .lossbars{display:flex;align-items:flex-end;gap:4px;height:120px;margin-top:8px;}
+  .lossbars .lb{flex:1;background:var(--accent-soft);border-radius:4px 4px 0 0;transition:height .3s ease;position:relative;min-width:6px;}
+  .lossbars .lb.cur{background:var(--accent);}
+  .lossval{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--accent);}
+
+  /* ===== 前后对比 ===== */
+  .ba-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 8px;}
+  .checklist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:8px;}
+  .checklist li{display:flex;gap:10px;align-items:flex-start;font-size:13px;background:#fff;border:1px solid var(--border);
+    border-radius:10px;padding:10px 13px;}
+  .checklist li .ck{color:#3f7d63;font-weight:700;flex-shrink:0;}
+  .checklist li b{color:var(--accent);}
+
+  .nav{display:flex;justify-content:space-between;margin-top:22px;gap:10px;}
+
+  /* 名词气泡 */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:280px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;font-family:system-ui,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* 庆祝 */
+  .congrats{display:none;text-align:center;background:linear-gradient(135deg,#FBF1EA,#F6E6F0);
+    border:1px solid var(--accent-soft);border-radius:16px;padding:22px;margin-top:18px;}
+  .congrats.show{display:block;animation:fade .5s ease;}
+  .congrats .ct{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--accent);}
+  .congrats .cs{font-size:13.5px;color:var(--ink2);margin-top:6px;}
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <header>
+    <span class="filename">09_lora_viz.html</span>
+    <h1>手搓 LoRA:冻结底座,只训 1% 参数</h1>
+    <p class="subtitle">
+      上一关 <a href="08_sft_viz.html" style="color:var(--accent);text-decoration:none">06 SFT</a> 是<b>全量微调</b> —— 124M 参数全更新。
+      这一关换<b>手段</b>不换<b>任务</b>:还是同一件 SFT,但用
+      <span class="term" data-term="LoRA · 低秩适配" data-key="lora" data-def="冻结原权重,在每层旁边并联一条低秩小矩阵 B·A,只训练它。约 1% 参数拿到接近全量微调的效果。">LoRA</span>
+      —— <b>冻住底座</b>,只在每层旁边挂一条<b>低秩旁路</b> <code>B·A</code>,只训那 <b>~1%</b> 的新参数,存盘只是个几 MB 的
+      <span class="term" data-term="adapter · 适配器" data-key="lora" data-def="LoRA 训练得到的小权重包(只含 A、B)。用时把它叠回原始 base 即可,一份底座可挂多个 adapter。">adapter</span>。
+      配套代码 <code>phase2-sft-lora/07_lora.py</code>。
+    </p>
+  </header>
+
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">为何不动整座大楼</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">低秩旁路:省在哪</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">冻结 + B=0 出发</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">只训 A、B</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">前后对比 & 达标</div></div>
+  </div>
+
+  <div class="hp-bar">
+    <span class="hp-label">这一关</span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">base <b>124M</b> <i>整段冻结</i></span>
+    <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">r <b>8</b> · α <b>16</b> <i>旁路宽度/音量</i></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">可训练 <b>0.94%</b> <i>1.18M/125.7M</i></span>
+    <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">lr <b>1e-3</b> <i>比全量 SFT 大 50×</i></span>
+  </div>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>① 同一件事,何必把整座大楼都翻新?</h2>
+    <p class="lead">
+      06 的全量 SFT 把 <b>124M 个参数全部更新</b>了一遍,训练要为每个参数都存梯度/优化器状态,存盘是一份完整的
+      <b>~498MB</b> 新模型。可我们要教的只是"答题的姿态"这点小改动 —— 真有必要动到每一根钢筋吗?
+      <b>LoRA 的想法:底座一个数都不动,只在旁边搭一条很细的"改装管道",改动量压到 1% 级别。</b>
+    </p>
+
+    <div class="vs">
+      <div class="card2 full">
+        <div class="t">全量 SFT(上一关 06)</div>
+        <div class="big">124M</div>
+        <div class="sub">参数全部可训练 · 存一份 <b>~498MB</b> 完整模型</div>
+      </div>
+      <div class="card2 lora">
+        <div class="t">LoRA(这一关 07)</div>
+        <div class="big">1.18M <span style="font-size:14px;color:var(--ink2)">≈0.94%</span></div>
+        <div class="sub">底座冻结 · 只存 <b>~4.7MB</b> adapter</div>
+      </div>
+    </div>
+
+    <div class="note">
+      省的不只是硬盘:可训练参数少,<b>显存里要存的梯度和优化器状态也跟着少一大截</b> —— 这正是单卡/小显存能微调大模型的关键。
+      代价是:LoRA 的表达力被"低秩"限制住,极端任务上可能略逊全量微调;但做 SFT 这类"调姿态"的活,通常<b>几乎追平</b>。
+    </div>
+
+    <div class="next-hint">↳ 下一步:这条"细管道"为什么这么省?拆开 <code>B·A</code> 算笔账。</div>
+  </section>
+
+  <!-- ============ STEP 2 ============ -->
+  <section class="panel" id="panel1">
+    <h2>② 低秩旁路:用两块小矩阵代替一块大矩阵</h2>
+    <p class="lead">
+      原来一层是 <code>y = W·x</code>,<code>W</code> 是个大方阵(例如 768×768 ≈ <b>59 万</b>个数)。
+      LoRA 不去改 <code>W</code>,而是在旁边并上 <code>y = W·x + (B·A)·x</code> ——
+      <code>A</code> 把 768 维<b>压到 r 维</b>(瓶颈),<code>B</code> 再<b>升回</b> 768 维。
+      <code>r</code> 很小,所以 <code>A</code>、<code>B</code> 加起来比 <code>W</code> 小得多。拨动 <code>r</code> 看整模型的账:
+    </p>
+
+    <div class="calc">
+      <div class="rk-row">
+        <label>秩 r =</label>
+        <input type="range" id="rkSlider" min="0" max="5" step="1" value="3">
+        <span class="rk-val" id="rkVal">8</span>
+      </div>
+      <div class="stat-grid">
+        <div class="stat hi"><div class="sv" id="stTrain">1.18M</div><div class="sl">可训练参数(A+B 全层合计)</div></div>
+        <div class="stat hi"><div class="sv" id="stRatio">0.94%</div><div class="sl">占总参数比例</div></div>
+        <div class="stat"><div class="sv" id="stSize">4.7 MB</div><div class="sl">adapter 存盘大小(≈)</div></div>
+      </div>
+      <div class="hp-note" id="rkLine" style="margin-top:12px"></div>
+    </div>
+
+    <div class="note">
+      "<b>低秩</b>"是关键假设:微调要做的那点改变 <code>ΔW</code>,其实<b>用一个很"扁"的矩阵就能近似</b>(秩很低),
+      不需要一个满秩的大方阵。所以拿 <code>B·A</code>(秩最多 r)去逼近它就够了。<code>r</code> 越大表达力越强、参数也越多 —— 是个旋钮。
+    </div>
+    <div class="codepath">↳ 代码:<b>07_lora.py</b> 的 <b>LoRALinear</b>(<code>lora_A: in→r</code>,<code>lora_B: r→out</code>)· 实测 r=8 → 可训练 <b>1,179,648</b></div>
+
+    <div class="next-hint">↳ 下一步:旁路刚挂上时会不会扰乱 base?看 <code>B=0</code> 这个小心机。</div>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="panel" id="panel2">
+    <h2>③ 底座冻结,B 置零 —— 从 base 平滑出发</h2>
+    <p class="lead">
+      注入 LoRA 时只动两件事:① 把原层 <code>W</code> 整段<b>冻结</b>(<code>requires_grad=False</code>,永不更新);
+      ② 旁路里 <code>A</code> 用小随机数、<b><code>B</code> 全初始化成 0</b>。于是训练第 0 步旁路输出恒为 0,
+      <b>"装了 LoRA 的模型"和原始 base 一模一样</b> —— 不会一上来就把 base 搅乱。点下面切换看:
+    </p>
+
+    <div class="btn-row">
+      <button class="btn primary" id="b0btn">训练第 0 步(B=0)</button>
+      <button class="btn" id="bxbtn">训练若干步后(B≠0)</button>
+    </div>
+
+    <div class="lyr">
+      <div class="lyr-diagram">
+        <div class="lbox io">x<small>输入</small></div>
+        <span class="larrow">→</span>
+        <div class="lpath">
+          <div class="lbox frozen"><span class="ice">❄</span> W<small>冻结·不更新</small></div>
+          <div class="lbypass" id="bypassBox">
+            <div class="lbox train" style="min-width:54px">A<small>压到 r</small></div>
+            <span class="larrow" style="font-size:14px">→</span>
+            <div class="lbox train" id="bBox" style="min-width:54px">B<small>升回</small></div>
+          </div>
+        </div>
+        <span class="larrow">→</span>
+        <div class="lbox sum">+</div>
+        <span class="larrow">→</span>
+        <div class="lbox io">y<small>输出</small></div>
+      </div>
+      <div class="formula" id="formula"></div>
+    </div>
+
+    <div class="note" id="b0note"></div>
+    <div class="codepath">↳ 代码:<b>07_lora.py</b> 的 <b>LoRALinear.__init__</b>(<code>normal_(A)</code> + <code>zeros_(B)</code>)与 <b>inject_lora</b> 前的全量 <code>requires_grad=False</code></div>
+
+    <details class="dig">
+      <summary>为什么是 B 置零,不是 A 置零?</summary>
+      <div class="dig-body">
+        只要 <code>A</code>、<code>B</code> 有<b>一个</b>是 0,乘积 <code>B·A</code> 就是 0,初始旁路都为 0 —— 这点上两者等价。
+        但若<b>两个都置零</b>,反向传播时梯度也会卡住(谁都推不动谁),旁路永远学不起来。
+        所以标准做法是<b>一个随机(A)、一个置零(B)</b>:既保证"初始 ΔW=0",又留出梯度通路让它能被训起来。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:除了"优化器只拿到 A、B",训练循环和 06 一字不差。</div>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="panel" id="panel3">
+    <h2>④ 训练循环:和 06 逐字相同,只是优化器只拿到 A、B</h2>
+    <p class="lead">
+      <code>zero_grad → forward(算 loss) → backward → step</code> —— 一步没变。
+      <a href="08_sft_viz.html#step-3" style="color:var(--accent);text-decoration:none">loss mask</a>、对话模板、EOS 全照搬 06。
+      唯一区别:交给 <code>AdamW</code> 的只有 <b>requires_grad=True 的 A、B</b>,
+      <code>backward</code> 的梯度也只流到旁路,底座纹丝不动。点"跑一个 epoch"看真实 loss:
+    </p>
+
+    <div class="flow" id="loopFlow">
+      <div class="fc" data-f="0">zero_grad<small>梯度清零</small></div>
+      <div class="fa">→</div>
+      <div class="fc mask" data-f="1">forward<small>算 loss(只回答段)</small></div>
+      <div class="fa">→</div>
+      <div class="fc" data-f="2">backward<small>梯度→只到 A、B</small></div>
+      <div class="fa">→</div>
+      <div class="fc" data-f="3">step<small>只更新 A、B</small></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn primary" id="epochBtn">▶ 跑一个 epoch</button>
+      <button class="btn" id="epochReset">重置</button>
+      <span class="hp-note">实测起点 <b>2.08</b> → 几个 epoch 内收敛到 <b>~0.004</b>(ckpt10b 上,几十秒)</span>
+    </div>
+    <div class="losswrap">
+      <div>回答段 loss:<span class="lossval" id="lossNow">—</span> <span class="hp-note" id="epLabel"></span></div>
+      <div class="lossbars" id="lossBars"></div>
+    </div>
+
+    <div class="note">
+      注意两个旋钮和 06 反着调:LoRA 可训练参数少,通常用<b>更大的学习率</b>(<code>1e-3</code> vs 全量 <code>2e-5</code>)、
+      <b>多过几遍数据</b>。底座本来就冻着,不怕学崩,可以大胆点。
+    </div>
+    <div class="codepath">↳ 代码:<b>07_lora.py</b> 的 <b>main</b> 训练循环 · <code>lora_params=[p for p in model.parameters() if p.requires_grad]</code> 只把它们交给优化器</div>
+
+    <div class="next-hint">↳ 下一步:只动了 1% 参数,base 到底有没有真被调成会答题?</div>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="panel" id="panel4">
+    <h2>⑤ 训练前 vs 训练后:1% 参数,同款效果</h2>
+    <p class="lead">
+      下面是 <code>07_lora.py</code> 在 124M 上的<b>真实采样</b>。"训练前"是装了 LoRA 但 <code>B=0</code>(等价 base),
+      "训练后"只更新了 A、B。重点和 06 一样:<b>有没有套上格式、有没有在 EOS 处停</b>。
+    </p>
+
+    <div class="ba-tabs" id="baTabs"></div>
+    <div id="baBody"></div>
+
+    <div class="sub-h"><span class="badge">达标</span>玩具级 · 看机制不刷榜</div>
+    <ul class="checklist">
+      <li><span class="ck">✓</span><div><b>可训练参数 ≈ 0.94%</b>(1.18M / 125.7M),adapter 仅 <b>4.7MB</b> vs 完整 base 498MB。</div></li>
+      <li><span class="ck">✓</span><div>回答段 loss 明显下降(实测 <b>2.08 → ~0.004</b>),且训练前(B=0)输出确实等于 base。</div></li>
+      <li><span class="ck">✓</span><div>只动 1% 参数,base 同样被调成<b>套格式、EOS 处主动停</b>;没训过的 "capital of Germany" 也答出 Berlin。</div></li>
+    </ul>
+
+    <div class="note">
+      <b>诚实交代:</b>仍是玩具级(124M、16 条、纯英文),学到的是"答题姿态"而非可靠能力。
+      有意思的是:同样 16 条数据,这次 LoRA 把 "I love cats" 译成了更准的 <b>"J'aime les chats."</b> ——
+      别据此下"LoRA 比全量强"的结论,玩具规模波动很大,只说明<b>1% 参数足够拿下这点姿态改动</b>。
+    </div>
+    <div class="codepath">↳ 代码:<b>07_lora.py</b> 的 <b>chat</b> · 跑法:<code>python 07_lora.py --ckpt ../phase1-124m/ckpt10b/latest.pt --epochs 60</code></div>
+
+    <div class="sub-h"><span class="badge">Q&A</span>常见疑问</div>
+    <details class="dig">
+      <summary>训练完怎么用?adapter 要"合并"回底座吗?</summary>
+      <div class="dig-body">
+        两种都行:① <b>推理时叠加</b> —— 加载原始 base,再挂上 adapter,前向时算 <code>Wx + scaling·BAx</code>(本关代码就是这样,一份底座可挂多个 adapter 切换任务);
+        ② <b>合并</b> —— 把 <code>scaling·B·A</code> 直接加进 <code>W</code> 得到新权重(<code>W' = W + scaling·BA</code>),推理零额外开销,但就回到一份完整大模型、失去"可插拔"。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>该给哪些层加 LoRA?为什么本关给了 4 个 Linear?</summary>
+      <div class="dig-body">
+        原始论文主要加在注意力的 q/v 上。工程上常见做法是给注意力 + MLP 的线性层都加,覆盖更广、效果更稳。
+        本关 <code>inject_lora</code> 给每个 Block 的 <b>注意力 c_attn / c_proj</b> 和 <b>MLP c_fc / c_proj</b> 各挂一条(12 层 × 4 = 48 条)。
+        <code>lm_head</code> 和 <code>wte</code> 权重绑定、属底座,不加。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>下一步 08 会做什么?</summary>
+      <div class="dig-body">
+        06、07 解决的都是"<b>会答题</b>"(SFT 任务,分别用全量 / LoRA 两种手段)。
+        <b>08 DPO</b> 进一步到"<b>答得合人意</b>"——
+        <span class="term" data-term="偏好对齐 · preference alignment" data-key="preference-alignment" data-def="让模型在'都能答'的多个回答里,更偏向人类更喜欢的那个。DPO 直接用偏好对(chosen/rejected)优化,不走 RL。">偏好对齐</span>。
+        机制见 <a href="06_posttraining_viz.html#step-5" style="color:var(--accent)">白皮书:RLHF vs DPO</a>。
+      </div>
+    </details>
+
+    <div class="congrats" id="congrats">
+      <div class="ct">🎉 手搓 LoRA · 通关</div>
+      <div class="cs">你已经亲手冻结底座、挂上低秩旁路,用 1% 参数做完了 SFT,并看懂了 B=0 的小心机。下一关:<code>08 DPO</code>。</div>
+    </div>
+  </section>
+
+  <div class="nav">
+    <button class="btn" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<canvas id="confetti"></canvas>
+
+<script>
+/* ============ 步骤切换 ============ */
+const NSTEP=5;
+const tabs=document.querySelectorAll('.step-tab');
+const panels=[];for(let i=0;i<NSTEP;i++)panels.push(document.getElementById('panel'+i));
+let cur=0;
+function goto(i){
+  cur=Math.max(0,Math.min(NSTEP-1,i));
+  tabs.forEach(t=>t.classList.toggle('active',+t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active',idx===cur));
+  document.getElementById('prevBtn').disabled = cur===0;
+  document.getElementById('nextBtn').textContent = cur===NSTEP-1 ? '完成 🎉' : '下一步 →';
+  const hash='#step-'+(cur+1);
+  if(location.hash!==hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+document.getElementById('prevBtn').addEventListener('click',()=>goto(cur-1));
+document.getElementById('nextBtn').addEventListener('click',()=>{ if(cur===NSTEP-1) celebrate(); else goto(cur+1); });
+
+const esc=s=>s.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+/* ============ STEP 2:rank 算账(数字全部与 07_lora.py 实测自洽)============ */
+const RANKS=[1,2,4,8,16,32];
+const PER_RANK=147456;        // 每单位 r 的可训练参数(实测 r=8 → 1,179,648 = 147456×8)
+const BASE_PARAMS=124475904;  // 冻结底座参数(= 总 125,655,552 − 可训练 1,179,648)
+function fmt(n){ return n>=1e6 ? (n/1e6).toFixed(2)+'M' : (n/1e3).toFixed(0)+'K'; }
+function renderRank(){
+  const r=RANKS[+document.getElementById('rkSlider').value];
+  document.getElementById('rkVal').textContent=r;
+  const train=PER_RANK*r, total=BASE_PARAMS+train;
+  document.getElementById('stTrain').textContent=fmt(train);
+  document.getElementById('stRatio').textContent=(100*train/total).toFixed(2)+'%';
+  document.getElementById('stSize').textContent=(train*4/1e6).toFixed(1)+' MB';
+  // 单层直观:768×768 方阵 vs (768+768)×r
+  const wsq=768*768, lora=(768+768)*r;
+  document.getElementById('rkLine').innerHTML=
+    '单看一个 768×768 的层:全量要动 <b>'+wsq.toLocaleString()+'</b> 个数,'+
+    'LoRA 只加 <b>'+lora.toLocaleString()+'</b> 个(A+B)≈ 原来的 <b>'+(100*lora/wsq).toFixed(1)+'%</b>。';
+}
+
+/* ============ STEP 3:B=0 切换 ============ */
+function setB(zero){
+  document.getElementById('b0btn').classList.toggle('primary',zero);
+  document.getElementById('bxbtn').classList.toggle('primary',!zero);
+  const bbox=document.getElementById('bBox'), bypass=document.getElementById('bypassBox');
+  if(zero){
+    bbox.innerHTML='B=0<small>置零</small>';
+    bypass.classList.add('off');
+    document.getElementById('formula').innerHTML=
+      'y = <span class="frz">W·x</span> + scaling·<span class="zero">0</span>·(A·x) = <span class="frz">W·x</span> &nbsp;<span style="color:var(--ink2)">←完全等于 base</span>';
+    document.getElementById('b0note').innerHTML=
+      '<b>第 0 步:旁路输出恒为 0</b>,模型行为 = 原始 base(还停不下来、会跑题)。'+
+      '所以 LoRA 是从"和 base 完全一致"的起点出发,再慢慢把旁路学出来 —— 不会一上来就破坏底座。';
+  }else{
+    bbox.innerHTML='B<small>已学出</small>';
+    bypass.classList.remove('off');
+    document.getElementById('formula').innerHTML=
+      'y = <span class="frz">W·x</span> + scaling·<span class="trn">B·(A·x)</span> &nbsp;<span style="color:var(--ink2)">←旁路带来 ΔW,底座 W 始终没变</span>';
+    document.getElementById('b0note').innerHTML=
+      '<b>训练若干步后:</b>A、B 被梯度推动,旁路 <code>B·A</code> 学出一个小小的 <code>ΔW</code>,'+
+      '叠加到冻结的 <code>W</code> 上改变输出。<b>整个过程 W 一个数都没动</b>,改的只是这条旁路。';
+  }
+}
+
+/* ============ STEP 4:训练循环 + loss 动画(端点与全程均为实测)============ */
+const LOSS_SEQ=[2.08,0.68,0.26,0.17,0.17,0.07,0.005,0.004];  // 07_lora.py 实测 per-epoch
+let epIdx=-1, loopTimer=null;
+function buildLossBars(){
+  const host=document.getElementById('lossBars'); host.innerHTML='';
+  LOSS_SEQ.forEach((v,i)=>{
+    const b=document.createElement('div'); b.className='lb'; b.dataset.i=i;
+    b.style.height=(i<=epIdx? (v/LOSS_SEQ[0]*100):0)+'%';
+    host.appendChild(b);
+  });
+}
+function litFlow(n){ document.querySelectorAll('#loopFlow .fc').forEach(f=>f.classList.toggle('on',+f.dataset.f===n)); }
+function runEpoch(){
+  if(loopTimer) return;
+  if(epIdx>=LOSS_SEQ.length-1){ resetEpoch(); }
+  let stage=0; const steps=[0,1,2,3];
+  document.getElementById('epochBtn').disabled=true;
+  loopTimer=setInterval(()=>{
+    litFlow(steps[stage]);
+    if(stage===1){
+      epIdx++;
+      const v=LOSS_SEQ[epIdx];
+      document.getElementById('lossNow').textContent=v.toFixed(3);
+      document.getElementById('epLabel').textContent='第 '+(epIdx)+' 个 epoch';
+      const bars=document.querySelectorAll('#lossBars .lb');
+      bars.forEach(b=>b.classList.remove('cur'));
+      if(bars[epIdx]){ bars[epIdx].style.height=(v/LOSS_SEQ[0]*100)+'%'; bars[epIdx].classList.add('cur'); }
+    }
+    stage++;
+    if(stage>3){ clearInterval(loopTimer); loopTimer=null; litFlow(-1);
+      document.getElementById('epochBtn').disabled=false;
+      if(epIdx>=LOSS_SEQ.length-1) document.getElementById('epLabel').textContent='收敛 · 回答段 loss ≈ 0.004(只训了 A、B)';
+    }
+  },360);
+}
+function resetEpoch(){ epIdx=-1; buildLossBars(); litFlow(-1);
+  document.getElementById('lossNow').textContent='—'; document.getElementById('epLabel').textContent=''; }
+
+/* ============ STEP 5:前后对比(真实采样,07_lora.py 输出)============ */
+const BA=[
+  {instr:"What is the capital of France?",
+   base:'"For the purposes of this article, we do not consider the capital of France as the capital of the states. In fact, the name…"',
+   baseStop:false,
+   sft:'"The capital of France is Paris."', sftStop:true, tag:'训练里见过 · 答对 + 停'},
+  {instr:"Translate to French: I love cats.",
+   base:'"For more information about this topic, please visit: Animal Diversity in the World / What is a cat? / What\'s a Cat?…"',
+   baseStop:true,
+   sft:'"J\'aime les chats."', sftStop:true, tag:'训练里见过 · 这次译得很准 + 停'},
+  {instr:"What is the capital of Germany?  (训练里没见过)",
+   base:'"For the most part, the capital of Germany is Berlin, and Berlin is the capital of the united states. (循环复读…)"',
+   baseStop:false,
+   sft:'"The capital of Germany is Berlin."', sftStop:true, tag:'没训过 · 套用了格式还答对了'},
+];
+let baSel=0;
+function buildBaTabs(){
+  const host=document.getElementById('baTabs'); host.innerHTML='';
+  BA.forEach((b,i)=>{
+    const btn=document.createElement('button'); btn.className='btn'+(i===baSel?' primary':'');
+    btn.textContent='指令 '+(i+1); btn.onclick=()=>{baSel=i;renderBa();buildBaTabs();};
+    host.appendChild(btn);
+  });
+}
+function renderBa(){
+  const b=BA[baSel];
+  const stop=(ok,txt)=> ok?'<span class="stoptag yes">⟨EOS,主动停⟩</span>':'<span class="stoptag no">'+(txt||'没停 · 被截断')+'</span>';
+  document.getElementById('baBody').innerHTML =
+    '<div style="font-family:var(--mono);font-size:12.5px;color:var(--ink2);margin:2px 0 8px">[指令] '+esc(b.instr)+'</div>'
+    +'<div class="bubble base"><div class="bh">训练前 · base + 空 LoRA(B=0)</div><div class="ans">'+b.base+' '+stop(b.baseStop)+'</div></div>'
+    +'<div class="bubble sft"><div class="bh">训练后 · LoRA(只训 A、B)</div><div class="ans">'+b.sft+' '+stop(b.sftStop)+'<br><span class="hp-note">'+b.tag+'</span></div></div>';
+}
+
+/* ============ 名词气泡 ============ */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent, def=el.dataset.def||'', key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def+(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8; if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw; if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el)); el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* ============ 通关庆祝 ============ */
+function celebrate(){
+  document.getElementById('congrats').classList.add('show');
+  const cv=document.getElementById('confetti'); cv.style.display='block';
+  const ctx=cv.getContext('2d'); cv.width=innerWidth; cv.height=innerHeight;
+  const COL=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const ps=[];for(let i=0;i<140;i++)ps.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    vx:(Math.random()-0.5)*3,vy:2+Math.random()*4,s:5+Math.random()*7,c:COL[i%COL.length],a:Math.random()*6.28,va:(Math.random()-0.5)*0.3});
+  let t0=null;
+  function frame(ts){ if(!t0)t0=ts; const el=ts-t0;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.04;p.a+=p.va;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.a);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.6);ctx.restore();});
+    if(el<3200) requestAnimationFrame(frame); else { ctx.clearRect(0,0,cv.width,cv.height); cv.style.display='none'; }
+  }
+  requestAnimationFrame(frame);
+  document.getElementById('congrats').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ============ 初始化 ============ */
+document.getElementById('rkSlider').addEventListener('input',renderRank); renderRank();
+document.getElementById('b0btn').addEventListener('click',()=>setB(true));
+document.getElementById('bxbtn').addEventListener('click',()=>setB(false));
+setB(true);
+document.getElementById('epochBtn').addEventListener('click',runEpoch);
+document.getElementById('epochReset').addEventListener('click',resetEpoch);
+buildLossBars(); resetEpoch();
+buildBaTabs(); renderBa();
+const m=/^#step-(\d+)$/.exec(location.hash);
+goto(m?parseInt(m[1],10)-1:0);
+window.addEventListener('hashchange',()=>{const mm=/^#step-(\d+)$/.exec(location.hash);goto(mm?parseInt(mm[1],10)-1:0);});
+</script>
+</body>
+</html>

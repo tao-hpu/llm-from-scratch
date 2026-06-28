@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>手搓 DPO · 从会答到答得合人意</title>
+<style>
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --good:#3f7d63; --good-soft:#D7EBE0; --bad:#9a3a22; --bad-soft:#F3D9CE;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 24px 90px;}
+
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:790px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  .steps-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:26px 0 18px;}
+  .step-tab{background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 14px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13.5px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 20px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:10px;padding:10px 14px;}
+
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;align-items:center;}
+
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:24px 0 6px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  .codepath{font-family:var(--mono);font-size:11.5px;color:var(--ink2);background:#F4F2EA;
+    border:1px solid var(--border);border-radius:8px;padding:5px 10px;display:inline-block;margin-top:10px;}
+  .codepath b{color:var(--accent);}
+
+  /* ===== 偏好对气泡 ===== */
+  .pref{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:8px 0 4px;}
+  @media(max-width:560px){.pref{grid-template-columns:1fr;}}
+  .ans-card{border-radius:12px;padding:13px 15px;border:1px solid var(--border);}
+  .ans-card .h{font-family:var(--mono);font-size:11px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px;}
+  .ans-card .a{font-size:13.5px;line-height:1.5;}
+  .ans-card.chosen{background:var(--good-soft);border-color:#bcdcca;}
+  .ans-card.chosen .h{color:var(--good);}
+  .ans-card.rejected{background:var(--bad-soft);border-color:#e8c2b4;}
+  .ans-card.rejected .h{color:var(--bad);}
+  .pill{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:700;border-radius:5px;padding:1px 6px;}
+  .pill.up{color:var(--good);background:#fff;} .pill.down{color:var(--bad);background:#fff;}
+
+  /* ===== 两模型设定图 ===== */
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 4px;}
+  @media(max-width:560px){.duo{grid-template-columns:1fr;}}
+  .mdl{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;}
+  .mdl.policy{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-soft);}
+  .mdl.ref{border-color:var(--border);background:#ECE9E0;}
+  .mdl .mt{font-family:var(--mono);font-size:12px;font-weight:700;margin-bottom:4px;}
+  .mdl.policy .mt{color:var(--accent);} .mdl.ref .mt{color:var(--ink2);}
+  .mdl .md{font-size:12px;color:var(--ink2);}
+  .mdl .big{font-family:var(--serif);font-size:18px;font-weight:600;margin:6px 0 2px;}
+  .rewardbox{font-family:var(--mono);font-size:14px;text-align:center;background:#fff;border:1px solid var(--border);
+    border-radius:10px;padding:12px;margin-top:12px;color:var(--ink);}
+  .rewardbox .trn{color:var(--accent);font-weight:700;} .rewardbox .frz{color:var(--ink2);}
+
+  /* ===== loss 交互(滑块)===== */
+  .calc{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin:10px 0 4px;}
+  .rk-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0;}
+  .rk-row label{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:172px;}
+  .rk-row label.c{color:var(--good);} .rk-row label.r{color:var(--bad);}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;background:var(--accent-soft);
+    outline:none;flex:1;min-width:150px;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.2);}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid #fff;}
+  .rk-val{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent);min-width:52px;text-align:center;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:8px;padding:2px 0;}
+  .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px;}
+  .stat{background:#F4F2EA;border:1px solid var(--border);border-radius:10px;padding:11px 13px;text-align:center;}
+  .stat .sv{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--ink);}
+  .stat .sl{font-size:11px;color:var(--ink2);margin-top:3px;}
+  .stat.hi .sv{color:var(--accent);}
+  @media(max-width:560px){.stat-grid{grid-template-columns:1fr;}}
+  .formula{font-family:var(--mono);font-size:14px;text-align:center;margin:14px 0 2px;color:var(--ink);line-height:1.8;}
+  .formula .c{color:var(--good);font-weight:700;} .formula .r{color:var(--bad);font-weight:700;} .formula .b{color:var(--accent);font-weight:700;}
+
+  /* ===== 训练动画 ===== */
+  .lossbars{display:flex;align-items:flex-end;gap:4px;height:90px;margin-top:8px;}
+  .lossbars .lb{flex:1;background:var(--accent-soft);border-radius:4px 4px 0 0;transition:height .3s ease;min-width:6px;}
+  .lossbars .lb.cur{background:var(--accent);}
+  .losswrap{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-top:12px;}
+  .readout{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:6px;}
+  .readout .ro{text-align:center;}
+  .readout .rv{font-family:var(--mono);font-size:18px;font-weight:700;}
+  .readout .rl{font-size:11px;color:var(--ink2);}
+  /* 奖励双向条 */
+  .rewbars{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-top:12px;}
+  .rrow{display:flex;align-items:center;gap:10px;margin:8px 0;}
+  .rrow .rname{font-family:var(--mono);font-size:12px;font-weight:700;min-width:88px;}
+  .rrow .track{flex:1;height:18px;background:#F4F2EA;border-radius:6px;position:relative;border:1px solid var(--border);overflow:hidden;}
+  .rrow .fillp{position:absolute;left:50%;top:0;bottom:0;background:var(--good);transition:width .3s ease;}
+  .rrow .filln{position:absolute;right:50%;top:0;bottom:0;background:var(--bad);transition:width .3s ease;}
+  .rrow .rnum{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:56px;text-align:right;}
+  .midline{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--ink2);opacity:.4;}
+
+  /* ===== 前后对比 ===== */
+  .ba-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 8px;}
+  .bubble{border-radius:12px;padding:13px 15px;font-size:13.5px;line-height:1.55;border:1px solid var(--border);margin:8px 0;}
+  .bubble .bh{font-family:var(--mono);font-size:11px;font-weight:700;margin-bottom:5px;}
+  .bubble.base{background:#F4F2EA;} .bubble.base .bh{color:var(--ink2);}
+  .bubble.sft{background:#FBF1EA;border-color:#F0DDD0;} .bubble.sft .bh{color:var(--accent);}
+  .bubble .ans{font-family:var(--mono);font-size:12.5px;color:var(--ink);}
+  .stoptag{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:700;border-radius:6px;padding:1px 7px;margin-left:6px;}
+  .stoptag.no{color:#9a3a22;background:#F3D9CE;} .stoptag.yes{color:#2c6b53;background:#D7EBE0;}
+  .checklist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:8px;}
+  .checklist li{display:flex;gap:10px;align-items:flex-start;font-size:13px;background:#fff;border:1px solid var(--border);
+    border-radius:10px;padding:10px 13px;}
+  .checklist li .ck{color:#3f7d63;font-weight:700;flex-shrink:0;}
+  .checklist li b{color:var(--accent);}
+
+  .nav{display:flex;justify-content:space-between;margin-top:22px;gap:10px;}
+
+  /* 名词气泡 */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:280px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;font-family:system-ui,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* 庆祝 */
+  .congrats{display:none;text-align:center;background:linear-gradient(135deg,#FBF1EA,#F6E6F0);
+    border:1px solid var(--accent-soft);border-radius:16px;padding:22px;margin-top:18px;}
+  .congrats.show{display:block;animation:fade .5s ease;}
+  .congrats .ct{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--accent);}
+  .congrats .cs{font-size:13.5px;color:var(--ink2);margin-top:6px;}
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <header>
+    <span class="filename">10_dpo_viz.html</span>
+    <h1>手搓 DPO:从"会答"到"答得合人意"</h1>
+    <p class="subtitle">
+      手搓三关的收尾。06/07 用 SFT 把 base 教成<b>会答题</b>;这一关换<b>任务</b> ——
+      <span class="term" data-term="偏好对齐 · preference alignment" data-key="preference-alignment" data-def="让模型在'都能答'的多个回答里,更偏向人类更喜欢的那个(更礼貌/简洁/得体)。">偏好对齐</span>。
+      用 <span class="term" data-term="DPO · 直接偏好优化" data-key="dpo" data-def="Direct Preference Optimization。不训奖励模型、不走 RL,直接用偏好对(chosen/rejected)做分类式优化。">DPO</span>:
+      <b>不训奖励模型、不走 RL</b>,拿一份冻结的<b>参考模型</b>当锚,直接把"chosen 比 rejected 好"这件事用一个 sigmoid loss 学进去。
+      配套代码 <code>phase2-sft-lora/08_dpo.py</code>。
+    </p>
+  </header>
+
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">会答 ≠ 答得好</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">两个模型 + 隐式奖励</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">DPO loss 拨一拨</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">训练:margin 拉开</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">前后对比 & 达标</div></div>
+  </div>
+
+  <div class="hp-bar">
+    <span class="hp-label">这一关</span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">起点 <b>SFT 模型</b> <i>06 的产物</i></span>
+    <span class="hp-chip" style="color:#6b6b68;background:#ECE9E0">ref <b>冻结</b> <i>SFT 的副本·当锚</i></span>
+    <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">β <b>0.1</b> <i>能偏多远</i></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">偏好对 <b>10</b> · <i>不走 RL</i></span>
+  </div>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>① 同一个问题,两个都"答到了",但有好坏之分</h2>
+    <p class="lead">
+      SFT 之后,模型已经会答题了。可"会答"不等于"答得好" —— 同一条指令,它可能给出好几种都说得通的回答,
+      但有的<b>礼貌/简洁/得体</b>,有的<b>生硬/啰嗦/冒犯</b>。偏好对齐要做的,就是让它<b>更偏向左边那种</b>。
+      点切换看几组真实偏好对(<code>08_dpo.py</code> 的训练数据):
+    </p>
+
+    <div class="ba-tabs" id="prefTabs"></div>
+    <div style="font-family:var(--mono);font-size:12.5px;color:var(--ink2);margin:2px 0 8px" id="prefInstr"></div>
+    <div class="pref" id="prefBox"></div>
+
+    <div class="note">
+      注意:这里<b>两个回答都不是"错字病句"</b>,纯是<b>偏好</b>之分 —— 这正是 SFT 难覆盖的部分。
+      SFT 教"标准答案长什么样";偏好对齐教"在多个合理答案里挑人更喜欢的那个"。所以它接在 SFT <b>之后</b>。
+    </div>
+    <div class="codepath">↳ 代码:<b>08_dpo.py</b> 的 <b>PREF</b> 列表(指令, chosen, rejected)</div>
+
+    <div class="next-hint">↳ 下一步:怎么在不训奖励模型的情况下,给"哪个更好"打分?DPO 的巧办法。</div>
+  </section>
+
+  <!-- ============ STEP 2 ============ -->
+  <section class="panel" id="panel1">
+    <h2>② 两个模型 + 一个"隐式奖励"</h2>
+    <p class="lead">
+      RLHF 的做法是先训一个<a href="06_posttraining_viz.html#step-5" style="color:var(--accent);text-decoration:none">奖励模型</a>打分、再用 RL 去最大化分数,链路长。
+      DPO 把这步<b>省掉</b>:它只用两个模型,"分数"直接从这两个模型的概率差里读出来。
+    </p>
+
+    <div class="duo">
+      <div class="mdl policy">
+        <div class="mt">policy(要训练)</div>
+        <div class="big">π<sub>θ</sub></div>
+        <div class="md">从 SFT 模型出发,<br>DPO 会更新它</div>
+      </div>
+      <div class="mdl ref">
+        <div class="mt">❄ ref(冻结)</div>
+        <div class="big">π<sub>ref</sub></div>
+        <div class="md">SFT 模型的副本,<br>永不更新,当锚点</div>
+      </div>
+    </div>
+
+    <div class="rewardbox">
+      某条回答 y 的<b>隐式奖励</b> r(y) = <span class="trn">β · ( logπ<sub>θ</sub>(y) − logπ<sub>ref</sub>(y) )</span>
+      <div class="hp-note" style="margin-top:8px">= "policy 比 ref <b>多给</b>了这条回答多少对数概率" × β</div>
+    </div>
+
+    <div class="note">
+      不需要额外的奖励模型:<b>"policy 相对 ref 把某条回答抬高了多少"本身就是分数</b>。
+      ref 当锚点的意义是 —— 只奖励"<b>相对变化</b>",防止 policy 为了刷分而整体跑偏、把语言能力学崩。
+      一条回答的 <code>logπ</code> 就是它每个 token 的 log 概率之和(<b>只算 response 段</b>,和
+      <a href="08_sft_viz.html#step-3" style="color:var(--accent);text-decoration:none">SFT 的 loss mask</a> 同一套)。
+    </div>
+    <div class="codepath">↳ 代码:<b>08_dpo.py</b> 的 <b>seq_logprob</b>(只累加 response 段)+ <b>main</b> 里 policy / ref 两份模型</div>
+
+    <div class="next-hint">↳ 下一步:有了两条回答各自的分数,DPO 的 loss 只是想让它俩"拉开差距"。</div>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="panel" id="panel2">
+    <h2>③ DPO loss:把 chosen 的分数拉到 rejected 之上</h2>
+    <p class="lead">
+      记 Δ = logπ<sub>θ</sub> − logπ<sub>ref</sub>(policy 相对 ref 的偏移)。DPO 想让 <b>chosen 的 Δ 高于 rejected 的 Δ</b>。
+      loss 就是个二分类的 logistic 形式 —— 拨动下面两个滑块(模拟训练把它俩推开),看 loss 怎么掉:
+    </p>
+
+    <div class="calc">
+      <div class="rk-row"><label class="c">Δ chosen(往右=抬高)</label><input type="range" id="dcS" min="-1" max="4" step="0.1" value="0.1"><span class="rk-val" id="dcV">0.1</span></div>
+      <div class="rk-row"><label class="r">Δ rejected(往左=压低)</label><input type="range" id="drS" min="-6" max="2" step="0.1" value="0"><span class="rk-val" id="drV">0.0</span></div>
+      <div class="formula" id="dpoFormula"></div>
+      <div class="stat-grid">
+        <div class="stat hi"><div class="sv" id="stMargin">+0.1</div><div class="sl">margin = Δc − Δr</div></div>
+        <div class="stat"><div class="sv" id="stProb">52%</div><div class="sl">σ(β·margin)=把 chosen 排前面的概率</div></div>
+        <div class="stat hi"><div class="sv" id="stLoss">0.66</div><div class="sl">loss = −log σ(β·margin)</div></div>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>读出三件事:</b>① margin 越大 → loss 越小;② 起点 policy≡ref 时 Δc=Δr=0、margin=0、loss=<code>ln2≈0.693</code>(瞎猜);
+      ③ 把 <b>rejected 往左压</b>和把 <b>chosen 往右抬</b>都能拉大 margin —— 实测里 DPO 主要靠<b>压低 rejected</b>(下一步会看到)。
+      β 固定 0.1:它是"放大镜",margin 同样大、β 越大 loss 反应越猛。
+    </div>
+    <div class="codepath">↳ 代码:<b>08_dpo.py</b> 的 <b>dpo_pass</b>:<code>loss = -F.logsigmoid(beta*(d_chosen - d_rejected))</code></div>
+
+    <div class="next-hint">↳ 下一步:真跑起来,看这条 margin 怎么被一步步拉开。</div>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="panel" id="panel3">
+    <h2>④ 训练起来:loss 往下、margin 往上</h2>
+    <p class="lead">
+      把全部 10 条偏好对的梯度累起来更新一次 policy(ref 始终不动),这就是一个 epoch。
+      点"跑一个 epoch"看 <code>08_dpo.py</code> 的<b>真实曲线</b> —— 留意两条奖励:谁动得多?
+    </p>
+
+    <div class="losswrap">
+      <div class="readout">
+        <div class="ro"><div class="rv" id="roLoss" style="color:var(--accent)">0.693</div><div class="rl">loss</div></div>
+        <div class="ro"><div class="rv" id="roMargin" style="color:var(--accent)">+0.0</div><div class="rl">奖励 margin</div></div>
+        <div class="ro"><div class="rv" id="roAcc" style="color:var(--good)">0%</div><div class="rl">偏好准确率</div></div>
+      </div>
+      <div class="lossbars" id="lossBars"></div>
+      <div class="hp-note" id="epLabel" style="margin-top:6px"></div>
+    </div>
+
+    <div class="rewbars">
+      <div class="hp-note" style="margin-bottom:4px">两条回答的隐式奖励(相对 ref,中线=0):</div>
+      <div class="rrow"><span class="rname" style="color:var(--good)">chosen</span>
+        <div class="track"><div class="midline"></div><div class="fillp" id="rcFill" style="width:0"></div><div class="filln" style="width:0"></div></div>
+        <span class="rnum" id="rcNum" style="color:var(--good)">+0.00</span></div>
+      <div class="rrow"><span class="rname" style="color:var(--bad)">rejected</span>
+        <div class="track"><div class="midline"></div><div class="fillp" style="width:0"></div><div class="filln" id="rrFill" style="width:0"></div></div>
+        <span class="rnum" id="rrNum" style="color:var(--bad)">+0.00</span></div>
+    </div>
+
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn primary" id="epochBtn">▶ 跑一个 epoch</button>
+      <button class="btn" id="epochAll">跑到收敛</button>
+      <button class="btn" id="epochReset">重置</button>
+    </div>
+
+    <div class="note">
+      <b>关键观察(实测):</b>margin 一路从 0 拉到 <b>+19</b>,但它<b>几乎全靠把 rejected 的奖励往下压</b>(降到约 −1.9),
+      chosen 的奖励基本贴着 0 没怎么动。这是 DPO 常见现象 —— "对齐"很多时候是<b>学会少说不好的</b>,而非多说好的。
+      所以 lr 要<b>极小</b>(<code>5e-7</code>)、配 ref 当锚,否则 policy 会把 rejected 压垮、连带把语言能力带崩。
+    </div>
+    <div class="codepath">↳ 代码:<b>08_dpo.py</b> 的 <b>main</b> 训练循环 · 真实曲线 loss 0.693→0.171 / margin 0→+19 / 准确率 0%→100%</div>
+
+    <div class="next-hint">↳ 下一步:训完采样,看回答风格有没有往 chosen 那边靠。</div>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="panel" id="panel4">
+    <h2>⑤ 训练前 vs 训练后 & 达标</h2>
+    <p class="lead">
+      下面是 <code>08_dpo.py</code> 的<b>真实采样</b>(起点=SFT 模型,终点=DPO 后)。
+      偏好对齐的变化常常很微妙,但有的指令上能看到明显往 chosen 风格靠:
+    </p>
+
+    <div class="ba-tabs" id="baTabs"></div>
+    <div id="baBody"></div>
+
+    <div class="sub-h"><span class="badge">达标</span>玩具级 · 看硬指标不看刷榜</div>
+    <ul class="checklist">
+      <li><span class="ck">✓</span><div>DPO loss 从 <b>ln2≈0.693 稳步下降到 0.171</b>(不再"瞎猜")。</div></li>
+      <li><span class="ck">✓</span><div><b>偏好准确率 0% → 100%</b>:隐式奖励把每一对的 chosen 都排到了 rejected 前面。</div></li>
+      <li><span class="ck">✓</span><div><b>奖励 margin 0 → +19</b>,主要由"压低 rejected"驱动;部分指令采样可见往 chosen 风格靠(如礼貌改写)。</div></li>
+    </ul>
+
+    <div class="note">
+      <b>诚实交代:</b>玩具级(124M、10 对、纯英文)。采样里 "What is 2 + 2?" 训练后甚至答成了 "16" ——
+      DPO 在这么小的规模会<b>轻微扰动已有知识</b>。所以这一关里"DPO 起作用"的可靠证据是
+      <b>loss↓ / 准确率↑ / margin↑ 这些硬指标</b>,而不是某一条采样文字。
+    </div>
+    <div class="codepath">↳ 跑法:<code>python 08_dpo.py --ckpt ckpt_sft/sft.pt --epochs 20</code> · 加 <code>--lora</code> 改用 LoRA 手段做 DPO</div>
+
+    <div class="sub-h"><span class="badge">Q&A</span>常见疑问</div>
+    <details class="dig">
+      <summary>DPO 和 RLHF 到底什么关系?DPO 是 PPO 的变体吗?</summary>
+      <div class="dig-body">
+        都是为了<b>偏好对齐</b>这同一个目标,但是<b>两条不同的路</b>,DPO <b>不是</b> PPO 的变体。
+        RLHF 先训奖励模型、再用 PPO 这类 RL 算法去最大化奖励(要采样、要在线交互);
+        DPO 用数学推导证明:在同样的目标下,可以<b>跳过奖励模型和 RL</b>,把它等价成一个直接在偏好对上做的<b>监督式分类 loss</b>。
+        更省、更稳,是目前开源对齐的主流做法之一。详见 <a href="06_posttraining_viz.html#step-5" style="color:var(--accent)">白皮书 step 5</a>。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>为什么训练里 chosen 的奖励几乎不涨,全靠压 rejected?</summary>
+      <div class="dig-body">
+        因为 chosen 本来就是 SFT 模型<b>已经倾向</b>给出的回答(它的 logπ 本就不低),抬升空间小;
+        而 rejected 那种冒犯/啰嗦的回答,模型压低它的概率要"容易"得多。
+        DPO 的 loss 只关心 <b>两者之差(margin)</b>,从哪边把差距拉开都行 —— 优化器自然挑了阻力最小的那条:<b>压 rejected</b>。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>那 06(全量 SFT)、07(LoRA)、08(DPO)三者怎么拼?</summary>
+      <div class="dig-body">
+        <b>任务 × 手段是两个正交的轴</b>(<a href="06_posttraining_viz.html#step-3" style="color:var(--accent)">白皮书的 2×2 表</a>):
+        任务有 SFT(会答)/ 偏好对齐(答得好);手段有 全量 / LoRA。
+        06=全量×SFT,07=LoRA×SFT,08=全量×DPO。本关加 <code>--lora</code> 就补上了 LoRA×DPO 那一格 —— 四格都能跑通,证明两轴可自由组合。
+        典型生产流水线就是:<b>预训练 → SFT → 偏好对齐</b>,每步都可选全量或 LoRA。
+      </div>
+    </details>
+
+    <div class="congrats" id="congrats">
+      <div class="ct">🎉 手搓 DPO · 通关 · Phase 2 手搓三关全部拿下</div>
+      <div class="cs">你已经亲手用 SFT(全量 / LoRA)把 base 教成会答题,又用 DPO 把它对齐到"答得合人意"。预训练 → SFT → 对齐,一条龙都摸过了一遍。</div>
+    </div>
+  </section>
+
+  <div class="nav">
+    <button class="btn" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<canvas id="confetti"></canvas>
+
+<script>
+/* ============ 步骤切换 ============ */
+const NSTEP=5;
+const tabs=document.querySelectorAll('.step-tab');
+const panels=[];for(let i=0;i<NSTEP;i++)panels.push(document.getElementById('panel'+i));
+let cur=0;
+function goto(i){
+  cur=Math.max(0,Math.min(NSTEP-1,i));
+  tabs.forEach(t=>t.classList.toggle('active',+t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active',idx===cur));
+  document.getElementById('prevBtn').disabled = cur===0;
+  document.getElementById('nextBtn').textContent = cur===NSTEP-1 ? '完成 🎉' : '下一步 →';
+  const hash='#step-'+(cur+1);
+  if(location.hash!==hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+document.getElementById('prevBtn').addEventListener('click',()=>goto(cur-1));
+document.getElementById('nextBtn').addEventListener('click',()=>{ if(cur===NSTEP-1) celebrate(); else goto(cur+1); });
+const esc=s=>s.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+/* ============ STEP 1:偏好对(08_dpo.py 的 PREF 真实数据)============ */
+const PREF=[
+  {instr:"What is the capital of France?",
+   chosen:"The capital of France is Paris.",
+   rejected:"Why are you asking me that? Look it up yourself."},
+  {instr:"Rewrite politely: give me the report.",
+   chosen:"Could you please send me the report?",
+   rejected:"Give me the report right now."},
+  {instr:"Write a short greeting.",
+   chosen:"Hello! It is nice to meet you.",
+   rejected:"What do you want?"},
+  {instr:"What is 2 + 2?",
+   chosen:"2 + 2 = 4.",
+   rejected:"That is a really stupid question, but fine, it is 4."},
+];
+let prefSel=0;
+function buildPrefTabs(){
+  const host=document.getElementById('prefTabs'); host.innerHTML='';
+  PREF.forEach((p,i)=>{const b=document.createElement('button');b.className='btn'+(i===prefSel?' primary':'');
+    b.textContent='偏好对 '+(i+1);b.onclick=()=>{prefSel=i;renderPref();buildPrefTabs();};host.appendChild(b);});
+}
+function renderPref(){
+  const p=PREF[prefSel];
+  document.getElementById('prefInstr').textContent='[指令] '+p.instr;
+  document.getElementById('prefBox').innerHTML=
+    '<div class="ans-card chosen"><div class="h">✓ chosen(更合人意)<span class="pill up">想抬高</span></div><div class="a">'+esc(p.chosen)+'</div></div>'
+   +'<div class="ans-card rejected"><div class="h">✗ rejected(更差)<span class="pill down">想压低</span></div><div class="a">'+esc(p.rejected)+'</div></div>';
+}
+
+/* ============ STEP 3:DPO loss 滑块 ============ */
+const BETA=0.1;
+function sig(x){ return 1/(1+Math.exp(-x)); }
+function renderDPO(){
+  const dc=parseFloat(document.getElementById('dcS').value), dr=parseFloat(document.getElementById('drS').value);
+  document.getElementById('dcV').textContent=dc.toFixed(1);
+  document.getElementById('drV').textContent=dr.toFixed(1);
+  const margin=dc-dr, p=sig(BETA*margin), loss=-Math.log(Math.max(p,1e-9));
+  document.getElementById('stMargin').textContent=(margin>=0?'+':'')+margin.toFixed(1);
+  document.getElementById('stProb').textContent=(p*100).toFixed(0)+'%';
+  document.getElementById('stLoss').textContent=loss.toFixed(3);
+  document.getElementById('dpoFormula').innerHTML=
+    'loss = −log σ( <span class="b">β</span>·( <span class="c">Δc</span> − <span class="r">Δr</span> ) ) '+
+    '= −log σ( 0.1·( <span class="c">'+dc.toFixed(1)+'</span> − (<span class="r">'+dr.toFixed(1)+'</span>) ) )';
+}
+
+/* ============ STEP 4:真实训练曲线(08_dpo.py 实测,每 2 epoch 取样)============ */
+const EP   =[0,2,4,6,8,10,12,14,16,18,20];
+const LOSS =[0.6931,0.6140,0.5408,0.4737,0.4131,0.3588,0.3106,0.2683,0.2313,0.1991,0.1712];
+const MARG =[0,1.669,3.404,5.205,7.069,8.992,10.967,12.986,15.041,17.125,19.226];
+const ACC  =[0,100,100,100,100,100,100,100,100,100,100];
+const REWC =[0,0.003,0.005,0.007,0.008,0.008,0.008,0.006,0.002,-0.003,-0.009];   // chosen 奖励(≈0)
+const REWR =[0,-0.164,-0.335,-0.514,-0.699,-0.891,-1.089,-1.293,-1.502,-1.715,-1.932]; // rejected 奖励(降)
+const MARG_MAX=20, REW_MAX=2.0;
+let epIdx=-1, timer=null;
+function buildBars(){
+  const host=document.getElementById('lossBars'); host.innerHTML='';
+  LOSS.forEach((v,i)=>{const b=document.createElement('div');b.className='lb';b.dataset.i=i;
+    b.style.height=(i<=epIdx?(v/LOSS[0]*100):0)+'%';host.appendChild(b);});
+}
+function paint(i){
+  document.getElementById('roLoss').textContent=LOSS[i].toFixed(3);
+  document.getElementById('roMargin').textContent='+'+MARG[i].toFixed(1);
+  document.getElementById('roAcc').textContent=ACC[i]+'%';
+  document.getElementById('epLabel').textContent='第 '+EP[i]+' 个 epoch'+(i===LOSS.length-1?' · 收敛':'');
+  const bars=document.querySelectorAll('#lossBars .lb');
+  bars.forEach(b=>b.classList.remove('cur'));
+  if(bars[i]){bars[i].style.height=(LOSS[i]/LOSS[0]*100)+'%';bars[i].classList.add('cur');}
+  // 奖励双向条:chosen 用正向(向右),rejected 用负向(向左)。统一用 |值|/REW_MAX
+  const rc=REWC[i], rr=REWR[i];
+  document.getElementById('rcFill').style.width=Math.max(0,rc)/REW_MAX*50+'%';
+  document.getElementById('rrFill').style.width=Math.max(0,-rr)/REW_MAX*50+'%';
+  document.getElementById('rcNum').textContent=(rc>=0?'+':'')+rc.toFixed(2);
+  document.getElementById('rrNum').textContent=(rr>=0?'+':'')+rr.toFixed(2);
+}
+function stepEpoch(){
+  if(epIdx>=LOSS.length-1){ resetEpoch(); }
+  epIdx++; paint(epIdx);
+}
+function runAll(){
+  if(timer) return;
+  if(epIdx>=LOSS.length-1) resetEpoch();
+  document.getElementById('epochBtn').disabled=true;
+  timer=setInterval(()=>{ epIdx++; paint(epIdx);
+    if(epIdx>=LOSS.length-1){ clearInterval(timer); timer=null; document.getElementById('epochBtn').disabled=false; }
+  },420);
+}
+function resetEpoch(){ if(timer){clearInterval(timer);timer=null;} epIdx=-1; buildBars();
+  document.getElementById('roLoss').textContent='0.693'; document.getElementById('roMargin').textContent='+0.0';
+  document.getElementById('roAcc').textContent='0%'; document.getElementById('epLabel').textContent='';
+  document.getElementById('rcFill').style.width='0'; document.getElementById('rrFill').style.width='0';
+  document.getElementById('rcNum').textContent='+0.00'; document.getElementById('rrNum').textContent='+0.00';
+  document.getElementById('epochBtn').disabled=false; }
+
+/* ============ STEP 5:前后对比(08_dpo.py 真实采样)============ */
+const BA=[
+  {instr:"Rewrite politely: give me the report.",
+   before:'"Hello."', beforeStop:true,
+   after:'"Could you please send me the report?"', afterStop:true, tag:'明显往 chosen 风格靠 ✓(SFT 起点本就没答好)'},
+  {instr:"Write a short greeting.",
+   before:'"Hello! It is nice to meet you."', beforeStop:true,
+   after:'"Hello! It is nice to meet you!"', afterStop:true, tag:'保持得体 · 风格稳定'},
+  {instr:"What is 2 + 2?",
+   before:'"2 + 2 = 4."', beforeStop:true,
+   after:'"2 + 2 = 16."', afterStop:true, tag:'玩具级副作用:DPO 轻微扰动了已有知识 ⚠'},
+];
+let baSel=0;
+function buildBaTabs(){
+  const host=document.getElementById('baTabs'); host.innerHTML='';
+  BA.forEach((b,i)=>{const btn=document.createElement('button');btn.className='btn'+(i===baSel?' primary':'');
+    btn.textContent='指令 '+(i+1);btn.onclick=()=>{baSel=i;renderBa();buildBaTabs();};host.appendChild(btn);});
+}
+function renderBa(){
+  const b=BA[baSel];
+  const stop=ok=>ok?'<span class="stoptag yes">⟨EOS,主动停⟩</span>':'<span class="stoptag no">没停</span>';
+  document.getElementById('baBody').innerHTML=
+    '<div style="font-family:var(--mono);font-size:12.5px;color:var(--ink2);margin:2px 0 8px">[指令] '+esc(b.instr)+'</div>'
+   +'<div class="bubble base"><div class="bh">DPO 前 · SFT 模型</div><div class="ans">'+b.before+' '+stop(b.beforeStop)+'</div></div>'
+   +'<div class="bubble sft"><div class="bh">DPO 后</div><div class="ans">'+b.after+' '+stop(b.afterStop)+'<br><span class="hp-note">'+b.tag+'</span></div></div>';
+}
+
+/* ============ 名词气泡 ============ */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent, def=el.dataset.def||'', key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def+(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8; if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw; if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el)); el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* ============ 通关庆祝 ============ */
+function celebrate(){
+  document.getElementById('congrats').classList.add('show');
+  const cv=document.getElementById('confetti'); cv.style.display='block';
+  const ctx=cv.getContext('2d'); cv.width=innerWidth; cv.height=innerHeight;
+  const COL=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const ps=[];for(let i=0;i<150;i++)ps.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    vx:(Math.random()-0.5)*3,vy:2+Math.random()*4,s:5+Math.random()*7,c:COL[i%COL.length],a:Math.random()*6.28,va:(Math.random()-0.5)*0.3});
+  let t0=null;
+  function frame(ts){ if(!t0)t0=ts; const el=ts-t0;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.04;p.a+=p.va;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.a);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.6);ctx.restore();});
+    if(el<3400) requestAnimationFrame(frame); else { ctx.clearRect(0,0,cv.width,cv.height); cv.style.display='none'; }
+  }
+  requestAnimationFrame(frame);
+  document.getElementById('congrats').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ============ 初始化 ============ */
+buildPrefTabs(); renderPref();
+document.getElementById('dcS').addEventListener('input',renderDPO);
+document.getElementById('drS').addEventListener('input',renderDPO);
+renderDPO();
+buildBars(); resetEpoch();
+document.getElementById('epochBtn').addEventListener('click',stepEpoch);
+document.getElementById('epochAll').addEventListener('click',runAll);
+document.getElementById('epochReset').addEventListener('click',resetEpoch);
+buildBaTabs(); renderBa();
+const m=/^#step-(\d+)$/.exec(location.hash);
+goto(m?parseInt(m[1],10)-1:0);
+window.addEventListener('hashchange',()=>{const mm=/^#step-(\d+)$/.exec(location.hash);goto(mm?parseInt(mm[1],10)-1:0);});
+</script>
+</body>
+</html>

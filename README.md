@@ -23,6 +23,9 @@
 - [`web/05_sampling_viz.html`](web/05_sampling_viz.html) — 第 5 章(124M 推理):从 logits 到文字——temperature / top_k / 自回归 / KV-cache 加速
 - [`web/06_posttraining_viz.html`](web/06_posttraining_viz.html) — Phase 2 开篇 · 后训练白皮书:参数量 vs 数据量、任务 vs 手段、SFT 机制(loss mask)、RLHF vs DPO
 - [`web/07_pretraining_viz.html`](web/07_pretraining_viz.html) — 第 7 章(124M 训练,对应 `04_gpt2_124m.py`):配置跃迁 / BPE + shards / 梯度累积 / warmup+余弦学习率 / 数据量收敛对照
+- [`web/08_sft_viz.html`](web/08_sft_viz.html) — SFT(对应 `06_sft.py`):把 124M base 调成会答题——对话模板 + EOS + loss mask + 训练前后真实采样对比
+- [`web/09_lora_viz.html`](web/09_lora_viz.html) — 手搓 LoRA(对应 `07_lora.py`):冻结底座只训低秩旁路 B·A(~0.94% 参数 / 4.7MB adapter)——拨 r 算账 + B=0 平滑出发 + 真实 loss 曲线与采样
+- [`web/10_dpo_viz.html`](web/10_dpo_viz.html) — 手搓 DPO(对应 `08_dpo.py`):偏好对齐,不训奖励模型/不走 RL——policy+冻结 ref + 隐式奖励 + DPO loss 滑块 + 真实曲线(loss↓/margin↑/准确率 0→100%)
 - [`web/glossary.html`](web/glossary.html) — 名词表(术语字典,正文术语 hover 即弹气泡)
 - [`web/notes.html`](web/notes.html) — 学习札记 / 彩蛋:正课之外的小故事(如 Transformer 前世今生:8 作者、翻译起源、家谱)
 
@@ -54,7 +57,10 @@ phase1-124m/         复现阶段：真实数据 + 真实 BPE，复现 GPT-2 124
   04_gpt2_124m.py      GPT-2 124M 训练器（bf16 / Flash-Attn / 梯度累积 / 余弦退火）
   05_sample.py         加载 checkpoint 做推理、采样、续写
 
-phase2-sft-lora/     【规划中 / WIP】SFT + LoRA 后训练
+phase2-sft-lora/     后训练：SFT + LoRA + DPO（逐步上线中）
+  06_sft.py            全量 SFT：复用 124M base，对话模板 + EOS + loss mask，训练前后采样对比（已上线）
+  07_lora.py           手搓 LoRA：冻结底座，只训低秩旁路 B·A（~0.94% 参数 / 4.7MB adapter，已上线）
+  08_dpo.py            DPO 偏好对齐：policy + 冻结 ref + 隐式奖励，不训奖励模型/不走 RL（--lora 切换手段，已上线）
 ```
 
 ---
