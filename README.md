@@ -174,7 +174,11 @@ python 05_sample.py --ckpt ckpt/latest.pt --prompt "The history of Rome" --n 3
 
 ## 预训练权重下载
 
-为了保持仓库轻量,训练好的 checkpoint 不放进 git。可按上面的步骤自己训,或直接下载。**主推 10B 那份**;300M 那份是数据量对照样本(见上「数据量对照」)。
+> 💡 **能自己训,就自己训。** 这是个**教学仓库**,真正的收获在「亲手把 val loss 从 ≈10.9 跑到 3.0」的过程里,不在这个 `.pt` 文件里——它只是副产品。如果你有一张 N 卡(4090 级即可),强烈建议跑一遍 `04_gpt2_124m.py` 自己训出来,那才是这个项目想给你的东西。
+>
+> 下面的权重是给两类人的**捷径**:① 没有 N 卡、只想在 Mac/CPU 上玩玩推理(`05_sample.py`)的;② 自己训完了,想拿我的结果**对照验证**复现是否到位的。**下载是捷径,自训才是正道。**
+
+为了保持仓库轻量,训练好的 checkpoint 不放进 git。**主推 10B 那份**;300M 那份是数据量对照样本(见上「数据量对照」)。
 
 - 🤗 **HuggingFace**: [tao-hpu/gpt2-124m-fineweb-edu-10b](https://huggingface.co/tao-hpu/gpt2-124m-fineweb-edu-10b) — 含模型卡,**两份权重都在这个仓库**(`...-10b-val3.02.pt` / `...-300m-val3.65.pt`)
 - 📦 **GitHub Release**:
