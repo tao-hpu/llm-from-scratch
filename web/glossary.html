@@ -84,6 +84,10 @@
     <a href="#mlp">MLP</a><a href="#feedforward">FeedForward</a><a href="#relu">ReLU</a><a href="#residual">残差连接</a>
     <a href="#layernorm">LayerNorm</a><a href="#block">Block</a><a href="#dropout">Dropout</a>
     <a href="#forward">前向传播</a><a href="#sampling">采样</a><a href="#autoregressive">自回归</a>
+    <a href="#prompt">prompt</a><a href="#top-k">top_k</a><a href="#greedy">贪心解码</a><a href="#kv-cache">KV-cache</a>
+    <a href="#post-training">后训练</a><a href="#preference-alignment">偏好对齐</a><a href="#full-finetune">全量微调</a>
+    <a href="#peft">PEFT</a><a href="#lora">LoRA</a><a href="#loss-mask">loss mask</a>
+    <a href="#chat-template">对话模板</a><a href="#dpo">DPO</a><a href="#rlhf">RLHF</a>
     <a href="#attention-paper">Attention Is All You Need</a>
   </div>
 
@@ -321,6 +325,91 @@
     <h3>自回归 <span class="en">autoregressive</span></h3>
     <p>把<b>自己刚生成的字符接回输入</b>,再预测下一个,如此循环。GPT 生成文本就是这样<b>一个字一个字滚出来</b>的:
     每多一个字,就把整条序列重新做一次<a href="#forward" style="color:var(--accent)">前向传播</a>。</p>
+  </div>
+
+  <div class="gentry" id="prompt">
+    <h3>prompt <span class="en">提示词</span></h3>
+    <p>喂给模型的<b>开头文本</b>。<a href="#post-training" style="color:var(--accent)">base 模型</a>不理解"任务",只会顺着 prompt <b>续写</b>最可能的下一个 token —— 想让它"听懂指令答题"是 <a href="#sft" style="color:var(--accent)">SFT</a> 之后的事。</p>
+  </div>
+
+  <div class="gentry" id="top-k">
+    <h3>top_k 采样 <span class="en">top-k sampling</span></h3>
+    <p>每步只保留概率最高的 <b>k 个</b> token,其余打分置 −∞(概率 0)再<a href="#normalize" style="color:var(--accent)">归一化</a><a href="#sampling" style="color:var(--accent)">采样</a>,把长尾低概率 token <b>一刀切掉</b>,避免偶尔抽到离谱的词。默认 k=50。</p>
+  </div>
+
+  <div class="gentry" id="greedy">
+    <h3>贪心解码 <span class="en">greedy · argmax</span></h3>
+    <p>每步直接取概率<b>最高</b>的 token,不掷骰子。结果唯一、可复现,但<b>无多样性</b>、易陷入复读死循环 —— 等价于 <a href="#top-k" style="color:var(--accent)">top_k</a>=1。<a href="#sampling" style="color:var(--accent)">随机采样</a>正是为了跳出这种死循环。</p>
+  </div>
+
+  <div class="gentry" id="kv-cache">
+    <h3>KV-cache <span class="en">键值缓存</span></h3>
+    <p>把过去每个 token 算出的 <b>K/V 向量缓存</b>下来,生成新 token 时<b>只算新一列</b>、复用历史,避免每步把整段<a href="#self-attention" style="color:var(--accent)">注意力</a>重算一遍。计算量从<b>平方级降到线性</b>,本项目实测推理提速约 2.5–3.1×。</p>
+  </div>
+
+  <!-- ============ 后训练与对齐(Phase 2)============ -->
+  <div class="sec-h"><span class="sh-num">F</span>后训练与对齐(Phase 2)</div>
+
+  <div class="gentry" id="post-training">
+    <h3>后训练 / 预训练 / 基座模型 <span class="en">post-training · pre-training · base model</span></h3>
+    <p><b>预训练</b>:在海量无标注文本上做"预测下一个 token",产出只会续写的<b>基座模型(base model)</b> —— Phase 1 做的就是这步。
+    <b>后训练</b>:在 base 之上继续调,让它"会听话":包括 <a href="#sft" style="color:var(--accent)">SFT</a> 和 <a href="#preference-alignment" style="color:var(--accent)">偏好对齐</a>。
+    现代大模型 = <b>预训练 → SFT → 偏好对齐</b> 一条流水线,后一段都站在前一段权重的肩膀上。</p>
+  </div>
+
+  <div class="gentry" id="preference-alignment">
+    <h3>偏好对齐 <span class="en">preference alignment</span></h3>
+    <p>后训练的一段,<b>目标</b>是让回答更合人类口味、更有用更安全。数据是"同一问题的两个回答 + 人类判断 A 比 B 好"。
+    它是<b>目标</b>,不是某个具体算法:实现它有两条路 —— <a href="#rlhf" style="color:var(--accent)">RLHF</a>(走强化学习)和 <a href="#dpo" style="color:var(--accent)">DPO</a>(不走强化学习)。
+    所以"偏好对齐 = 强化学习"是把目标和其中一种手段画了等号。</p>
+  </div>
+
+  <div class="gentry" id="full-finetune">
+    <h3>全量微调 <span class="en">full fine-tuning</span></h3>
+    <p>微调时<b>更新模型的全部参数</b>。它是一种"<b>手段</b>"(怎么改权重),不是一种"任务" —— 既能用来做 <a href="#sft" style="color:var(--accent)">SFT</a>,也能用来做 <a href="#dpo" style="color:var(--accent)">DPO</a>。
+    所以<b>"全量微调 = SFT"是把手段误当成任务</b>。它和 <a href="#lora" style="color:var(--accent)">LoRA</a> 是<b>二选一</b>的两种手段,不是先后步骤。效果直接,但每个任务都要存一份完整模型,显存/硬盘开销大。</p>
+  </div>
+
+  <div class="gentry" id="peft">
+    <h3>PEFT <span class="en">parameter-efficient fine-tuning · 参数高效微调</span></h3>
+    <p>一类"<b>只更新极少量参数</b>"的微调手段的统称,目的是省显存、省存储。<a href="#lora" style="color:var(--accent)">LoRA</a> 是其中最流行的一种(还有 QLoRA = LoRA+量化 等)。
+    与 <a href="#full-finetune" style="color:var(--accent)">全量微调</a> 相对,二者是同一件事(微调)的两种改权重方式。</p>
+  </div>
+
+  <div class="gentry" id="lora">
+    <h3>LoRA <span class="en">Low-Rank Adaptation · 低秩适配</span></h3>
+    <p>一种 <a href="#peft" style="color:var(--accent)">PEFT</a> 手段:<b>冻结原模型</b>,在某些 <a href="#default" style="color:var(--accent)">Linear</a> 旁边挂两个<b>低秩小矩阵 A、B</b>,只训练它俩。
+    可训练参数常只占 ~1%,却能逼近全量微调的效果;一个底座还能挂多个适配器随时切换。它是"怎么省钱地微调"的手段,
+    可叠加在 <a href="#sft" style="color:var(--accent)">SFT</a> 或 <a href="#dpo" style="color:var(--accent)">DPO</a> 上。本项目 <code>07_lora.py</code> 会手搓一遍。</p>
+  </div>
+
+  <div class="gentry" id="loss-mask">
+    <h3>loss mask <span class="en">标签掩码</span></h3>
+    <p><a href="#sft" style="color:var(--accent)">SFT</a> 的关键一步:把整条"指令+回答"喂进去做<a href="#forward" style="color:var(--accent)">前向</a>,但<b>只对回答段算 <a href="#cross-entropy" style="color:var(--accent)">loss</a></b>,
+    指令/模板段的标签设成 <code>-100</code>(PyTorch 的 ignore_index)被忽略。这样模型只学"<b>给定指令该怎么答</b>",
+    而不会去学"生成用户的指令"。SFT 和预训练用同一个 loss,差别主要就在这一处掩码。</p>
+  </div>
+
+  <div class="gentry" id="chat-template">
+    <h3>对话模板 / EOS <span class="en">chat template · end-of-sequence</span></h3>
+    <p>把"指令"和"回答"拼成一条序列时套的<b>固定格式</b>(用 <code>&lt;|user|&gt;</code> / <code>&lt;|assistant|&gt;</code> 等特殊标记标出角色边界),
+    让模型分清谁说的、该自己答哪段。结尾的 <b>EOS(结束标记)</b>尤其重要:base 模型的毛病是<b>不会停</b>,
+    SFT 在每条回答末尾放 EOS 并算进 loss,就是教模型"答完就停"。</p>
+  </div>
+
+  <div class="gentry" id="dpo">
+    <h3>DPO <span class="en">Direct Preference Optimization · 直接偏好优化</span></h3>
+    <p>一种<b>不走强化学习</b>的 <a href="#preference-alignment" style="color:var(--accent)">偏好对齐</a>方法:把 RLHF 的目标推成闭式解,
+    直接在"chosen 好 / rejected 差"的偏好对上做一个<b>类监督损失</b>,拉高 chosen、压低 rejected。
+    <b>不需要奖励模型、不需要在线采样、没有 RL 循环</b>,单机就能跑。它<b>不是 <a href="#rlhf" style="color:var(--accent)">PPO</a> 的变体</b>,
+    而是和 RLHF 平行的另一条路;卖点是"不用 RL 那套笨重机器也能拿到 RLHF 的效果"。本项目偏好对齐只做 DPO(<code>08_dpo.py</code>)。</p>
+  </div>
+
+  <div class="gentry" id="rlhf">
+    <h3>RLHF / PPO <span class="en">Reinforcement Learning from Human Feedback</span></h3>
+    <p>用<b>强化学习</b>做 <a href="#preference-alignment" style="color:var(--accent)">偏好对齐</a>:先用偏好数据训一个<b>奖励模型</b>给回答打分,
+    再用 <b>PPO</b>(一种 RL 算法)让模型<b>最大化奖励</b>。要在线采样 rollout、要价值网络,工程量比 <a href="#dpo" style="color:var(--accent)">DPO</a> 大数倍。
+    它和 DPO 是实现同一目标的两条路(<b>RLHF 走 RL,DPO 不走</b>)。本项目只在白皮书里讲原理,<b>不写成脚本</b>。</p>
   </div>
 
   <!-- ============ 里程碑 ============ -->

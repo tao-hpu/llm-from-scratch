@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phase 2 开篇 · 后训练白皮书</title>
+<style>
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 24px 90px;}
+
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:780px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  .steps-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:26px 0 18px;}
+  .step-tab{background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 14px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13.5px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 20px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:10px;padding:10px 14px;}
+
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;align-items:center;}
+
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:24px 0 6px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  /* ===== Step1:两个独立的数字(参数量 vs 训练数据) ===== */
+  .axis-row{display:grid;grid-template-columns:120px 1fr;gap:12px;align-items:center;margin:10px 0;}
+  .axis-row .axl{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);text-align:right;}
+  .axbars{display:flex;flex-direction:column;gap:7px;}
+  .axbar{display:flex;align-items:center;gap:10px;cursor:pointer;}
+  .axbar .nm{width:120px;font-family:var(--mono);font-size:12px;color:var(--ink2);flex-shrink:0;}
+  .axbar .trk{flex:1;height:22px;background:#F4F2EA;border-radius:7px;overflow:hidden;border:1px solid var(--border);}
+  .axbar .fl{height:100%;width:0;border-radius:7px;transition:width .6s cubic-bezier(.2,.7,.2,1);}
+  .axbar .vv{width:96px;font-family:var(--mono);font-size:12px;font-weight:700;flex-shrink:0;}
+  .axbar.sel .nm{color:var(--accent);font-weight:700;}
+  .fl.p{background:#3a63c0;} .vv.p{color:#3a63c0;}
+  .fl.d{background:#3f7d63;} .vv.d{color:#3f7d63;}
+  .idcard{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 2px;}
+  .idtag{font-family:var(--mono);font-size:12px;border-radius:9px;padding:7px 11px;border:1px solid var(--border);background:#fff;}
+  .idtag b{color:var(--accent);}
+
+  /* ===== Step2:后训练地图(三段流水线) ===== */
+  .pipe{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:8px 0 6px;}
+  @media(max-width:680px){ .pipe{grid-template-columns:1fr;} }
+  .pstage{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 13px;transition:.3s;cursor:pointer;position:relative;}
+  .pstage:hover{border-color:#cfc9ba;}
+  .pstage.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft),0 6px 18px rgba(217,119,87,.16);transform:translateY(-2px);}
+  .pstage .stn{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);}
+  .pstage .sttitle{font-size:14.5px;font-weight:700;margin:3px 0 6px;}
+  .pstage .stsub{font-size:12px;color:var(--ink2);line-height:1.5;}
+  .pstage .youhere{position:absolute;top:-10px;right:10px;font-family:var(--mono);font-size:10px;font-weight:700;
+    color:#fff;background:#3f7d63;border-radius:999px;padding:2px 8px;}
+  .stage-detail{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-top:12px;min-height:80px;}
+  .stage-detail .sd-t{font-family:var(--serif);font-weight:600;font-size:16px;margin-bottom:4px;}
+  .saybox{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+  .saybox .say{flex:1;min-width:230px;border-radius:10px;padding:10px 12px;font-size:12.5px;border:1px solid var(--border);}
+  .say .sh{font-family:var(--mono);font-size:11px;font-weight:700;margin-bottom:4px;}
+  .say.ask{background:#F4F2EA;} .say.ask .sh{color:var(--ink2);}
+  .say.out{background:#FBF1EA;border-color:#F0DDD0;} .say.out .sh{color:var(--accent);}
+  .say .txt{font-family:var(--mono);font-size:12px;line-height:1.55;color:var(--ink);}
+
+  /* ===== Step3:2×2 任务 × 手段 ===== */
+  .grid2{display:grid;grid-template-columns:96px 1fr 1fr;gap:8px;margin:6px 0;}
+  .gh{font-family:var(--mono);font-size:12px;font-weight:700;text-align:center;padding:8px 6px;border-radius:9px;}
+  .gh.col{background:#E5EBF9;color:#2c4ea0;} .gh.row{background:#F6E6F0;color:#a3548c;display:flex;align-items:center;justify-content:center;}
+  .gh.corner{background:transparent;}
+  .gcell{background:#fff;border:1px solid var(--border);border-radius:11px;padding:12px 12px;cursor:pointer;transition:.2s;min-height:74px;}
+  .gcell:hover{border-color:#cfc9ba;}
+  .gcell.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
+  .gcell .ct{font-size:13.5px;font-weight:700;}
+  .gcell .cs{font-family:var(--mono);font-size:11px;color:var(--ink2);margin-top:3px;}
+  .gcell .cscript{display:inline-block;margin-top:6px;font-family:var(--mono);font-size:10.5px;font-weight:700;
+    color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:1px 7px;}
+  .cell-detail{background:#fff;border:1px solid var(--border);border-radius:12px;padding:13px 16px;margin-top:12px;min-height:54px;font-size:13px;}
+  .cell-detail b{color:var(--accent);}
+
+  /* ===== Step4:loss mask 色带 ===== */
+  .ribbon{display:flex;flex-wrap:wrap;gap:5px;align-items:flex-start;background:#fff;border:1px solid var(--border);
+    border-radius:12px;padding:14px 16px;margin:10px 0 6px;}
+  .tok{position:relative;padding:6px 9px 16px;border-radius:8px;font-family:var(--mono);font-size:13px;font-weight:600;
+    border:1px solid var(--border);transition:.25s;}
+  .tok .mk{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:9px;font-weight:700;}
+  .tok.prompt{background:#F4F2EA;color:var(--ink2);}
+  .tok.resp{background:#FBF1EA;color:#8a3d23;border-color:#F0DDD0;}
+  .tok.special{font-style:italic;opacity:.92;}
+  .tok.counted{box-shadow:0 0 0 2px var(--accent);}
+  .tok.counted .mk{color:var(--accent);}
+  .tok.skipped .mk{color:#b9b4a6;}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin-top:4px;}
+  .legend i{font-style:normal;font-weight:700;}
+  .cmp{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;}
+  @media(max-width:620px){ .cmp{grid-template-columns:1fr;} }
+  .cmp .cc{border:1px solid var(--border);border-radius:11px;padding:12px 14px;font-size:13px;background:#fff;}
+  .cmp .cc h4{margin:0 0 6px;font-family:var(--serif);font-size:14.5px;}
+  .cmp .cc.good{border-color:#cfe2d6;background:#F2F8F4;}
+  .cmp .cc.bad{border-color:#ecd2c8;background:#FBF1EC;}
+
+  /* ===== 通用流程 flow(Step5) ===== */
+  .flow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 6px;}
+  .flow .fc{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--ink);
+    background:#fff;border:1px solid var(--border);border-radius:9px;padding:8px 11px;text-align:center;line-height:1.35;}
+  .flow .fc small{display:block;color:var(--ink2);font-weight:400;font-size:10px;margin-top:2px;}
+  .flow .fc.rl{border-color:#e0c08a;background:#FBF4E6;}
+  .flow .fc.sup{border-color:#bcd2f2;background:#EEF3FC;}
+  .flow .fa{color:var(--ink2);font-size:16px;}
+  .tagrl{font-family:var(--mono);font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 8px;}
+  .tagrl.is{color:#8a5a12;background:#F4E4C2;} .tagrl.no{color:#2c6b53;background:#D7EBE0;}
+  .route-tabs{display:flex;gap:8px;margin:4px 0 2px;flex-wrap:wrap;}
+
+  /* ===== Step6:脚本卡 + 达标 ===== */
+  .scards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:8px 0 4px;}
+  @media(max-width:680px){ .scards{grid-template-columns:1fr;} }
+  .scard{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 13px;}
+  .scard .sf{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);}
+  .scard .stt{font-size:14px;font-weight:700;margin:3px 0 5px;}
+  .scard .sd{font-size:12px;color:var(--ink2);line-height:1.5;}
+  .scard .soon{display:inline-block;margin-top:8px;font-family:var(--mono);font-size:10px;font-weight:700;
+    color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);border-radius:999px;padding:2px 8px;}
+  .checklist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:8px;}
+  .checklist li{display:flex;gap:10px;align-items:flex-start;font-size:13px;background:#fff;border:1px solid var(--border);
+    border-radius:10px;padding:10px 13px;}
+  .checklist li .ck{color:#3f7d63;font-weight:700;flex-shrink:0;}
+  .checklist li b{color:var(--accent);}
+
+  /* ===== 底部导航 ===== */
+  .nav{display:flex;justify-content:space-between;margin-top:22px;gap:10px;}
+
+  /* 名词气泡 */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:280px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;font-family:system-ui,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* 庆祝 */
+  .congrats{display:none;text-align:center;background:linear-gradient(135deg,#FBF1EA,#F6E6F0);
+    border:1px solid var(--accent-soft);border-radius:16px;padding:22px;margin-top:18px;}
+  .congrats.show{display:block;animation:fade .5s ease;}
+  .congrats .ct{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--accent);}
+  .congrats .cs{font-size:13.5px;color:var(--ink2);margin-top:6px;}
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <header>
+    <span class="filename">06_posttraining_viz.html</span>
+    <h1>Phase 2 开篇 · 后训练白皮书</h1>
+    <p class="subtitle">
+      Phase 1 练出来的是一台只会<b>续写</b>的<span class="term" data-term="基座模型 · base model" data-key="post-training" data-def="只经过预训练、还没对齐的模型。它学会的是『把话说得像』,只会顺着上文接着写,不会听指令答题。">底座模型</span>。
+      这一页是 Phase 2 的<b>地图与术语对齐</b>:从"会续写"到"会听话"要经过哪几步、有哪两个容易混的轴、
+      <span class="term" data-term="SFT · 监督微调" data-key="sft" data-def="用『指令→理想回答』成对数据继续训练,把底座调成会听指令答题的姿态。和预训练用同一个 loss,只是数据和算 loss 的范围变了。">SFT</span> 到底改了什么、
+      <span class="term" data-term="偏好对齐 · preference alignment" data-key="preference-alignment" data-def="让模型的回答更合人类口味的阶段。有两条路:RLHF(走强化学习)和 DPO(不走强化学习)。">偏好对齐</span>里 RLHF 和 DPO 是什么关系。先建立全景,再去写代码。
+    </p>
+  </header>
+
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">你练出来的底座</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">后训练地图</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">任务 × 手段</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">SFT 机制</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">偏好对齐</div></div>
+    <div class="step-tab" data-step="5"><div class="num">STEP 6</div><div class="label">路线图 & 达标</div></div>
+  </div>
+
+  <div class="hp-bar">
+    <span class="hp-label">这一关</span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">底座 <b>GPT-2 124M</b> <i>参数量/脑容量</i></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">训练数据 <b>10B token</b> <i>读过多少书</i></span>
+    <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">语言 <b>英文 base</b> <i>只见过英文</i></span>
+    <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">目标 <b>会听话答题</b> <i>SFT 起步</i></span>
+  </div>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>① 你练出来的,是一台"底座":两个独立的数字</h2>
+    <p class="lead">
+      描述一个模型,先分清两个<b>各管各、互不替代</b>的数字:<b>参数量</b>(模型多大 / 脑容量)和
+      <b>训练数据量</b>(喂了多少 token / 读过多少书)。点下面任一行,看它在两个轴上的位置。
+    </p>
+
+    <div class="sub-h"><span class="badge">轴一</span>参数量 · 模型有多大</div>
+    <div class="axbars" id="axP"></div>
+    <div class="sub-h"><span class="badge">轴二</span>训练数据 · 喂了多少 token</div>
+    <div class="axbars" id="axD"></div>
+
+    <div class="note" id="ax-note">
+      你的模型 = <b>参数量 124M</b>(GPT-2 small 配置)× <b>训练数据 10B token</b>(FineWeb-Edu)。
+      这两个数字一个量"脑子多大",一个量"读过多少书",<b>不能互相换算、也不能合成一个数</b>。
+    </div>
+
+    <div class="sub-h"><span class="badge">身份</span>这台底座现在会 / 不会什么</div>
+    <div class="idcard">
+      <span class="idtag">✅ 会:<b>顺着上文续写</b></span>
+      <span class="idtag">❌ 不会:听指令<b>答题</b></span>
+      <span class="idtag">❌ 不会:<b>主动停下</b>(不知道何时该收尾)</span>
+      <span class="idtag">🌐 只会:<b>英文</b>(语料全英文)</span>
+    </div>
+    <p class="lead" style="margin-top:12px">
+      <span class="term" data-term="基座模型 · base model" data-key="post-training" data-def="只经过预训练的模型,只会续写,不会答题,也不知道何时停。要靠后训练(SFT / 偏好对齐)才会听话。">base 模型</span>的本性就是
+      "<span class="term" data-term="预训练 · pre-training" data-key="post-training" data-def="在海量无标注文本上做『预测下一个 token』,让模型学会语言的统计规律。Phase 1 做的就是这一步。">预训练</span>= 学会把话说得像"。让它"说得对、答得上、该停就停",是 Phase 2 要补的课。
+    </p>
+
+    <div class="next-hint">↳ 下一步:从"会续写"到"会听话",中间要经过哪几道工序?看后训练地图。</div>
+  </section>
+
+  <!-- ============ STEP 2 ============ -->
+  <section class="panel" id="panel1">
+    <h2>② 后训练地图:预训练 → SFT → 偏好对齐</h2>
+    <p class="lead">
+      现代大模型是<b>一条流水线</b>下来的。你现在站在第一段的终点。点每一段,看它<b>用什么数据、把模型改成什么样</b>。
+    </p>
+
+    <div class="pipe" id="mapPipe">
+      <div class="pstage on" data-st="0">
+        <span class="youhere">你在这</span>
+        <div class="stn">STAGE 1</div>
+        <div class="sttitle">预训练 Pre-training</div>
+        <div class="stsub">海量纯文本,学"预测下一个 token"。产出 = 只会续写的 base。</div>
+      </div>
+      <div class="pstage" data-st="1">
+        <div class="stn">STAGE 2</div>
+        <div class="sttitle">SFT 监督微调</div>
+        <div class="stsub">「指令→回答」成对数据,教它听指令、按格式答、答完就停。</div>
+      </div>
+      <div class="pstage" data-st="2">
+        <div class="stn">STAGE 3</div>
+        <div class="sttitle">偏好对齐</div>
+        <div class="stsub">人类偏好(A 比 B 好),把回答调得更合口味、更安全。</div>
+      </div>
+    </div>
+
+    <div class="stage-detail" id="mapDetail"></div>
+
+    <div class="note">
+      <b>三段是叠加,不是替换。</b>SFT 在预训练的权重上继续调,偏好对齐又在 SFT 的基础上继续调 ——
+      后一段都站在前一段的肩膀上。本项目 Phase 2 做<b>第 2、3 段</b>。
+    </div>
+
+    <div class="next-hint">↳ 下一步:同样是"微调",为什么有人说"全量",有人说"LoRA"?那是另一个轴。</div>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="panel" id="panel2">
+    <h2>③ 别混:"任务"和"手段"是两个正交的轴</h2>
+    <p class="lead">
+      <b>任务</b>(教什么:SFT / 偏好对齐)和<b>手段</b>(怎么改权重:全量微调 / LoRA)是<b>两件独立的事</b>。
+      任何一个任务,都能用任意一种手段去做。点格子看每种组合是什么。
+    </p>
+
+    <div class="grid2">
+      <div class="gh corner"></div>
+      <div class="gh col">全量微调<br><span style="font-weight:400;font-size:10px">更新所有参数</span></div>
+      <div class="gh col">LoRA / PEFT<br><span style="font-weight:400;font-size:10px">只更新旁挂小矩阵</span></div>
+
+      <div class="gh row">SFT</div>
+      <div class="gcell sel" data-cell="0"><div class="ct">全量 SFT</div><div class="cs">改全部权重学答题</div><span class="cscript">06_sft.py</span></div>
+      <div class="gcell" data-cell="1"><div class="ct">LoRA SFT</div><div class="cs">冻主干,旁路学答题</div><span class="cscript">07_lora.py</span></div>
+
+      <div class="gh row">偏好对齐<br><span style="font-weight:400;font-size:10px">DPO</span></div>
+      <div class="gcell" data-cell="2"><div class="ct">全量 DPO</div><div class="cs">改全部权重学偏好</div><span class="cscript">08_dpo.py</span></div>
+      <div class="gcell" data-cell="3"><div class="ct">LoRA DPO</div><div class="cs">旁路学偏好</div><span class="cscript">08_dpo.py</span></div>
+    </div>
+
+    <div class="cell-detail" id="cellDetail"></div>
+
+    <div class="note">
+      看这张表就懂两件事:① <b>"全量微调"只是一整列(一种手段)</b>,它能做 SFT 也能做 DPO ——
+      所以"全量微调 = SFT"是把<b>手段</b>误当成了<b>任务</b>。② <b>"全量 vs LoRA"是同一件事换种省钱方式</b>,
+      不是先后步骤,而是二选一。
+    </div>
+
+    <details class="dig">
+      <summary>那为什么本项目先"手写 LoRA",而不是先讲 SFT?</summary>
+      <div class="dig-body">
+        概念顺序是 SFT 在前(它是目标),LoRA 在后(它是省钱手段)。但<b>动手</b>顺序里,
+        SFT 的训练循环几乎等于 Phase 1 的预训练循环,没有新机制;真正值得像手搓 attention 那样
+        手搓的新零件是 <b>LoRA 的低秩旁路</b>。所以白皮书按"先懂 SFT、再懂 LoRA"讲,
+        脚本则把 LoRA 当成动手重点。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:SFT 到底改了什么?其实只在预训练的 loss 上动了三处。</div>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="panel" id="panel3">
+    <h2>④ SFT 机制:同一个 loss,只动三处</h2>
+    <p class="lead">
+      SFT 和预训练用的是<b>同一个</b><span class="term" data-term="交叉熵 · cross-entropy" data-key="cross-entropy" data-def="预测下一个 token 的损失:正确 token 概率越高,loss 越低。预训练和 SFT 用的是同一个它。">交叉熵</span>(预测下一个 token),没有新数学。
+      改动只有三处:<b>① 数据换成「指令→回答」对、② 套对话模板并在结尾放 EOS、③ loss 只算回答那一段。</b>
+      下面把整条样本拼出来,拨一下"loss 算在哪些 token 上"。
+    </p>
+
+    <div class="btn-row" id="maskBtns">
+      <button class="btn primary" data-mode="resp">✅ 标准:只算回答</button>
+      <button class="btn" data-mode="all">对照:连指令也算</button>
+    </div>
+
+    <div class="ribbon" id="maskRibbon"></div>
+    <div class="legend">
+      <span><i style="color:var(--ink2)">灰底</i> = 指令/模板(prompt)</span>
+      <span><i style="color:#8a3d23">橙底</i> = 回答(response)</span>
+      <span><i style="color:var(--accent)">↑ 边框高亮</i> = 这个 token 算进 loss</span>
+      <span><i style="color:#b9b4a6">×</i> = 标成 <code style="font-family:var(--mono)">-100</code> 不算</span>
+    </div>
+    <div class="note" id="maskNote"></div>
+
+    <div class="cmp">
+      <div class="cc good">
+        <h4>✅ 只算回答(标准做法)</h4>
+        模型学的是"<b>给定这条指令,该怎么回答</b>"。prompt 段标成 <code>-100</code> 被忽略,梯度只来自回答。
+      </div>
+      <div class="cc bad">
+        <h4>⚠️ 连指令也算(跑偏)</h4>
+        模型还会去学"<b>怎么生成用户的指令</b>",注意力被带偏,答题质量下降。所以 prompt 一定要 mask。
+      </div>
+    </div>
+
+    <div class="sub-h"><span class="badge">对照</span>预训练 vs SFT:只有两行不一样</div>
+    <div class="cmp">
+      <div class="cc">
+        <h4>预训练</h4>
+        loss:交叉熵 · 算 loss 的位置:<b>每个 token</b> · 数据:连续纯文本 · 学习率:较大
+      </div>
+      <div class="cc">
+        <h4>SFT</h4>
+        loss:<b>完全一样</b> · 算 loss 的位置:<b>只回答段</b> · 数据:指令→回答对+模板 · 学习率:<b>小 1~2 个量级</b>
+      </div>
+    </div>
+
+    <details class="dig">
+      <summary>结尾那个 EOS 为什么重要?</summary>
+      <div class="dig-body">
+        base 模型的老毛病是<b>不会停</b>,会一直往下续写。SFT 在每条回答末尾放一个
+        <code>&lt;EOS&gt;</code>(结束标记)并让它算进 loss,就是在教模型"答完就输出 EOS、然后停"。
+        没有这一步,模型答完正事还会continue瞎扯。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:SFT 教会"能答",但答得"合不合人意"靠偏好对齐 —— RLHF 和 DPO 是什么关系?</div>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="panel" id="panel4">
+    <h2>⑤ 偏好对齐:同一个目标,两条不同的路</h2>
+    <p class="lead">
+      "偏好对齐"是<b>目标</b>(让回答更合人类口味),实现它有两条路。它们<b>共享数据</b>(都用"A 比 B 好"的人类偏好),
+      但<b>手段不同</b>。点下面切换看两条路。
+    </p>
+
+    <div class="route-tabs" id="routeTabs">
+      <button class="btn primary" data-r="dpo">DPO(本项目走这条)</button>
+      <button class="btn" data-r="rlhf">RLHF / PPO</button>
+    </div>
+
+    <div id="routeBody"></div>
+
+    <div class="note">
+      关键澄清:<b>DPO 不是 PPO 的变体或分形</b>,它俩是实现"偏好对齐"的<b>两条平行路线</b> ——
+      <span class="term" data-term="RLHF · 人类反馈强化学习" data-key="rlhf" data-def="用强化学习做偏好对齐:先训一个奖励模型给回答打分,再用 PPO 让模型最大化这个分数。要采样 rollout、要价值网络,工程重。">RLHF</span>
+      走真<span class="term" data-term="强化学习 · RL" data-key="rlhf" data-def="智能体通过『试错 + 奖励信号』来学策略。RLHF 用的 PPO 就是一种 RL 算法。">强化学习</span>(PPO),
+      <span class="term" data-term="DPO · 直接偏好优化" data-key="dpo" data-def="Direct Preference Optimization。把 RLHF 的目标推成闭式解,直接在偏好对上做一个类监督损失,不需要奖励模型、不需要采样、不走 RL 循环。">DPO</span>
+      不走 RL(直接在偏好对上做类监督损失)。DPO 的卖点正是"<b>不用 RL 那套笨重机器,也能拿到 RLHF 的效果</b>"。
+    </div>
+
+    <div class="note">
+      <b>本项目的取舍:</b>偏好对齐只做 <b>DPO</b>(轻、单机能跑、覆盖教学目标);RLHF / PPO 只在白皮书里讲清原理,
+      <b>不写成脚本</b> —— 它要额外训奖励模型 + 在线采样,工程量数倍,对"理解偏好对齐"边际收益低。
+    </div>
+
+    <div class="next-hint">↳ 下一步:这些都落到几个脚本里?用哪个底座?训成什么样算达标?</div>
+  </section>
+
+  <!-- ============ STEP 6 ============ -->
+  <section class="panel" id="panel5">
+    <h2>⑥ Phase 2 路线图 · 底座 · 达标标准</h2>
+    <p class="lead">
+      把前面的概念落到<b>三个脚本</b>。每个脚本对应一个值得手搓的新机制,合起来覆盖"任务 × 手段"那张表。
+    </p>
+
+    <div class="scards">
+      <div class="scard">
+        <div class="sf">06_sft.py</div>
+        <div class="stt">全量 SFT</div>
+        <div class="sd">新机制:对话模板 / EOS / loss mask。在 124M 上跑通"会答题"。</div>
+        <span class="soon">规划中</span>
+      </div>
+      <div class="scard">
+        <div class="sf">07_lora.py</div>
+        <div class="stt">手搓 LoRA + LoRA SFT</div>
+        <div class="sd">新机制:低秩 A·B 旁路、冻结主干。只训 ~1% 参数拿到同款效果。</div>
+        <span class="soon">规划中</span>
+      </div>
+      <div class="scard">
+        <div class="sf">08_dpo.py</div>
+        <div class="stt">DPO(全量 / LoRA 开关)</div>
+        <div class="sd">新机制:偏好对比损失。一个文件覆盖全量 DPO 和 LoRA DPO。</div>
+        <span class="soon">规划中</span>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>底座沿用 124M,不往上加。</b> 目标是"看懂机制 + 看到行为变化",124M 完全够演示;
+      放大只增加成本、不增加新知识点。(注意:124M 是<b>英文玩具级</b>,SFT 后是"像在答题"而非能真聊天;
+      想要能中文对话的助手是另一条线,得换含中文的开源底座。)
+    </div>
+
+    <div class="sub-h"><span class="badge">达标</span>训成什么样算到位(玩具级 · 看行为,不刷榜)</div>
+    <ul class="checklist">
+      <li><span class="ck">✓</span><div><b>SFT 达标:</b>回答段 loss 明显下降;套上模板给指令,模型产出"回答形状"并<b>在 EOS 处停下</b>(不再无限续写);在训过的玩具指令上大致扣题。</div></li>
+      <li><span class="ck">✓</span><div><b>LoRA 达标:</b>只训约 1% 参数,拿到接近全量 SFT 的同款行为变化;能亲眼看到可训练参数量差一两个数量级。</div></li>
+      <li><span class="ck">✓</span><div><b>DPO 达标:</b>chosen 回答相对 rejected 的 logprob(reward margin)上升;采样更偏 chosen 风格。</div></li>
+    </ul>
+
+    <div class="sub-h"><span class="badge">Q&A</span>开工前的常见疑问</div>
+    <details class="dig">
+      <summary>"参数量 124M"和"训练数据 10B"到底哪个是模型大小?</summary>
+      <div class="dig-body">
+        <b>参数量 124M 才是模型大小</b>(脑容量),10B 是喂进去的 token 数(读过多少书)。两个数字各管各:
+        同样 124M 的模型,喂 0.3B 和喂 10B,脑子一样大,但后者"读得多、说得好"。它们不能互相换算。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>全量微调和 LoRA,是要先做一个再做另一个吗?</summary>
+      <div class="dig-body">
+        不是先后,是<b>二选一</b>:做某一次微调,要么全量、要么 LoRA。本项目两个都写,纯粹是为了<b>对照着学</b>
+        (看 LoRA 怎么用 ~1% 参数逼近全量效果),不是流程上必须先全量再 LoRA。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>偏好对齐就是强化学习吗?DPO 算 RL 吗?</summary>
+      <div class="dig-body">
+        偏好对齐是<b>目标</b>,不等于 RL。实现它有两条路:<b>RLHF 走 RL(PPO)</b>,<b>DPO 不走 RL</b>(直接在偏好对上做类监督损失)。
+        所以 DPO 不算强化学习,也不是 PPO 的变体,而是绕开 RL 的另一条路。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>SFT 之后,这个 124M 能跟我聊天了吗?</summary>
+      <div class="dig-body">
+        能"像在答题",但<b>别期待真能基础沟通</b>。124M 是非常小的模型,且只见过英文。SFT 让它学会答题的<b>格式与姿态</b>,
+        产出是玩具级。要一个能流畅对话(尤其中文)的助手,得换更大、且预训练含中文的开源底座 —— 那是另一条线。
+      </div>
+    </details>
+
+    <div class="congrats" id="congrats">
+      <div class="ct">🎉 Phase 2 地图已对齐</div>
+      <div class="cs">你已经分清:参数量 vs 数据量 · 任务 vs 手段 · SFT 改了哪三处 · RLHF vs DPO。接下来就是 <code>06_sft.py</code> 动手。</div>
+    </div>
+  </section>
+
+  <div class="nav">
+    <button class="btn" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<canvas id="confetti"></canvas>
+
+<script>
+/* ============ 步骤切换 ============ */
+const NSTEP=6;
+const tabs=document.querySelectorAll('.step-tab');
+const panels=[];for(let i=0;i<NSTEP;i++)panels.push(document.getElementById('panel'+i));
+let cur=0;
+function goto(i){
+  cur=Math.max(0,Math.min(NSTEP-1,i));
+  tabs.forEach(t=>t.classList.toggle('active',+t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active',idx===cur));
+  document.getElementById('prevBtn').disabled = cur===0;
+  document.getElementById('nextBtn').textContent = cur===NSTEP-1 ? '完成 🎉' : '下一步 →';
+  const hash='#step-'+(cur+1);
+  if(location.hash!==hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+document.getElementById('prevBtn').addEventListener('click',()=>goto(cur-1));
+document.getElementById('nextBtn').addEventListener('click',()=>{ if(cur===NSTEP-1) celebrate(); else goto(cur+1); });
+
+/* ============ STEP 1:两个轴 ============ */
+const MODELS=[
+  {nm:'tiny(第1-3章)', p:0.8e6, pl:'0.8M', d:1e6, dl:'~1M 字符'},
+  {nm:'你的 124M', p:124e6, pl:'124M', d:10e9, dl:'10B token', me:true},
+  {nm:'真实大模型', p:100e9, pl:'数百 B', d:5e12, dl:'数 T token'},
+];
+function lg(x){return Math.log10(x);}
+function buildAx(host,key,cls){
+  const el=document.getElementById(host); el.innerHTML='';
+  const vals=MODELS.map(m=>lg(m[key])), mn=Math.min(...vals)-0.5, mx=Math.max(...vals)+0.2;
+  MODELS.forEach((m,i)=>{
+    const w=((lg(m[key])-mn)/(mx-mn))*100;
+    const row=document.createElement('div'); row.className='axbar'+(m.me?' sel':'');
+    row.innerHTML=`<span class="nm">${m.nm}</span><div class="trk"><div class="fl ${cls}" style="width:0"></div></div><span class="vv ${cls}">${key==='p'?m.pl:m.dl}</span>`;
+    el.appendChild(row);
+    setTimeout(()=>row.querySelector('.fl').style.width=w+'%',60+i*90);
+    row.addEventListener('click',()=>selModel(i));
+  });
+}
+function selModel(i){
+  document.querySelectorAll('#axP .axbar, #axD .axbar').forEach((r,idx)=>r.classList.toggle('sel',idx%3===i));
+  const m=MODELS[i];
+  document.getElementById('ax-note').innerHTML =
+    `<b>${m.nm}</b>:参数量 <b style="color:#3a63c0">${m.pl}</b>(脑容量) × 训练数据 <b style="color:#3f7d63">${m.dl}</b>(读过多少书)。`
+    + (m.me?' 这就是你练出来的那台 —— 两个数字各管各,不能合成一个。':' 和你的 124M 对比一下:两个轴是独立移动的。');
+}
+buildAx('axP','p','p'); buildAx('axD','d','d');
+
+/* ============ STEP 2:后训练地图 ============ */
+const MAP=[
+  {t:'STAGE 1 · 预训练',d:'<b>用什么数据:</b>海量无标注纯文本(本项目 FineWeb-Edu 10B token)。<br><b>把模型改成:</b>会预测下一个 token,也就是"会续写"。这一段你已经做完了。',
+   ask:'The history of Rome', out:'The history of Rome, particularly the last one, is quite fascinating…(顺着续写,停不下来)'},
+  {t:'STAGE 2 · SFT 监督微调',d:'<b>用什么数据:</b>「指令 → 理想回答」成对数据 + 对话模板。<br><b>把模型改成:</b>听懂指令、按助手口吻回答、答完输出 EOS 停下。',
+   ask:'用户:把 “I love cats” 翻成法语', out:'助手:J\'aime les chats.〈EOS〉(听指令、给答案、停)'},
+  {t:'STAGE 3 · 偏好对齐',d:'<b>用什么数据:</b>同一个问题的两个回答 + 人类判断"A 比 B 好"。<br><b>把模型改成:</b>在"都能答"的基础上,答得更有用、更安全、更合口味。',
+   ask:'同一问题:回答 A vs 回答 B', out:'学会"多产出 A 这类回答" —— 调的是偏好,不是对错'},
+];
+function selMap(i){
+  document.querySelectorAll('#mapPipe .pstage').forEach(s=>s.classList.toggle('on',+s.dataset.st===i));
+  const m=MAP[i];
+  document.getElementById('mapDetail').innerHTML =
+    `<div class="sd-t">${m.t}</div><div style="font-size:13px;color:var(--ink2)">${m.d}</div>`
+    +`<div class="saybox"><div class="say ask"><div class="sh">输入</div><div class="txt">${m.ask}</div></div>`
+    +`<div class="say out"><div class="sh">这一段后,模型会</div><div class="txt">${m.out}</div></div></div>`;
+}
+document.querySelectorAll('#mapPipe .pstage').forEach(s=>s.addEventListener('click',()=>selMap(+s.dataset.st)));
+selMap(0);
+
+/* ============ STEP 3:2×2 ============ */
+const CELLS=[
+  {t:'全量 SFT',d:'<b>任务=SFT,手段=全量微调。</b>更新模型<b>全部</b>参数去学答题。效果直接,但每个任务都要存一份完整模型,显存/硬盘开销大。→ 脚本 <code>06_sft.py</code>。'},
+  {t:'LoRA SFT',d:'<b>任务=SFT,手段=LoRA。</b>冻结主干,只训练旁挂的低秩 A·B 小矩阵去学答题。省显存、一个底座挂多个适配器。→ 脚本 <code>07_lora.py</code>。'},
+  {t:'全量 DPO',d:'<b>任务=偏好对齐,手段=全量微调。</b>用全部参数在偏好对上做对齐。注意:DPO 是"任务",全量是"手段",两者正交。→ 脚本 <code>08_dpo.py</code>。'},
+  {t:'LoRA DPO',d:'<b>任务=偏好对齐,手段=LoRA。</b>旁路低秩矩阵上做偏好对齐,最省的对齐方式。→ 脚本 <code>08_dpo.py</code> 里一个开关即可。'},
+];
+function selCell(i){
+  document.querySelectorAll('.gcell').forEach(c=>c.classList.toggle('sel',+c.dataset.cell===i));
+  document.getElementById('cellDetail').innerHTML=CELLS[i].d;
+}
+document.querySelectorAll('.gcell').forEach(c=>c.addEventListener('click',()=>selCell(+c.dataset.cell)));
+selCell(0);
+
+/* ============ STEP 4:loss mask ============ */
+const TOKS=[
+  {t:'<|user|>',role:'prompt',sp:1},
+  {t:'Translate',role:'prompt'},{t:'to',role:'prompt'},{t:'French:',role:'prompt'},
+  {t:'I',role:'prompt'},{t:'love',role:'prompt'},{t:'cats.',role:'prompt'},
+  {t:'<|assistant|>',role:'prompt',sp:1},
+  {t:"J'aime",role:'resp'},{t:'les',role:'resp'},{t:'chats.',role:'resp'},
+  {t:'<EOS>',role:'resp',sp:1},
+];
+let maskMode='resp';
+function renderMask(){
+  const r=document.getElementById('maskRibbon'); r.innerHTML='';
+  TOKS.forEach(tk=>{
+    const counted = (maskMode==='all') ? true : (tk.role==='resp');
+    const e=document.createElement('div');
+    e.className='tok '+tk.role+(tk.sp?' special':'')+(counted?' counted':' skipped');
+    e.innerHTML=tk.t.replace(/</g,'&lt;').replace(/>/g,'&gt;')+`<span class="mk">${counted?'↑':'×'}</span>`;
+    r.appendChild(e);
+  });
+  document.getElementById('maskNote').innerHTML = maskMode==='resp'
+    ? '<b>标准做法:</b>只有<b>回答段</b>(橙)算进 loss,指令/模板段(灰)标成 <code>-100</code> 被忽略。模型只学"给定指令该怎么答"。'
+    : '<b>对照(不推荐):</b>连指令段也算 loss,模型会分心去学"生成用户的指令",答题质量下降。所以真实 SFT 一定把 prompt 段 mask 掉。';
+  document.querySelectorAll('#maskBtns .btn').forEach(b=>b.classList.toggle('primary',b.dataset.mode===maskMode));
+}
+document.querySelectorAll('#maskBtns .btn').forEach(b=>b.addEventListener('click',()=>{maskMode=b.dataset.mode;renderMask();}));
+renderMask();
+
+/* ============ STEP 5:两条路 ============ */
+const ROUTES={
+  dpo:{
+    tag:'<span class="tagrl no">非 RL · 类监督</span>',
+    flow:`<div class="flow">
+      <div class="fc sup">偏好对<small>chosen 好 / rejected 差</small></div>
+      <div class="fa">→</div>
+      <div class="fc sup">一个 DPO 损失<small>直接拉高 chosen、压低 rejected</small></div>
+      <div class="fa">→</div>
+      <div class="fc sup">更新模型<small>无奖励模型 / 无采样</small></div>
+    </div>`,
+    note:'DPO:把偏好对直接喂进一个<b>类监督损失</b>,一步到位。没有奖励模型、没有在线采样、没有 RL 循环 —— 单机就能跑,实现简单。'
+  },
+  rlhf:{
+    tag:'<span class="tagrl is">真 · 强化学习(PPO)</span>',
+    flow:`<div class="flow">
+      <div class="fc sup">偏好对</div>
+      <div class="fa">→</div>
+      <div class="fc rl">训奖励模型<small>给回答打分</small></div>
+      <div class="fa">→</div>
+      <div class="fc rl">PPO 循环<small>采样 rollout + 价值网络</small></div>
+      <div class="fa">→</div>
+      <div class="fc rl">更新模型<small>最大化奖励</small></div>
+    </div>`,
+    note:'RLHF:先用偏好数据训一个<b>奖励模型</b>,再用 <b>PPO</b>(一种强化学习算法)让模型最大化奖励。要在线采样、要价值网络,工程量数倍。'
+  }
+};
+let route='dpo';
+function renderRoute(){
+  const r=ROUTES[route];
+  document.getElementById('routeBody').innerHTML =
+    `<div style="margin:8px 0 2px">${r.tag}</div>${r.flow}<div class="note">${r.note}</div>`;
+  document.querySelectorAll('#routeTabs .btn').forEach(b=>b.classList.toggle('primary',b.dataset.r===route));
+}
+document.querySelectorAll('#routeTabs .btn').forEach(b=>b.addEventListener('click',()=>{route=b.dataset.r;renderRoute();}));
+renderRoute();
+
+/* ============ 名词气泡 ============ */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent, def=el.dataset.def||'', key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def+(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8; if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw; if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el)); el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* ============ 通关庆祝 ============ */
+function celebrate(){
+  document.getElementById('congrats').classList.add('show');
+  const cv=document.getElementById('confetti'); cv.style.display='block';
+  const ctx=cv.getContext('2d'); cv.width=innerWidth; cv.height=innerHeight;
+  const COL=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const ps=[];for(let i=0;i<140;i++)ps.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    vx:(Math.random()-0.5)*3,vy:2+Math.random()*4,s:5+Math.random()*7,c:COL[i%COL.length],a:Math.random()*6.28,va:(Math.random()-0.5)*0.3});
+  let t0=null;
+  function frame(ts){ if(!t0)t0=ts; const el=ts-t0;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.04;p.a+=p.va;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.a);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.6);ctx.restore();});
+    if(el<3200) requestAnimationFrame(frame); else { ctx.clearRect(0,0,cv.width,cv.height); cv.style.display='none'; }
+  }
+  requestAnimationFrame(frame);
+  document.getElementById('congrats').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ============ 初始化 ============ */
+const m=/^#step-(\d+)$/.exec(location.hash);
+goto(m?parseInt(m[1],10)-1:0);
+window.addEventListener('hashchange',()=>{const mm=/^#step-(\d+)$/.exec(location.hash);goto(mm?parseInt(mm[1],10)-1:0);});
+</script>
+</body>
+</html>

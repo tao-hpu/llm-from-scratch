@@ -223,7 +223,7 @@
       <section class="card">
         <div class="card-head"><span class="ch-num">整机俯瞰 · 全景</span></div>
         <h3><a href="04_gpt_machine_viz.html#part-1">把零件拼成整机:一个字符流过 GPT</a></h3>
-        <p class="desc">第 1–3 章的零件拼成整台 tiny GPT(≈0.8M)。两段全自动动画:<code>① 装机</code>(训练把所有权重调到位)+ <code>② 跑起来</code>(前向传播 + 采样,预设开头自回归生成)。</p>
+        <p class="desc">第 1–3 章的零件拼成整台 tiny GPT(≈0.8M)。两段全自动动画:<code>① 装机</code>(训练把所有权重调到位)+ <code>② 跑起来</code>(<code>forward</code> 算出 logits → <code>decode</code> 采样,预设开头自回归生成)。跑起来里点开 <code>4×Block</code> 还能掀盖看注意力热力图 + FFN 内部。</p>
         <ul class="steps">
           <li><a href="04_gpt_machine_viz.html#part-1"><span class="sn">PART 1</span><span class="st">🔧 装机:训练把权重调到位</span><span class="arrow">→</span></a></li>
           <li><a href="04_gpt_machine_viz.html#part-2"><span class="sn">PART 2</span><span class="st">▶ 跑起来:前向 + 采样生成</span><span class="arrow">→</span></a></li>
@@ -239,36 +239,71 @@
     <div class="phase-title">
       <span class="pt-num">PHASE 1 · 124M</span>
       <h2>第一阶段 · 124M 模型</h2>
-      <span class="pt-state">🔒 即将上线</span>
+      <span class="pt-state">▶ 部分上线</span>
     </div>
     <div class="chapters">
+
+      <!-- 124M 推理 · 采样与 KV-cache -->
+      <section class="card">
+        <div class="card-head"><span class="ch-num">推理 · 采样</span></div>
+        <h3><a href="05_sampling_viz.html#step-1">跑起来:从 logits 到文字(采样与 KV-cache)</a></h3>
+        <p class="desc">对应 <code>phase1-124m/05_sample.py</code>:把推理"从打分到吐字"拆成五步亲手拨——<code>base</code> 只续写不答题、<code>temperature</code> 捏尖/摊平分布、<code>top_k</code> 砍掉长尾、自回归逐 token 滚动、<code>KV-cache</code> 并排省掉重复计算(实测约 2.5–3.1×)。</p>
+        <ul class="steps">
+          <li><a href="05_sampling_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">base 只会续写</span><span class="arrow">→</span></a></li>
+          <li><a href="05_sampling_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">temperature 捏分布</span><span class="arrow">→</span></a></li>
+          <li><a href="05_sampling_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">top_k 砍尾巴</span><span class="arrow">→</span></a></li>
+          <li><a href="05_sampling_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">自回归循环</span><span class="arrow">→</span></a></li>
+          <li><a href="05_sampling_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">KV-cache 加速(≈2.5–3.1×)</span><span class="arrow">→</span></a></li>
+        </ul>
+        <div class="card-foot">共 5 步 · <a href="05_sampling_viz.html#step-1">从第一步开始 →</a></div>
+      </section>
+
+      <!-- 训练过程(预训练)· 占位 -->
       <section class="card locked">
         <div class="card-head"><span class="ch-num">规模化</span></div>
         <h3>把 nanoGPT 放大到 GPT-2 124M</h3>
         <p class="desc">同一套架构放大到 124M 参数,体会更大规模下的训练与工程取舍。</p>
         <div class="soon-hint" data-soon role="button" tabindex="0">
-          敬请期待:对应 <code>phase1-124m/</code> 的可视化正在路上。
+          敬请期待:对应 <code>04_gpt2_124m.py</code> 训练过程(LR 退火 / 梯度累积)的可视化正在路上。
         </div>
       </section>
     </div>
   </section>
 
-  <!-- ============ PHASE 2 · SFT + LoRA(占位)============ -->
+  <!-- ============ PHASE 2 · SFT + LoRA ============ -->
   <section class="phase-sec">
     <div class="phase-title">
       <span class="pt-num">PHASE 2 · SFT + LoRA</span>
-      <h2>第二阶段 · 监督微调</h2>
-      <span class="pt-state">🔒 即将上线</span>
+      <h2>第二阶段 · 后训练</h2>
     </div>
     <div class="chapters">
+
+      <!-- Phase 2 开篇 · 后训练白皮书 -->
+      <section class="card">
+        <div class="card-head"><span class="ch-num">开篇 · 白皮书</span></div>
+        <h3><a href="06_posttraining_viz.html#step-1">从"会续写"到"会听话":后训练地图</a></h3>
+        <p class="desc">动手写代码前先对齐全景与术语:<code>参数量 vs 数据量</code>、<code>任务 vs 手段</code>(SFT/DPO × 全量/LoRA)、SFT 改了哪三处(数据/模板/<code>loss mask</code>)、偏好对齐里 <code>RLHF</code> 与 <code>DPO</code> 的关系。</p>
+        <ul class="steps">
+          <li><a href="06_posttraining_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">你练出来的底座(124M ≠ 10B)</span><span class="arrow">→</span></a></li>
+          <li><a href="06_posttraining_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">后训练地图:预训练→SFT→对齐</span><span class="arrow">→</span></a></li>
+          <li><a href="06_posttraining_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">任务 × 手段:两个正交的轴</span><span class="arrow">→</span></a></li>
+          <li><a href="06_posttraining_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">SFT 机制:同一 loss 只动三处</span><span class="arrow">→</span></a></li>
+          <li><a href="06_posttraining_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">偏好对齐:RLHF vs DPO</span><span class="arrow">→</span></a></li>
+          <li><a href="06_posttraining_viz.html#step-6"><span class="sn">STEP 6</span><span class="st">路线图 & 达标标准</span><span class="arrow">→</span></a></li>
+        </ul>
+        <div class="card-foot">共 6 步 · <a href="06_posttraining_viz.html#step-1">从第一步开始 →</a></div>
+      </section>
+
+      <!-- 三个脚本 · 占位 -->
       <section class="card locked">
-        <div class="card-head"><span class="ch-num">对齐</span></div>
-        <h3>SFT + LoRA:让模型学会"听话"</h3>
-        <p class="desc">在预训练模型上做监督微调(SFT),并用 LoRA 做高效低秩微调。</p>
+        <div class="card-head"><span class="ch-num">代码 · 三脚本</span></div>
+        <h3>06 SFT · 07 手搓 LoRA · 08 DPO</h3>
+        <p class="desc">白皮书落到代码:<code>06_sft.py</code>(全量 SFT)、<code>07_lora.py</code>(手搓 LoRA)、<code>08_dpo.py</code>(DPO,全量/LoRA 开关)。底座沿用 124M。</p>
         <div class="soon-hint" data-soon role="button" tabindex="0">
-          敬请期待:对应 <code>phase2-sft-lora/</code> 的可视化正在路上。
+          敬请期待:对应 <code>phase2-sft-lora/</code> 的脚本与可视化正在路上。
         </div>
       </section>
+
     </div>
   </section>
 
@@ -277,7 +312,7 @@
     一个从零理解大语言模型的教学项目 —— 先<b>看懂直觉</b>,再读代码。
     全部页面均为单文件、零依赖,离线双击即可打开。遇到不懂的术语,查 <a href="glossary.html" style="color:var(--accent);text-decoration:none;font-weight:600">名词表</a>;
     想看边角料故事,翻 <a href="notes.html" style="color:var(--accent);text-decoration:none;font-weight:600">学习札记 🥚</a>。
-    <div class="progress">进度:第 1 章 Bigram、第 2 章 自注意力、第 3 章 完整 Transformer 已上线 · 124M 与 SFT+LoRA 筹备中</div>
+    <div class="progress">进度:第 1–3 章 + 整机俯瞰 + 124M 推理采样 + Phase 2 后训练白皮书 已上线 · 124M 训练过程与 Phase 2 三脚本筹备中</div>
   </footer>
 
 </div>

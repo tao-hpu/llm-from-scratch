@@ -165,6 +165,46 @@
   #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);font-size:14px;margin-bottom:4px;}
   #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);text-decoration:none;font-family:var(--mono);}
   #termTip .tt-more:hover{color:var(--accent);}
+
+  /* ===== forward / decode 分段条(贴着流水线下方,标出推理两步) ===== */
+  .phase-band{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0 0;}
+  .phase-band .pb{border-radius:9px;padding:6px 10px;font-family:var(--mono);font-size:11px;font-weight:700;text-align:center;}
+  .phase-band .pb.fwd{grid-column:span 3;color:#b06a4d;background:#FBF1EA;border:1px solid #F0DDD0;}
+  .phase-band .pb.dec{grid-column:span 1;color:#2c8a6b;background:#EAF4EF;border:1px solid #CFE7DC;}
+  @media(max-width:680px){.phase-band{grid-template-columns:repeat(2,1fr);}.phase-band .pb.fwd,.phase-band .pb.dec{grid-column:span 1;}}
+
+  /* ===== 掀盖:Block 内部(注意力热力图 + FFN 流动) ===== */
+  #stageBlock:hover{border-color:var(--accent);}
+  .zoom-hint{display:inline-flex;align-items:center;gap:5px;margin-top:10px;font-family:var(--mono);font-size:11.5px;font-weight:700;
+    color:#fff;background:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:5px 12px;cursor:pointer;
+    box-shadow:0 2px 6px rgba(217,119,87,.3);animation:zoompulse 1.7s ease-in-out infinite;}
+  .zoom-hint:hover{filter:brightness(1.07);}
+  .zoom-hint.opened{animation:none;background:#fff;color:var(--accent);}
+  @keyframes zoompulse{0%,100%{box-shadow:0 2px 6px rgba(217,119,87,.28);transform:translateY(0);}50%{box-shadow:0 3px 15px rgba(217,119,87,.55);transform:translateY(-1px);}}
+  .blockzoom{display:none;margin-top:16px;border:1px solid var(--border);border-radius:16px;background:#fff;padding:18px;}
+  .blockzoom.open{display:block;animation:fade .35s ease;}
+  .bz-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
+  .bz-head .bz-t{font-family:var(--serif);font-size:17px;font-weight:600;}
+  .bz-head .bz-close{margin-left:auto;cursor:pointer;font-family:var(--mono);font-size:12px;color:var(--ink2);border:1px solid var(--border);border-radius:8px;padding:4px 10px;background:#fff;}
+  .bz-head .bz-close:hover{border-color:var(--accent);color:var(--accent);}
+  .zoom-anat{display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:#FBFAF6;border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:12px;}
+  .zoom-anat .za-lane{font-family:var(--mono);font-size:11px;font-weight:700;color:#8a3d23;background:var(--accent-soft);border-radius:8px;padding:6px 9px;}
+  .zoom-anat .za-op{font-family:var(--mono);font-size:11px;color:var(--ink2);}
+  .zoom-anat .za-mod{font-family:var(--mono);font-size:11.5px;font-weight:700;color:#fff;border-radius:8px;padding:7px 11px;line-height:1.25;text-align:center;}
+  .zoom-anat .za-mod small{display:block;font-weight:400;font-size:9px;opacity:.9;}
+  .zoom-anat .za-mod.attn{background:#a3548c;} .zoom-anat .za-mod.ffn{background:var(--accent);}
+  .zoom-anat .za-plus{font-family:var(--mono);font-size:16px;font-weight:700;color:#2c8a6b;}
+  .zoom-tabs{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
+  .ztab{font-family:var(--mono);font-size:12.5px;font-weight:700;background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:9px;padding:7px 13px;cursor:pointer;transition:.2s;}
+  .ztab.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .ztab.attn.active{background:#a3548c;border-color:#a3548c;}
+  .zpane{display:none;} .zpane.active{display:block;}
+  .zoom-ctrl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;}
+  .ztab-l{font-family:var(--mono);font-size:11.5px;font-weight:700;background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:8px;padding:5px 10px;cursor:pointer;transition:.2s;}
+  .ztab-l.active{background:#a3548c;color:#fff;border-color:#a3548c;}
+  .zoom-svg{background:#fff;border:1px solid var(--border);border-radius:12px;padding:6px;}
+  .zoom-ro{font-size:12.5px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);border-radius:10px;padding:9px 12px;margin-top:8px;min-height:16px;}
+  .zoom-ro b{color:var(--accent);} .zoom-ro code{font-family:var(--mono);font-size:11.5px;background:#fff;border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
 </style>
 </head>
 <body>
@@ -257,11 +297,12 @@
         <div class="stsub">末位字符 → <span class="d d-emb">128<i>n_embd</i></span> 向量<br>(tok_emb + pos_emb)</div>
         <div class="embcells" id="embcells"></div>
       </div>
-      <div class="pstage" data-st="1">
+      <div class="pstage" data-st="1" id="stageBlock" style="cursor:pointer">
         <div class="stn">STAGE 2</div>
         <div class="sttitle">4 × Block</div>
         <div class="blkdots" id="blkdots"><i>1</i><i>2</i><i>3</i><i>4</i></div>
         <div class="stsub">每层:多头注意力(看前文)<br>+ FFN(逐位置思考)</div>
+        <span class="zoom-hint">👆 点开看内部</span>
       </div>
       <div class="pstage" data-st="2">
         <div class="stn">STAGE 3</div>
@@ -274,7 +315,53 @@
         <div class="pbars" id="pbars"></div>
       </div>
     </div>
+    <div class="phase-band">
+      <div class="pb fwd">forward 前向 · STAGE 1–3 算出 logits(推理只有前向,没有反向)</div>
+      <div class="pb dec">decode · 挑 token</div>
+    </div>
     <div class="note" id="infNote">选一个开头,机器开始自动生成 ↑</div>
+
+    <!-- ===== 掀盖:Block 内部 ===== -->
+    <div class="blockzoom" id="blockzoom">
+      <div class="bz-head">
+        <span class="bz-t">掀开 Block 看内部</span>
+        <span class="hp-note">一个 Block = 在残差流上挂两个模块,各自「读 → 算 → 加回」</span>
+        <span class="bz-close" id="bzClose">收起 ✕</span>
+      </div>
+      <div class="zoom-anat">
+        <span class="za-lane"><span class="term" data-term="残差流 · residual stream" data-key="residual" data-def="贯穿所有层的主干向量。每层从它读入、算完再加回(x = x + 子层(x))。层与层之间的信息就靠这条流向后传。">残差流</span> x</span>
+        <span class="za-op">→ <span class="term" data-term="LayerNorm · 层归一化" data-key="layernorm" data-def="把向量数值拉回稳定范围,再送进子层。">LN</span> →</span>
+        <span class="za-mod attn"><span class="term" data-term="自注意力 · self-attention" data-key="self-attention" data-def="每个 token 从前文按权重取信息,跨 token 混合。">注意力</span><small>跨 token</small></span>
+        <span class="za-plus">⊕</span>
+        <span class="za-op">→ LN →</span>
+        <span class="za-mod ffn"><span class="term" data-term="前馈网络 · FeedForward" data-key="feedforward" data-def="逐位置小 MLP:Linear→ReLU→Linear,中间放大 4 倍。只在维度之间变换,不跨 token。">FFN</span><small>跨维度</small></span>
+        <span class="za-plus">⊕</span>
+        <span class="za-lane">x'</span>
+      </div>
+      <div class="zoom-tabs">
+        <button class="ztab attn active" data-z="attn">① 注意力 · 跨 token</button>
+        <button class="ztab" data-z="ffn">② FFN · 跨维度(单 token)</button>
+      </div>
+      <div class="zpane active" id="zp-attn">
+        <div class="zoom-ctrl">
+          <span class="hp-note" style="margin-right:2px">看第几层:</span>
+          <button class="ztab-l active" data-l="1">B1</button>
+          <button class="ztab-l" data-l="2">B2</button>
+          <button class="ztab-l" data-l="3">B3</button>
+          <button class="ztab-l" data-l="4">B4</button>
+        </div>
+        <div class="zoom-svg"><svg id="zoomAttn" viewBox="0 0 560 340" preserveAspectRatio="xMidYMid meet"></svg></div>
+        <div class="zoom-ro" id="zoomAttnRO">左:注意力矩阵(行=谁在看 query,列=被看 key,越深权重越大)。右:选中行的连线。移到某一行,看这个 token 在读哪些前文。</div>
+      </div>
+      <div class="zpane" id="zp-ffn">
+        <div class="zoom-ctrl">
+          <button class="btn primary" id="zoomFFNPlay">▶ 让值流过 FFN</button>
+          <span class="hp-note">128 维 → 放大 512 维 → ReLU(砍负为0) → 压回 128 维 → 加回残差流</span>
+        </div>
+        <div class="zoom-svg"><svg id="zoomFFN" viewBox="0 0 960 360" preserveAspectRatio="xMidYMid meet"></svg></div>
+        <div class="zoom-ro" id="zoomFFNRO">点「▶」看值流过:亮起的线 = 正在走的路径;灰色隐藏节点 = 被 ReLU 砍掉。全程只有 1 个 token。</div>
+      </div>
+    </div>
 
     <details class="dig">
       <summary>为什么生成的是"莎士比亚味儿"的乱码,不是真句子?</summary>
@@ -431,19 +518,19 @@ function runInference(){
   renderRibbon(p.prompt,'',false);
   setStage(-1); litBlocks(0); document.getElementById('pbars').innerHTML=''; document.getElementById('embcells').innerHTML='';
   document.getElementById('infNote').innerHTML='▶ 开始生成 “'+p.name+'” …';
-  let gen='', t=600;
-  const STEP=1500;
+  let gen='', t=700;
+  const STEP=2600;
   for(let c=0;c<p.gen.length;c++){
     const ch=p.gen[c];
     const seq=p.prompt+gen;
     const seed=seq[seq.length-1]||p.prompt[0];
     after(t,        ()=>{ setStage(0); showEmbed(seed); document.getElementById('infNote').innerHTML='把当前序列喂进去,末位字符 <b>"'+showChar(seed)+'"</b> 先嵌入成向量…'; });
-    after(t+360,    ()=>{ setStage(1); litBlocks(0); });
-    [1,2,3,4].forEach((b,bi)=> after(t+360+bi*150, ()=>litBlocks(b)) );
-    after(t+360,    ()=>{ document.getElementById('infNote').innerHTML='过 <b>4 层 Block</b>:每层多头注意力看前文 + FFN 加工…'; });
-    after(t+1020,   ()=>{ setStage(2); document.getElementById('infNote').innerHTML='末位向量 → <code>lm_head</code> → 65 个字符的打分(logits)…'; });
-    after(t+1230,   ()=>{ setStage(3); showSample(ch); document.getElementById('infNote').innerHTML='<code>softmax</code> 出概率,采样到 <b>"'+showChar(ch)+'"</b> ↓'; });
-    after(t+1460,   ()=>{ gen+=ch; renderRibbon(p.prompt,gen,true); });
+    after(t+620,    ()=>{ setStage(1); litBlocks(0); });
+    [1,2,3,4].forEach((b,bi)=> after(t+620+bi*280, ()=>litBlocks(b)) );
+    after(t+620,    ()=>{ document.getElementById('infNote').innerHTML='过 <b>4 层 Block</b>:每层多头注意力看前文 + FFN 加工…'; });
+    after(t+1780,   ()=>{ setStage(2); document.getElementById('infNote').innerHTML='末位向量 → <code>lm_head</code> → 65 个字符的打分(logits)…'; });
+    after(t+2150,   ()=>{ setStage(3); showSample(ch); document.getElementById('infNote').innerHTML='<code>softmax</code> 出概率,采样到 <b>"'+showChar(ch)+'"</b> ↓'; });
+    after(t+2480,   ()=>{ gen+=ch; renderRibbon(p.prompt,gen,true); });
     t+=STEP;
   }
   after(t+200, ()=>{ setStage(-1); litBlocks(0);
@@ -479,6 +566,108 @@ renderParts();
 const m=/^#part-(\d)$/.exec(location.hash);
 goto(m?parseInt(m[1],10)-1:0);
 window.addEventListener('hashchange',()=>{ const mm=/^#part-(\d)$/.exec(location.hash); goto(mm?parseInt(mm[1],10)-1:0); });
+
+/* ============ 掀盖:Block 内部(注意力热力图 + 连线 / FFN 流动) ============ */
+(function(){
+  const NSx='http://www.w3.org/2000/svg';
+  const E=(t,a)=>{const e=document.createElementNS(NSx,t);for(const k in a)e.setAttribute(k,a[k]);return e;};
+  const Tx=(p,x,y,s,fill,size,w,anc)=>{const t=E('text',{x,y,fill,'text-anchor':anc||'middle',style:`font-family:var(--mono);font-size:${size}px;font-weight:${w||400}`});t.textContent=s;p.appendChild(t);return t;};
+  const TOK=['R','O','M','E','O',':'], N=6, dch=c=>(c===' '?'␣':c);
+  function Wt(r,l){const w=[];for(let s=0;s<=r;s++){let v=Math.exp(-(0.45+0.13*l)*(r-s));v*=0.65+0.7*noiseAt((s+1)*(l*2.3+1)+(r+1)*1.7);if(s===0)v*=1.3;if(s===r)v*=1.45;w.push(v);}const sm=w.reduce((a,b)=>a+b,0);return w.map(x=>x/sm);}
+  function hmC(w){const t=Math.pow(Math.max(0,Math.min(1,w)),0.6);return `rgb(${Math.round(244-27*t)},${Math.round(242-123*t)},${Math.round(234-147*t)})`;}
+
+  /* ---- 注意力:热力图 + 连线 ---- */
+  const svgA=document.getElementById('zoomAttn'), roA=document.getElementById('zoomAttnRO');
+  const CELL=40, GX=108, GY=58, QX=432, KX=528, TY0=74, TGAP=44, NW=34, NH=26;
+  let curL=1, curQ=N-1;
+  Tx(svgA,GX,GY-30,'注意力矩阵','#1A1A18',11.5,700,'start');
+  Tx(svgA,GX,GY-16,'列=被看 key / 行=在看 query','#a8a293',9,700,'start');
+  Tx(svgA,QX,TY0-18,'query 在看','#6B6B68',9,700);
+  Tx(svgA,KX,TY0-18,'key 被看','#6B6B68',9,700);
+  for(let c=0;c<N;c++) Tx(svgA,GX+c*CELL+CELL/2,GY-3,dch(TOK[c]),'#6B6B68',12,700);
+  const qy=[]; for(let r=0;r<N;r++) qy.push(Tx(svgA,GX-11,GY+r*CELL+CELL/2+4,dch(TOK[r]),'#6B6B68',12,700,'end'));
+  const cells=[];
+  for(let r=0;r<N;r++){const row=[];for(let c=0;c<N;c++){const x=GX+c*CELL,y=GY+r*CELL;
+    if(c>r){svgA.appendChild(E('rect',{x:x+1,y:y+1,width:CELL-2,height:CELL-2,rx:5,fill:'#FBFAF6',stroke:'#EFEDE4'}));row.push(null);continue;}
+    const rect=E('rect',{x:x+1,y:y+1,width:CELL-2,height:CELL-2,rx:5,fill:'#fff',style:'cursor:pointer'});
+    const tx=E('text',{x:x+CELL/2,y:y+CELL/2+3,'text-anchor':'middle',style:'font-family:var(--mono);font-size:8.5px;font-weight:700'});
+    rect.addEventListener('mouseenter',()=>selQ(r));svgA.appendChild(rect);svgA.appendChild(tx);row.push({rect,tx});}
+    cells.push(row);}
+  const qN=[],kN=[];
+  for(let i=0;i<N;i++){const y=TY0+i*TGAP;
+    const gq=E('g',{style:'cursor:pointer'});const bq=E('rect',{x:QX-NW/2,y:y-NH/2,width:NW,height:NH,rx:6,fill:'#fff',stroke:'#E5E2D9','stroke-width':1.3});
+    gq.appendChild(bq);gq.appendChild(Object.assign(E('text',{x:QX,y:y+4,'text-anchor':'middle',style:'font-family:var(--mono);font-size:12px;font-weight:700;fill:#1A1A18'}),{textContent:dch(TOK[i])}));
+    gq.addEventListener('mouseenter',()=>selQ(i));svgA.appendChild(gq);qN.push(bq);
+    const bk=E('rect',{x:KX-NW/2,y:y-NH/2,width:NW,height:NH,rx:6,fill:'#fff',stroke:'#E5E2D9','stroke-width':1.3});svgA.appendChild(bk);
+    svgA.appendChild(Object.assign(E('text',{x:KX,y:y+4,'text-anchor':'middle',style:'font-family:var(--mono);font-size:12px;font-weight:700;fill:#1A1A18'}),{textContent:dch(TOK[i])}));kN.push(bk);}
+  const arcs=E('g',{});svgA.appendChild(arcs);
+  function renderHeat(){for(let r=0;r<N;r++){const w=Wt(r,curL);for(let c=0;c<=r;c++){const{rect,tx}=cells[r][c];
+    rect.setAttribute('fill',hmC(w[c]));const sel=(r===curQ);tx.textContent=sel?Math.round(w[c]*100)+'%':'';
+    tx.setAttribute('fill',w[c]<0.35?'#6B6B68':'#fff');rect.setAttribute('stroke',sel?'#a3548c':'none');rect.setAttribute('stroke-width',sel?2:0);}}
+    qy.forEach((t,i)=>t.setAttribute('fill',i===curQ?'#a3548c':'#6B6B68'));}
+  function renderArcs(){arcs.innerHTML='';qN.forEach((b,i)=>{b.setAttribute('stroke',i===curQ?'#a3548c':'#E5E2D9');b.setAttribute('stroke-width',i===curQ?2.2:1.3);});
+    kN.forEach(b=>{b.setAttribute('stroke','#E5E2D9');b.setAttribute('stroke-width',1.3);});
+    const w=Wt(curQ,curL),q=TY0+curQ*TGAP;
+    for(let s=0;s<=curQ;s++){const k=TY0+s*TGAP,x1=QX+NW/2,x2=KX-NW/2,mx=(x1+x2)/2;
+      const p=E('path',{d:`M ${x1} ${q} C ${mx} ${q}, ${mx} ${k}, ${x2} ${k}`,fill:'none',stroke:'#D97757','stroke-linecap':'round'});
+      p.style.strokeWidth=(1+5*w[s]).toFixed(2);p.style.opacity=(0.22+0.7*w[s]).toFixed(2);arcs.appendChild(p);
+      kN[s].setAttribute('stroke','#D97757');kN[s].setAttribute('stroke-width',2);
+      if(w[s]>0.12){const t=E('text',{x:x2-10,y:k-5,'text-anchor':'end',style:'font-family:var(--mono);font-size:9px;font-weight:700;fill:#D97757'});t.textContent=Math.round(w[s]*100)+'%';arcs.appendChild(t);}}}
+  function selQ(r){curQ=r;renderHeat();renderArcs();const w=Wt(r,curL);
+    const parts=w.map((x,s)=>({c:TOK[s],x})).sort((a,b)=>b.x-a.x).map(o=>`<code>${dch(o.c)}</code> ${Math.round(o.x*100)}%`).join(' · ');
+    let m=`第 <b>${curL}</b> 层,“<b>${dch(TOK[r])}</b>” 在读:${parts}。`;
+    m+= r===0?' 第一个字只能看自己。':' 看不到右边(更晚的字)——因果。';
+    roA.innerHTML=m;}
+  document.querySelectorAll('#zp-attn .ztab-l').forEach(t=>t.addEventListener('click',()=>{
+    document.querySelectorAll('#zp-attn .ztab-l').forEach(x=>x.classList.remove('active'));t.classList.add('active');
+    curL=+t.dataset.l;renderHeat();renderArcs();selQ(curQ);}));
+  renderHeat();selQ(N-1);
+
+  /* ---- FFN 流动 ---- */
+  const svgF=document.getElementById('zoomFFN'), roF=document.getElementById('zoomFFNRO');
+  const IN=8,HID=12,OUT=8,FXi=150,FXh=480,FXo=810;
+  const iy=i=>80+i*36, hy=j=>70+j*23.5, oy=k=>80+k*36;
+  const dead=[],w1=[],w2=[];
+  Tx(svgF,FXi,44,'输入 128 维','#3a63c0',12,700);Tx(svgF,FXi,58,'(从残差流读)','#a8a293',9,400);
+  Tx(svgF,FXh,44,'隐藏 512 维','#9a7b2f',12,700);Tx(svgF,FXh,58,'Linear→ReLU 放大4倍','#a8a293',9,400);
+  Tx(svgF,FXo,44,'输出 128 维','#c2693f',12,700);Tx(svgF,FXo,58,'Linear→加回残差流','#a8a293',9,400);
+  for(let j=0;j<HID;j++){dead[j]=noiseAt(j*17+3)<0.4;
+    const i1=Math.floor(noiseAt(j*3+1)*IN),i2=Math.floor(noiseAt(j*7+2)*IN);
+    [i1,i2].forEach(i=>{const p=E('line',{x1:FXi+13,y1:iy(i),x2:FXh-11,y2:hy(j),stroke:'#d8cab9','stroke-width':1.4,opacity:.5});svgF.appendChild(p);w1.push({p,i,j});});
+    const k1=Math.floor(noiseAt(j*5+4)*OUT),k2=Math.floor(noiseAt(j*9+6)*OUT);
+    [k1,k2].forEach(k=>{const p=E('line',{x1:FXh+11,y1:hy(j),x2:FXo-13,y2:oy(k),stroke:'#d8cab9','stroke-width':1.4,opacity:.5});svgF.appendChild(p);w2.push({p,j,k});});}
+  for(let i=0;i<IN;i++) svgF.appendChild(E('circle',{cx:FXi,cy:iy(i),r:10,fill:'#E5EBF9',stroke:'#3a63c0','stroke-width':1.3,id:'zfi'+i}));
+  for(let j=0;j<HID;j++) svgF.appendChild(E('circle',{cx:FXh,cy:hy(j),r:8,fill:'#fff',stroke:'#9a7b2f','stroke-width':1.2,id:'zfh'+j}));
+  for(let k=0;k<OUT;k++) svgF.appendChild(E('circle',{cx:FXo,cy:oy(k),r:10,fill:'#fff',stroke:'#D97757','stroke-width':1.3,id:'zfo'+k}));
+  Tx(svgF,FXh,348,'⚠ 全程只有 1 个 token —— FFN 不跨 token,只在维度之间','#a3548c',11,700);
+  let tF=[];
+  function ffnPlay(){tF.forEach(clearTimeout);tF=[];
+    for(let i=0;i<IN;i++)document.getElementById('zfi'+i).setAttribute('fill','#E5EBF9');
+    for(let j=0;j<HID;j++)document.getElementById('zfh'+j).setAttribute('fill','#fff');
+    for(let k=0;k<OUT;k++)document.getElementById('zfo'+k).setAttribute('fill','#fff');
+    [...w1,...w2].forEach(o=>{o.p.setAttribute('stroke','#d8cab9');o.p.setAttribute('opacity',.5);o.p.style.strokeWidth=1.4;});
+    roF.innerHTML='① 从残差流读入这个 token 的 128 维(蓝)…';
+    for(let i=0;i<IN;i++) tF.push(setTimeout(()=>document.getElementById('zfi'+i).setAttribute('fill','#7d9be6'),i*90));
+    tF.push(setTimeout(()=>{w1.forEach(o=>{o.p.setAttribute('stroke','#D97757');o.p.setAttribute('opacity',.9);o.p.style.strokeWidth=2;});
+      for(let j=0;j<HID;j++)document.getElementById('zfh'+j).setAttribute('fill',dead[j]?'#EEEBE1':'#e8cf7a');
+      roF.innerHTML='② Linear 放大到 512 维。<b>ReLU 把负的砍成 0</b>(灰点 = 被砍掉)——非线性就在这。';},1050));
+    tF.push(setTimeout(()=>{w2.forEach(o=>{if(dead[o.j])return;o.p.setAttribute('stroke','#D97757');o.p.setAttribute('opacity',.9);o.p.style.strokeWidth=2;});
+      for(let k=0;k<OUT;k++)document.getElementById('zfo'+k).setAttribute('fill','#D97757');
+      roF.innerHTML='③ Linear 压回 128 维(橙)→ <b>加回残差流</b>。连线 = 训练好的固定权重,对每个 token 都一样。';},2100));}
+  document.getElementById('zoomFFNPlay').addEventListener('click',ffnPlay);
+
+  /* ---- 开合 + 子标签 ---- */
+  const bz=document.getElementById('blockzoom'), stage=document.getElementById('stageBlock');
+  const hint=stage?stage.querySelector('.zoom-hint'):null;
+  function setHint(open){ if(!hint)return; hint.classList.toggle('opened',open); hint.textContent=open?'▲ 收起内部':'👆 点开看内部'; }
+  if(stage) stage.addEventListener('click',()=>{ const open=!bz.classList.contains('open'); bz.classList.toggle('open',open); setHint(open);
+    if(open) bz.scrollIntoView({behavior:'smooth',block:'nearest'}); });
+  const cl=document.getElementById('bzClose'); if(cl) cl.addEventListener('click',(e)=>{ e.stopPropagation(); bz.classList.remove('open'); setHint(false); });
+  document.querySelectorAll('.ztab').forEach(t=>t.addEventListener('click',()=>{
+    document.querySelectorAll('.ztab').forEach(x=>x.classList.remove('active'));t.classList.add('active');
+    document.querySelectorAll('.zpane').forEach(p=>p.classList.remove('active'));
+    document.getElementById('zp-'+t.dataset.z).classList.add('active');}));
+})();
 </script>
 </body>
 </html>

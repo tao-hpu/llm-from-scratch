@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>跑起来 · 从 logits 到文字(采样与 KV-cache)· 05_sample</title>
+<style>
+  /* ============ 全局基础样式(与全站共用暖色变量)============ */
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:920px;margin:0 auto;padding:32px 24px 90px;}
+
+  /* ============ 返回首页 ============ */
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  /* ============ 顶部标题区 ============ */
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:740px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  /* ============ 步骤导航 ============ */
+  .steps-nav{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:26px 0 20px;}
+  @media(max-width:640px){ .steps-nav{grid-template-columns:repeat(2,1fr);} }
+  .step-tab{min-width:0;background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 13px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  /* ============ 超参速查条(每页常驻)============ */
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+
+  /* ============ 维度色标(与 hp-bar 一一对应)============ */
+  .d{display:inline-flex;align-items:baseline;gap:3px;font-family:var(--mono);font-weight:700;
+    padding:0 5px;border-radius:6px;line-height:1.5;white-space:nowrap;}
+  .d i{font-style:normal;font-size:9.5px;font-weight:600;opacity:.9;letter-spacing:.2px;}
+  .d-vocab{color:#a87b1f;background:#FAEFD6;}
+  .d-temp{color:#b8512f;background:#F7E6DE;}
+  .d-topk{color:#3f7d63;background:#E4EFE9;}
+  .d-block{color:#3a63c0;background:#E5EBF9;}
+
+  /* ============ 面板 ============ */
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 20px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    display:flex;align-items:center;gap:7px;}
+  .next-hint::before{content:"↳";font-size:15px;}
+
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:22px 0 6px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  /* 渐进展开:深问题默认收起 */
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig+.dig{margin-top:8px;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
+  /* ============ 通用按钮 ============ */
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.ghost{background:transparent;}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;align-items:center;}
+
+  /* ============ 上一步 / 下一步 ============ */
+  .nav{display:flex;justify-content:space-between;margin-top:24px;}
+
+  /* ============ prompt 条 ============ */
+  .prompt-box{font-family:var(--mono);font-size:14px;background:#fff;border:1px solid var(--border);
+    border-radius:12px;padding:13px 16px;margin:4px 0 6px;line-height:1.6;}
+  .prompt-box .pq{color:var(--ink);}
+  .prompt-box .pblank{display:inline-block;min-width:34px;border-bottom:2px solid var(--accent);
+    color:var(--accent);font-weight:700;text-align:center;}
+  .prompt-box .pcaret{display:inline-block;width:2px;height:16px;background:var(--accent);
+    vertical-align:-3px;margin-left:1px;animation:blink 1s steps(1) infinite;}
+  @keyframes blink{50%{opacity:0;}}
+
+  /* ============ 概率条形分布 ============ */
+  .dist{display:flex;flex-direction:column;gap:5px;background:#fff;border:1px solid var(--border);
+    border-radius:12px;padding:14px 16px;margin:6px 0 4px;}
+  .brow{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:12.5px;transition:opacity .3s;}
+  .brow .tok{width:78px;text-align:right;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .brow .track{flex:1;height:18px;background:#F4F2EA;border-radius:6px;overflow:hidden;position:relative;}
+  .brow .fill{height:100%;width:0;background:#cbb9ad;border-radius:6px;transition:width .35s ease,background .3s;}
+  .brow .pct{width:48px;text-align:right;color:var(--ink2);}
+  .brow.chosen .fill{background:var(--accent);}
+  .brow.chosen .tok{color:var(--accent);font-weight:700;}
+  .brow.chosen .pct{color:var(--accent);font-weight:700;}
+  .brow.cut{opacity:.32;}
+  .brow.cut .fill{background:#d8cfc4;}
+  .brow.cut .track{background:repeating-linear-gradient(45deg,#F4F2EA,#F4F2EA 5px,#ece8de 5px,#ece8de 10px);}
+  .brow.cut .pct{text-decoration:line-through;}
+
+  /* ============ 滑块 ============ */
+  .sliderbox{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 18px;margin:6px 0;}
+  .sliderbox .srow{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .sliderbox label{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap;}
+  .sliderbox .sval{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent);min-width:42px;}
+  input[type=range]{-webkit-appearance:none;appearance:none;flex:1;min-width:140px;height:6px;border-radius:4px;
+    background:linear-gradient(90deg,var(--accent-soft),var(--accent));outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;
+    background:#fff;border:2px solid var(--accent);cursor:pointer;box-shadow:0 1px 4px rgba(217,119,87,.4);}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#fff;border:2px solid var(--accent);cursor:pointer;}
+  .ticks{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--ink2);margin-top:6px;}
+
+  /* ============ 序列 ribbon(自回归)============ */
+  .ribbon{display:flex;flex-wrap:wrap;gap:5px;align-items:center;background:#fff;border:1px solid var(--border);
+    border-radius:12px;padding:14px 16px;margin:8px 0 6px;min-height:58px;}
+  .rchar{min-width:24px;height:32px;padding:0 7px;border-radius:7px;display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:14px;font-weight:600;border:1px solid var(--border);}
+  .rchar.prompt{background:#F4F2EA;color:var(--ink2);}
+  .rchar.gen{background:var(--accent-soft);border-color:#e8c4b5;color:#8a3d23;}
+  .rchar.pop{animation:pop .45s ease;}
+  @keyframes pop{0%{transform:scale(.4) translateY(-8px);opacity:0;}60%{transform:scale(1.12);}100%{transform:scale(1);opacity:1;}}
+  .rcaret{width:3px;height:28px;background:var(--accent);border-radius:2px;animation:blink 1s steps(1) infinite;}
+
+  /* ============ KV-cache 双栏 ============ */
+  .kv-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:8px 0 4px;}
+  @media(max-width:640px){ .kv-cols{grid-template-columns:1fr;} }
+  .kvcol{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px;}
+  .kvcol.slow{border-color:#e8c4b5;}
+  .kvcol.fast{border-color:#bcd9c9;}
+  .kvcol .kvh{font-family:var(--mono);font-size:13px;font-weight:700;margin-bottom:3px;}
+  .kvcol.slow .kvh{color:#b06a4d;}
+  .kvcol.fast .kvh{color:#2c8a6b;}
+  .kvcol .kvsub{font-size:11.5px;color:var(--ink2);min-height:30px;margin-bottom:8px;line-height:1.45;}
+  .kvgrid{display:flex;flex-direction:column;gap:4px;min-height:150px;}
+  .kvr{display:flex;align-items:center;gap:4px;}
+  .kvr .stp{font-family:var(--mono);font-size:9.5px;color:var(--ink2);width:30px;text-align:right;}
+  .kvcell{width:18px;height:18px;border-radius:4px;background:#F1EEE6;border:1px solid var(--border);transition:.25s;}
+  .kvcell.cached{background:#E4EFE9;border-color:#cfe3d8;}
+  .kvcell.recompute{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
+  .kvcell.newtok{background:#2c8a6b;border-color:#2c8a6b;box-shadow:0 0 0 2px #cfe7dc;}
+  .kvcount{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--mono);
+    font-size:12px;margin-top:10px;padding-top:9px;border-top:1px dashed var(--border);}
+  .kvcount b{font-size:17px;}
+  .kvcol.slow .kvcount b{color:#b06a4d;} .kvcol.fast .kvcount b{color:#2c8a6b;}
+  .kvcount small{color:var(--ink2);font-size:10.5px;}
+
+  /* ============ 名词气泡(全站统一组件)============ */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:264px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;
+    font-family:system-ui,-apple-system,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);
+    font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);
+    text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* ============ 通关庆祝 ============ */
+  .congrats{position:fixed;left:50%;top:24%;transform:translate(-50%,-50%) scale(.92);
+    z-index:10000;pointer-events:none;text-align:center;background:#fff;border:1px solid var(--accent);
+    box-shadow:0 8px 30px rgba(217,119,87,.25);border-radius:16px;padding:18px 28px;
+    font-family:var(--serif);font-size:22px;font-weight:600;color:var(--accent);
+    opacity:0;transition:opacity .45s ease,transform .45s ease;}
+  .congrats.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+  .congrats span{display:block;margin-top:6px;font-family:system-ui,sans-serif;font-size:13px;font-weight:400;color:var(--ink2);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <!-- ============ 顶部标题区 ============ -->
+  <header>
+    <span class="filename">05_sampling_viz.html</span>
+    <h1>跑起来:从 logits 到文字(采样与 KV-cache)</h1>
+    <p class="subtitle">
+      本页对应 <code>phase1-124m/05_sample.py</code>。模型每一步只做一件事:对<b>下一个 token</b> 打分(<span class="term"
+        data-term="logits · 原始打分" data-key="logits" data-def="模型最后一层对词表里每个 token 输出的一排实数打分,还没归一化成概率。越大越倾向选它。">logits</span>)。
+      这一页把"打分 → 怎么挑一个字 → 一个字接一个字滚成句子 → 怎么加速"五步拆开,每步亲手拨一个旋钮。
+      演示用一个<b>小示意词表</b>(标着「示意」),真实里词表是 <span class="d d-vocab">50304<i>vocab</i></span> 个 token。
+    </p>
+  </header>
+
+  <!-- ============ 步骤导航 ============ -->
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">base 只会续写</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">temperature 温度</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">top_k 砍尾巴</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">自回归循环</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">KV-cache 加速</div></div>
+  </div>
+
+  <!-- ============ 超参速查条 ============ -->
+  <div class="hp-bar">
+    <span class="hp-label">采样旋钮</span>
+    <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">temperature <b>0.9</b> <i>默认</i></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">top_k <b>50</b> <i>默认</i></span>
+    <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">vocab <b>50304</b> <i>词表大小</i></span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">block_size <b>1024</b> <i>能回看多远</i></span>
+    <span class="hp-note">演示词表只 <b>8</b> 个是<b>示意</b> · 真实每步在 50304 个里挑 · 配套 <code style="font-family:var(--mono)">05_sample.py</code></span>
+  </div>
+
+  <!-- ============ STEP 1:base 只会续写 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>① base 模型只会"续写":它永远在猜下一个 token</h2>
+    <p class="lead">
+      给一段开头(<span class="term" data-term="prompt · 提示词" data-key="prompt" data-def="喂给模型的开头文本。模型不会「理解任务」,只会顺着它往下接最可能的 token。">prompt</span>),
+      模型把它过一遍前向,在<b>最后一个位置</b>吐出对下一个 token 的一整排打分,再 <span class="term"
+        data-term="softmax" data-key="softmax" data-def="把一排打分(logits)变成和为 1 的概率分布,打分越高概率越大。">softmax</span> 成概率。
+      <b>它不答题、只续写。</b>换上一个"问句"开头,你会看到正确答案那个 token <b>并不在高处</b> —— 因为基座模型从没学过"回答"。
+    </p>
+
+    <div class="btn-row" id="s1Btns"></div>
+    <div class="prompt-box" id="s1Prompt"></div>
+
+    <div class="sub-h"><span class="badge">下一个 token</span>概率分布(只截了示意词表的前 8 名)</div>
+    <div class="dist" id="s1Dist"></div>
+    <div class="note" id="s1Note"></div>
+
+    <details class="dig">
+      <summary>"它不会答题" 到底什么意思?那 ChatGPT 怎么会答?</summary>
+      <div class="dig-body">
+        base 模型只学过"海量文本里,这个词后面通常接什么"。所以给它 <code>Q: 2+2=? A:</code>,
+        它会接着续一段<b>像那种文本</b>的东西(再问一句、换行、复述题目…),而不是真去算"4"。
+        "会顺着指令回答问题"是 <span class="term" data-term="SFT · 指令微调" data-key="sft" data-def="Supervised Fine-Tuning:在基座模型上,用「指令 → 理想回答」成对数据继续训练,教会它听话回答。是 Phase 2 的内容。">SFT</span>
+        在 <b>Phase 2</b> 用「指令→回答」数据另外教出来的。本页(Phase 1)的模型还停在"只会续写"。
+      </div>
+    </details>
+
+    <p class="next-hint">同一排 logits,挑字的方式不只一种。先拨第一个旋钮:<b>temperature</b> —— 它决定模型有多"敢"。</p>
+  </section>
+
+  <!-- ============ STEP 2:temperature ============ -->
+  <section class="panel" id="panel1">
+    <h2>② temperature:一个旋钮,把分布捏尖或摊平</h2>
+    <p class="lead">
+      采样前先做一步 <code>logits / temperature</code> 再 softmax。<b>温度低</b> → 分布变<b>尖</b>,几乎只挑最高分那个(保守、稳,但容易复读);
+      <b>温度高</b> → 分布变<b>平</b>,小众 token 也有机会(发散、有创意,但容易胡说)。真实默认
+      <span class="d d-temp">0.9<i>temp</i></span>。拖滑块实时看分布形状变化(用 STEP 1 的续写示意分布)。
+    </p>
+
+    <div class="sliderbox">
+      <div class="srow">
+        <label>temperature</label>
+        <input type="range" id="tempSlider" min="0.1" max="2.0" step="0.05" value="0.9">
+        <span class="sval" id="tempVal">0.90</span>
+      </div>
+      <div class="ticks"><span>0.1 极保守</span><span>0.9 默认</span><span>2.0 极发散</span></div>
+    </div>
+
+    <div class="dist" id="s2Dist"></div>
+    <div class="note" id="s2Note"></div>
+
+    <details class="dig">
+      <summary>为什么除以温度就能改变"尖/平"?</summary>
+      <div class="dig-body">
+        softmax 比的是 logits 之间的<b>差距</b>。除以一个小温度(如 0.3)会把所有差距<b>放大</b>,最高分一骑绝尘 → 分布更尖;
+        除以一个大温度(如 1.8)把差距<b>压扁</b>,大家拉近 → 分布更平。温度 = 1 就是原样。
+        代码里就是 <code>sample_next</code> 里的一行 <code>logits = logits / temperature</code>。
+      </div>
+    </details>
+
+    <p class="next-hint">温度只是把整排概率重新塑形 —— 长长的"垃圾尾巴"还在。下一步用 <b>top_k</b> 直接把尾巴一刀切掉。</p>
+  </section>
+
+  <!-- ============ STEP 3:top_k ============ -->
+  <section class="panel" id="panel2">
+    <h2>③ top_k:只在概率最高的 k 个里采样,尾巴一刀切掉</h2>
+    <p class="lead">
+      就算温度不高,词表里仍有一长串<b>低概率 token</b>,偶尔被抽中就是一处"胡言"。
+      <span class="term" data-term="top_k 采样" data-key="top-k" data-def="每一步只保留概率最高的 k 个 token,其余直接置为 0(−∞),再归一化采样。把长尾的低概率 token 一刀切掉。">top_k</span>
+      只保留<b>最高的 k 个</b>,其余打分设成 −∞(等于概率 0),再归一化采样。
+      真实默认 <span class="d d-topk">50<i>top_k</i></span>(在 50304 里留 50 个)。这里示意词表只有 8 个,拖 k 看尾巴被切、概率质量重新分配。
+    </p>
+
+    <div class="sliderbox">
+      <div class="srow">
+        <label>top_k</label>
+        <input type="range" id="kSlider" min="1" max="8" step="1" value="4">
+        <span class="sval" id="kVal">4</span>
+      </div>
+      <div class="ticks"><span>1 只留冠军(=贪心)</span><span>越大留得越多</span><span>8 全留(=不裁剪)</span></div>
+    </div>
+    <div class="sliderbox" style="margin-top:0">
+      <div class="srow">
+        <label>temperature</label>
+        <input type="range" id="kTempSlider" min="0.1" max="2.0" step="0.05" value="0.9">
+        <span class="sval" id="kTempVal">0.90</span>
+      </div>
+      <div class="ticks"><span>先裁 top_k,再按这个温度采样</span></div>
+    </div>
+
+    <div class="dist" id="s3Dist"></div>
+    <div class="note" id="s3Note"></div>
+
+    <details class="dig">
+      <summary>top_k=1 和"直接取最高分"是一回事吗?为什么不总用它?</summary>
+      <div class="dig-body">
+        是的,<code>top_k=1</code> 等于每步都取最高分(<span class="term" data-term="贪心解码 · greedy / argmax"
+        data-key="greedy" data-def="每步直接取概率最高的那个 token(argmax),不掷骰子。结果唯一可复现,但容易陷入重复死循环、读起来呆板。">贪心 argmax</span>)。
+        问题是它<b>没有多样性</b>:同一个开头永远生成同一句,还容易陷入"复读机"死循环。所以实践里留一小撮候选(k=50)再
+        <span class="term" data-term="按概率采样 · multinomial" data-key="sampling" data-def="按概率分布随机抽一个 token,概率大的更容易被抽中,但不是必中。代码里是 torch.multinomial(probs, 1)。">随机采样</span>,
+        兼顾"不胡说"和"有变化"。
+      </div>
+    </details>
+
+    <p class="next-hint">现在你会"挑一个 token"了。可一句话有几十个 token —— 怎么从一个变成一串?靠<b>自回归</b>循环。</p>
+  </section>
+
+  <!-- ============ STEP 4:自回归循环 ============ -->
+  <section class="panel" id="panel3">
+    <h2>④ 自回归:采一个 → 接回末尾 → 再采下一个</h2>
+    <p class="lead">
+      模型一次只吐<b>一个</b> token。把它<b>拼回输入末尾</b>,整条序列再喂一遍、再采下一个,如此滚动 ——
+      这就是 <span class="term" data-term="自回归 · autoregressive" data-key="autoregressive" data-def="把自己刚生成的 token 接回输入,再预测下一个,如此循环。GPT 生成文本就是这样一个 token 一个 token 滚出来的。">自回归</span>生成。
+      点「采下一个 token」,看序列一格一格长出来(灰=prompt,橙=生成;用预设示意分布,每步顺带亮一下被采中的候选)。
+    </p>
+
+    <div class="btn-row" id="s4Btns">
+      <button class="btn primary" id="s4Step">采下一个 token →</button>
+      <button class="btn ghost" id="s4Reset">↺ 重来</button>
+      <span class="hp-note" id="s4Counter"></span>
+    </div>
+
+    <div class="sub-h"><span class="badge">序列</span>当前文本(末尾闪烁处 = 下一个要采的位置)</div>
+    <div class="ribbon" id="s4Ribbon"></div>
+
+    <div class="sub-h"><span class="badge">这一步</span>末位 token 的 logits → softmax → 采样(示意)</div>
+    <div class="dist" id="s4Dist"></div>
+    <div class="note" id="s4Note">点「采下一个 token」开始 ↑</div>
+
+    <details class="dig">
+      <summary>什么时候停?会一直生成下去吗?</summary>
+      <div class="dig-body">
+        base 模型不会自己"说完了"。<code>05_sample.py</code> 用 <code>--max_new_tokens</code>(默认 200)<b>定额</b>生成多少个就停。
+        每步还会把上下文截到最近 <span class="d d-block">1024<i>block_size</i></span> 个 token(<code>idx[:, -block_size:]</code>),
+        因为模型一次最多看这么长。(SFT 之后的对话模型会专门学一个"结束符"来自己收尾,那是 Phase 2 的事。)
+      </div>
+    </details>
+
+    <p class="next-hint">注意:每采一个新字,上面都把<b>整条</b>序列重过一遍 —— 越生成越长、越来越慢。最后一步:<b>KV-cache</b> 把这份浪费省掉。</p>
+  </section>
+
+  <!-- ============ STEP 5:KV-cache ============ -->
+  <section class="panel" id="panel4">
+    <h2>⑤ KV-cache:别把过去重算一遍(作者自己加的优化)</h2>
+    <p class="lead">
+      注意力要用到序列里每个位置的 <span class="term" data-term="K / V · key 与 value" data-key="kv-cache" data-def="注意力里每个 token 算出的 key 和 value 向量。新 token 要去和过去所有 token 的 K/V 做注意力。把过去的 K/V 缓存下来就不用重算。">K/V</span>。
+      <b>无 cache</b>:每生成一个 token,都把<b>过去所有位置</b>的 K/V <b>从头重算一遍</b>(下图不断变大的橙色三角 = 纯浪费);
+      <b>有 cache</b>:把过去的 K/V <b>缓存</b>下来,每步<b>只算新 token 那一列</b>(绿)。点「下一步」并排看。
+    </p>
+
+    <div class="btn-row" id="s5Btns">
+      <button class="btn primary" id="s5Step">▶ 生成下一个 token</button>
+      <button class="btn ghost" id="s5Reset">↺ 重来</button>
+      <span class="hp-note" id="s5Tip"></span>
+    </div>
+
+    <div class="kv-cols">
+      <div class="kvcol slow">
+        <div class="kvh">无 cache · 每步重算整段</div>
+        <div class="kvsub" id="s5SubA">每生成一格,过去所有列全部重算一遍(橙)。</div>
+        <div class="kvgrid" id="s5GridA"></div>
+        <div class="kvcount"><span>K/V 累计计算量</span><span><b id="s5CntA">0</b> <small>列</small></span></div>
+      </div>
+      <div class="kvcol fast">
+        <div class="kvh">有 cache · 每步只算新列</div>
+        <div class="kvsub" id="s5SubB">过去的 K/V 缓存复用(浅绿),每步只新增 1 列(深绿)。</div>
+        <div class="kvgrid" id="s5GridB"></div>
+        <div class="kvcount"><span>K/V 累计计算量</span><span><b id="s5CntB">0</b> <small>列</small></span></div>
+      </div>
+    </div>
+
+    <div class="note" id="s5Note">
+      生成 <b>n</b> 个 token:无 cache 要算 <code>1+2+…+n</code> 列(随长度<b>平方级</b>膨胀);有 cache 只算 <code>n</code> 列(<b>线性</b>)。点上面逐步对比。
+    </div>
+
+    <details class="dig">
+      <summary>那"计算量省了一大截",为什么实测只快 2.5–3.1 倍,不是好几十倍?</summary>
+      <div class="dig-body">
+        上图省掉的是<b>注意力里重复的 K/V 计算</b>,但一次前向还有很多别的开销(MLP、LayerNorm、采样、框架调度),这些没省。
+        所以墙钟加速<b>没有列数比那么夸张</b>。<code>05_sample.py</code> 在 Mac MPS 上实测:<b>有 cache 比无 cache 快约 2.5–3.1×</b>
+        (例如某次 <code>7.4 → 23.1 tok/s ≈ 3.1×</code>,另一次 <code>17.5 → 48 tok/s ≈ 2.7×</code>;序列越长、省得越多)。
+        代码里就是 <code>generate_nocache</code>(每步重喂整段)对 <code>generate_cached</code>(prompt 预填充一次,之后每步只喂上一个新 token + 历史 KV)。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>缓存了过去,新 token 还看得到全部历史吗?会不会偷看未来?</summary>
+      <div class="dig-body">
+        看得到全部历史:新 token 的 query 去和"缓存的过去 K/V + 自己这一列"做注意力,信息一点不少。
+        也不会偷看未来 —— 解码时<b>每步只来 1 个新 token</b>,它后面根本还没生成,自然无未来可看;
+        所以 <code>05_sample.py</code> 里这步连因果掩码都省了(<code>is_causal = q.size(2) &gt; 1</code>,只有一次喂多个 token 的 prompt 预填充才需要掩码)。
+      </div>
+    </details>
+
+    <p class="next-hint">Phase 1 到此收口:你已经能让这台机器"跑起来"续写文字了。但它<b>只会续写、不会答题</b> —— 教它"听话回答",是 Phase 2 的 SFT。点右下角「完成 🎉」。</p>
+  </section>
+
+  <!-- ============ 上一步 / 下一步 ============ -->
+  <div class="nav">
+    <button class="btn ghost" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<script>
+/* =====================================================================
+   步骤切换(tab + 上一步/下一步 + #step-N 深链)
+   ===================================================================== */
+const LAST = 4;
+let cur = 0;
+const tabs = document.querySelectorAll('.step-tab');
+const panels = ['panel0','panel1','panel2','panel3','panel4'].map(id=>document.getElementById(id));
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+
+function goto(i){
+  cur = Math.max(0, Math.min(LAST, i));
+  tabs.forEach(t=>t.classList.toggle('active', +t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active', idx===cur));
+  prevBtn.disabled = cur===0;
+  nextBtn.textContent = cur===LAST ? '完成 🎉' : '下一步 →';
+  if(cur===0) initStep1();
+  if(cur===1) initStep2();
+  if(cur===2) initStep3();
+  if(cur===3) resetStep4();
+  if(cur===4) resetStep5();
+  const hash = '#step-'+(cur+1);
+  if(location.hash !== hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function stepFromHash(){
+  const m = /^#step-(\d+)$/.exec(location.hash);
+  if(!m) return 0;
+  const n = parseInt(m[1],10)-1;
+  return (n>=0 && n<=LAST) ? n : 0;
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+prevBtn.addEventListener('click',()=>goto(cur-1));
+nextBtn.addEventListener('click',()=>{ if(cur===LAST){ celebrate(); } else { goto(cur+1); } });
+
+/* =====================================================================
+   公共工具:softmax / top_k / 渲染概率条
+   ===================================================================== */
+const showTok = t => t.replace(/ /g,'␣');
+function softmax(logits, temp){
+  const z = logits.map(l=>l/temp);
+  const m = Math.max(...z);
+  const e = z.map(v=>Math.exp(v-m));
+  const s = e.reduce((a,b)=>a+b,0);
+  return e.map(v=>v/s);
+}
+// 返回 {probs, kept[]}:对 logits 先按 top_k 裁剪(裁掉的概率=0),再 softmax
+function sampleDist(logits, temp, k){
+  const idx = logits.map((l,i)=>i).sort((a,b)=>logits[b]-logits[a]);
+  const keep = new Set(idx.slice(0, k));
+  const masked = logits.map((l,i)=>keep.has(i)?l:-Infinity);
+  const probs = softmax(masked, temp);
+  return {probs, kept:logits.map((l,i)=>keep.has(i))};
+}
+// 渲染一组概率条;chosenIdx 高亮被采中的,kept=false 的标 cut
+function renderDist(hostId, toks, probs, opt={}){
+  const host = document.getElementById(hostId); host.innerHTML='';
+  const kept = opt.kept || toks.map(()=>true);
+  const maxP = Math.max(...probs, 1e-6);
+  toks.forEach((tk,i)=>{
+    const row = document.createElement('div');
+    row.className = 'brow' + (i===opt.chosen?' chosen':'') + (kept[i]?'':' cut');
+    const pct = kept[i] ? (probs[i]*100).toFixed(1)+'%' : '0';
+    row.innerHTML = `<span class="tok">${showTok(tk)}</span>`
+      + `<div class="track"><div class="fill"></div></div>`
+      + `<span class="pct">${pct}</span>`;
+    host.appendChild(row);
+    requestAnimationFrame(()=>{ row.querySelector('.fill').style.width = (probs[i]/maxP*100)+'%'; });
+  });
+}
+
+/* =====================================================================
+   STEP 1:base 只会续写 —— 两个 prompt,各一组示意 logits
+   ===================================================================== */
+const S1 = [
+  { name:'续写 · "The cat sat on the"', kind:'cont',
+    html:'<span class="pq">The cat sat on the </span><span class="pblank">?</span><span class="pcaret"></span>',
+    toks:[' mat',' floor',' sofa',' roof',' bed',' couch',' grass',' xq7z'],
+    logits:[3.0,2.0,1.6,0.9,0.5,0.2,-0.4,-2.0],
+    note:'最高分是 <b>"␣mat"</b> —— 模型在续一句通顺的话,这正是 base 该干的:猜下一个 token。' },
+  { name:'问句 · "Q: 2+2=? A:"', kind:'qa',
+    html:'<span class="pq">Q: 2+2=? A:</span><span class="pcaret"></span>',
+    toks:[' I',' The',' Q',' What','\\n',' 2',' Yes',' 4'],
+    logits:[2.4,2.0,1.7,1.3,1.0,0.6,0.2,0.0],
+    note:'注意:正确答案 <b>"␣4"</b> 排在<b>最低</b>!base 没在"算题",只在续一段"像问答文本"的东西。<b>会答题是 Phase 2 的 SFT 才教的。</b>' },
+];
+let s1sel = 0;
+function initStep1(){
+  const host = document.getElementById('s1Btns'); host.innerHTML='';
+  S1.forEach((p,i)=>{
+    const b=document.createElement('button');
+    b.className='btn'+(i===s1sel?' primary':'');
+    b.textContent=p.name;
+    b.onclick=()=>{ s1sel=i; initStep1(); };
+    host.appendChild(b);
+  });
+  const p = S1[s1sel];
+  document.getElementById('s1Prompt').innerHTML = p.html;
+  const probs = softmax(p.logits, 1.0);
+  const chosen = probs.indexOf(Math.max(...probs));
+  renderDist('s1Dist', p.toks, probs, {chosen});
+  document.getElementById('s1Note').innerHTML = '<b>'+(p.kind==='qa'?'⚠️ ':'')+'</b>'+p.note;
+}
+
+/* =====================================================================
+   STEP 2:temperature —— 续写示意分布,实时塑形
+   ===================================================================== */
+const CONT_TOKS   = [' mat',' floor',' sofa',' roof',' bed',' couch',' grass',' xq7z'];
+const CONT_LOGITS = [3.0,2.0,1.6,0.9,0.5,0.2,-0.4,-2.0];
+function initStep2(){
+  const sl=document.getElementById('tempSlider');
+  sl.oninput=()=>drawTemp();
+  drawTemp();
+}
+function drawTemp(){
+  const t = parseFloat(document.getElementById('tempSlider').value);
+  document.getElementById('tempVal').textContent = t.toFixed(2);
+  const probs = softmax(CONT_LOGITS, t);
+  const chosen = probs.indexOf(Math.max(...probs));
+  renderDist('s2Dist', CONT_TOKS, probs, {chosen});
+  const top = (Math.max(...probs)*100).toFixed(0);
+  let msg;
+  if(t<=0.4)      msg='🧊 <b>低温('+t.toFixed(2)+')</b>:分布很<b>尖</b>,冠军占 '+top+'%,几乎只会挑它 → 稳但容易<b>复读</b>。';
+  else if(t<=1.1) msg='🌡️ <b>接近默认('+t.toFixed(2)+')</b>:冠军占 '+top+'%,留了点变化空间 —— 真实默认 <b>0.9</b>。';
+  else            msg='🔥 <b>高温('+t.toFixed(2)+')</b>:分布被<b>摊平</b>,冠军只剩 '+top+'%,连 "␣xq7z" 这种垃圾都有机会 → 易<b>胡说</b>。';
+  document.getElementById('s2Note').innerHTML = msg;
+}
+
+/* =====================================================================
+   STEP 3:top_k —— 先裁 k,再按温度采样
+   ===================================================================== */
+function initStep3(){
+  document.getElementById('kSlider').oninput=drawTopK;
+  document.getElementById('kTempSlider').oninput=drawTopK;
+  drawTopK();
+}
+function drawTopK(){
+  const k=parseInt(document.getElementById('kSlider').value);
+  const t=parseFloat(document.getElementById('kTempSlider').value);
+  document.getElementById('kVal').textContent=k;
+  document.getElementById('kTempVal').textContent=t.toFixed(2);
+  const {probs,kept}=sampleDist(CONT_LOGITS,t,k);
+  const chosen=probs.indexOf(Math.max(...probs));
+  renderDist('s3Dist',CONT_TOKS,probs,{chosen,kept});
+  const cut=kept.filter(x=>!x).length;
+  let msg;
+  if(k===1)      msg='✂️ <b>k=1</b>:只剩冠军,等于<b>贪心(argmax)</b> —— 结果唯一、无随机。';
+  else if(k>=8)  msg='<b>k=8</b>:示意词表全留,等于<b>没裁剪</b>;真实里这相当于在 50304 个里一个不删。';
+  else           msg='✂️ <b>k='+k+'</b>:切掉了尾部 <b>'+cut+'</b> 个低概率 token(置 0),剩下的重新归一化 —— 概率质量集中到靠谱候选上。真实默认 <b>50</b>。';
+  document.getElementById('s3Note').innerHTML=msg;
+}
+
+/* =====================================================================
+   STEP 4:自回归循环 —— 预设示意句,逐 token 生成
+   ===================================================================== */
+const S4_PROMPT = 'The cat';
+// 每步:展示一组候选示意分布 + 被采中的那个(=继续拼接)
+const S4_STEPS = [
+  { pick:' sat',  toks:[' sat',' is',' ran',' sleeps',' xq'], logits:[2.6,1.7,1.2,0.6,-1.5] },
+  { pick:' on',   toks:[' on',' by',' near',' under',' qz'],  logits:[2.4,1.6,1.1,0.7,-1.6] },
+  { pick:' the',  toks:[' the',' a',' my',' that',' zx'],     logits:[2.8,1.9,0.9,0.4,-1.7] },
+  { pick:' warm', toks:[' warm',' old',' soft',' red',' vq'], logits:[2.2,1.8,1.3,0.8,-1.4] },
+  { pick:' mat',  toks:[' mat',' rug',' floor',' bed',' kx'], logits:[2.5,1.6,1.2,0.7,-1.5] },
+];
+let s4i = 0;
+function resetStep4(){
+  s4i = 0;
+  drawS4Ribbon(false);
+  document.getElementById('s4Dist').innerHTML='';
+  document.getElementById('s4Note').innerHTML='点「采下一个 token」开始 ↑';
+  document.getElementById('s4Step').disabled=false;
+  updateS4Counter();
+}
+function genSoFar(){ return S4_STEPS.slice(0,s4i).map(s=>s.pick).join(''); }
+function drawS4Ribbon(pop){
+  const r=document.getElementById('s4Ribbon'); r.innerHTML='';
+  S4_PROMPT.split('').forEach(c=>{ const e=document.createElement('div'); e.className='rchar prompt'; e.textContent=showTok(c); r.appendChild(e); });
+  const gen=genSoFar();
+  gen.split('').forEach((c,i)=>{ const e=document.createElement('div'); e.className='rchar gen'+(pop&&i===gen.length-1?' pop':''); e.textContent=showTok(c); r.appendChild(e); });
+  const caret=document.createElement('div'); caret.className='rcaret'; r.appendChild(caret);
+}
+function updateS4Counter(){
+  document.getElementById('s4Counter').innerHTML='已生成 <b>'+s4i+'</b> / '+S4_STEPS.length+' 个 token';
+}
+document.getElementById('s4Step').onclick=()=>{
+  if(s4i>=S4_STEPS.length) return;
+  const st=S4_STEPS[s4i];
+  const probs=softmax(st.logits,0.9);
+  const chosen=0; // pick 永远是 toks[0]
+  renderDist('s4Dist',st.toks,probs,{chosen});
+  document.getElementById('s4Note').innerHTML='第 '+(s4i+1)+' 步:对当前序列前向 → 采到 <b>"'+showTok(st.pick)+'"</b>,接回末尾 ↓';
+  s4i++;
+  drawS4Ribbon(true);
+  updateS4Counter();
+  if(s4i>=S4_STEPS.length){
+    document.getElementById('s4Step').disabled=true;
+    document.getElementById('s4Note').innerHTML='✅ 生成完毕:"<b>The cat sat on the warm mat</b>"。每个字都是"采一个 → 接回去 → 再采"滚出来的 —— 这就是<b>自回归</b>。「↺ 重来」再看一遍。';
+  }
+};
+document.getElementById('s4Reset').onclick=resetStep4;
+
+/* =====================================================================
+   STEP 5:KV-cache —— 并排逐步生成,累计计算量对比
+   ===================================================================== */
+const S5_PROMPT_LEN = 2;   // 示意:prompt 占 2 列
+const S5_MAX = 6;          // 最多生成 6 个新 token
+let s5step = 0;            // 已生成的新 token 数
+function makeCells(row, total, mode, isLast){
+  // mode 'slow':整行都是 recompute(若 isLast 高亮);'cache':前面 cached + 最后一格 new
+  for(let c=0;c<total;c++){
+    const cell=document.createElement('div'); cell.className='kvcell';
+    if(mode==='slow'){ cell.classList.add(isLast?'recompute':'cached'); }
+    else { cell.classList.add(c===total-1 && isLast ? 'newtok' : 'cached'); }
+    row.appendChild(cell);
+  }
+}
+function drawS5(){
+  const gA=document.getElementById('s5GridA'), gB=document.getElementById('s5GridB');
+  gA.innerHTML=''; gB.innerHTML='';
+  let cntA=0, cntB=0;
+  for(let s=0;s<=s5step;s++){            // s=0 是 prompt 预填充行,之后每行一个新 token
+    const total=S5_PROMPT_LEN+s;          // 该步序列总长
+    const isLast=(s===s5step);
+    // 左:无 cache —— 每步重算整段
+    const rA=document.createElement('div'); rA.className='kvr';
+    rA.innerHTML='<span class="stp">'+(s===0?'prompt':'+'+s)+'</span>';
+    makeCells(rA,total,'slow',isLast); gA.appendChild(rA);
+    cntA+=total;
+    // 右:有 cache —— prompt 预填充算 total 列,之后每步只算 1 列
+    const rB=document.createElement('div'); rB.className='kvr';
+    rB.innerHTML='<span class="stp">'+(s===0?'prompt':'+'+s)+'</span>';
+    makeCells(rB,total,'cache',isLast); gB.appendChild(rB);
+    cntB+=(s===0?total:1);
+  }
+  document.getElementById('s5CntA').textContent=cntA;
+  document.getElementById('s5CntB').textContent=cntB;
+  const ratio=(cntA/cntB).toFixed(1);
+  document.getElementById('s5SubA').innerHTML = s5step===0
+    ? 'prompt 先算一遍(预填充)。' : '第 '+s5step+' 个新 token:过去 '+(S5_PROMPT_LEN+s5step-1)+' 列<b>又全重算</b>(橙)。';
+  document.getElementById('s5SubB').innerHTML = s5step===0
+    ? 'prompt 预填充一次,K/V 存进缓存。' : '第 '+s5step+' 个新 token:过去全部<b>命中缓存</b>(浅绿),只算<b>新 1 列</b>(深绿)。';
+  document.getElementById('s5Tip').innerHTML = '已生成 <b>'+s5step+'</b> 个 · 计算量比 <b>'+cntA+' : '+cntB+'</b> ≈ <b>'+ratio+'×</b>';
+}
+function resetStep5(){
+  s5step=0; drawS5();
+  document.getElementById('s5Step').disabled=false;
+}
+document.getElementById('s5Step').onclick=()=>{
+  if(s5step>=S5_MAX) return;
+  s5step++; drawS5();
+  if(s5step>=S5_MAX){
+    document.getElementById('s5Step').disabled=true;
+    document.getElementById('s5Note').innerHTML='左边累计是 <b>三角形(平方级)</b>,右边是<b>一条线(线性)</b> —— 序列越长,差距越大。但<b>墙钟</b>没省这么多:实测约 <b>2.5–3.1×</b>(注意力只是前向的一部分,见下方折叠)。';
+  }
+};
+document.getElementById('s5Reset').onclick=()=>{
+  resetStep5();
+  document.getElementById('s5Note').innerHTML='生成 <b>n</b> 个 token:无 cache 要算 <code>1+2+…+n</code> 列(随长度<b>平方级</b>膨胀);有 cache 只算 <code>n</code> 列(<b>线性</b>)。点上面逐步对比。';
+};
+
+/* =====================================================================
+   通关庆祝:横幅 + confetti(纯 vanilla,与全站一致)
+   ===================================================================== */
+function showCongrats(){
+  const old=document.getElementById('congrats'); if(old) old.remove();
+  const el=document.createElement('div'); el.id='congrats'; el.className='congrats';
+  el.innerHTML='🎉 跑起来 · Phase 1 收口!<span>logits → 温度 → top_k → 自回归 → KV-cache,你已让模型续写出文字</span>';
+  document.body.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>el.remove(),500); }, 3400);
+}
+function launchConfetti(){
+  const cv=document.createElement('canvas');
+  cv.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9999';
+  document.body.appendChild(cv);
+  const ctx=cv.getContext('2d'); cv.width=window.innerWidth; cv.height=window.innerHeight;
+  const colors=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const parts=[];
+  for(let i=0;i<160;i++) parts.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    r:4+Math.random()*5,c:colors[i%colors.length],vx:(Math.random()-0.5)*3.2,vy:2+Math.random()*4,
+    rot:Math.random()*Math.PI,vr:(Math.random()-0.5)*0.3,rect:Math.random()<0.55});
+  const start=performance.now(), DUR=3800;
+  function frame(now){
+    const t=now-start; ctx.clearRect(0,0,cv.width,cv.height);
+    const fade=t>DUR-900?Math.max(0,(DUR-t)/900):1; ctx.globalAlpha=fade;
+    parts.forEach(p=>{ p.x+=p.vx;p.y+=p.vy;p.vy+=0.06;p.rot+=p.vr;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot);ctx.fillStyle=p.c;
+      if(p.rect) ctx.fillRect(-p.r,-p.r*0.6,p.r*2,p.r*1.2);
+      else{ctx.beginPath();ctx.arc(0,0,p.r,0,Math.PI*2);ctx.fill();} ctx.restore(); });
+    ctx.globalAlpha=1;
+    if(t<DUR) requestAnimationFrame(frame); else cv.remove();
+  }
+  requestAnimationFrame(frame);
+}
+function celebrate(){ showCongrats(); launchConfetti(); }
+
+/* =====================================================================
+   名词气泡(全站统一组件)
+   ===================================================================== */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent;
+    const def=el.dataset.def||'';
+    const key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def
+      +(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect();
+    const tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8;
+    if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw;
+    if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el));
+    el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* 初始化 */
+goto(stepFromHash());
+window.addEventListener('hashchange',()=>goto(stepFromHash()));
+</script>
+</body>
+</html>
