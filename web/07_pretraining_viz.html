@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>真训练 · 把玩具 GPT 喂真实数据(预训练 GPT-2 124M)· 04_gpt2_124m</title>
+<style>
+  /* ============ 全局基础样式(与全站共用暖色变量)============ */
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:920px;margin:0 auto;padding:32px 24px 90px;}
+
+  /* ============ 返回首页 ============ */
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  /* ============ 顶部标题区 ============ */
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:740px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  /* ============ 步骤导航 ============ */
+  .steps-nav{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:26px 0 20px;}
+  @media(max-width:640px){ .steps-nav{grid-template-columns:repeat(2,1fr);} }
+  .step-tab{min-width:0;background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 13px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  /* ============ 超参速查条(每页常驻)============ */
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+
+  /* ============ 维度色标(与 hp-bar 一一对应)============ */
+  .d{display:inline-flex;align-items:baseline;gap:3px;font-family:var(--mono);font-weight:700;
+    padding:0 5px;border-radius:6px;line-height:1.5;white-space:nowrap;}
+  .d i{font-style:normal;font-size:9.5px;font-weight:600;opacity:.9;letter-spacing:.2px;}
+  .d-layer{color:#b8512f;background:#F7E6DE;}
+  .d-head{color:#a3548c;background:#F6E6F0;}
+  .d-emb{color:#3a63c0;background:#E5EBF9;}
+  .d-block{color:#3f7d63;background:#E4EFE9;}
+  .d-vocab{color:#a87b1f;background:#FAEFD6;}
+  .d-batch{color:#2c7d8a;background:#DCEef0;}
+  .d-lr{color:#7a5bd0;background:#EAE4F8;}
+
+  /* ============ 面板 ============ */
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 20px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    display:flex;align-items:center;gap:7px;}
+  .next-hint::before{content:"↳";font-size:15px;}
+
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:22px 0 6px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  /* 渐进展开:深问题默认收起 */
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig+.dig{margin-top:8px;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
+  /* ============ 通用按钮 ============ */
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.ghost{background:transparent;}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;align-items:center;}
+
+  /* ============ 上一步 / 下一步 ============ */
+  .nav{display:flex;justify-content:space-between;margin-top:24px;}
+
+  /* ============ 滑块 ============ */
+  .sliderbox{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 18px;margin:6px 0;}
+  .sliderbox .srow{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .sliderbox label{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap;}
+  .sliderbox .sval{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent);min-width:42px;}
+  input[type=range]{-webkit-appearance:none;appearance:none;flex:1;min-width:140px;height:6px;border-radius:4px;
+    background:linear-gradient(90deg,var(--accent-soft),var(--accent));outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;
+    background:#fff;border:2px solid var(--accent);cursor:pointer;box-shadow:0 1px 4px rgba(217,119,87,.4);}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#fff;border:2px solid var(--accent);cursor:pointer;}
+  .ticks{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--ink2);margin-top:6px;}
+
+  /* ============ 对比表(STEP 1)============ */
+  .cmp{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid var(--border);
+    border-radius:12px;overflow:hidden;margin:6px 0 4px;font-size:13.5px;}
+  .cmp th,.cmp td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border);}
+  .cmp thead th{font-family:var(--serif);font-size:14px;font-weight:600;background:#F4F2EA;}
+  .cmp tbody tr:last-child td{border-bottom:none;}
+  .cmp .rowname{font-family:var(--mono);font-size:12.5px;color:var(--ink2);white-space:nowrap;}
+  .cmp .cell-toy{font-family:var(--mono);color:var(--ink);}
+  .cmp .cell-real{font-family:var(--mono);font-weight:700;}
+  .cmp .grow{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:1px 7px;margin-left:2px;}
+  .cmp tr.hl-toy .cell-toy,.cmp tr.hl-real .cell-real{background:var(--accent-soft);border-radius:6px;}
+  .cmp tr.totalrow td{background:#FBF3EF;font-weight:700;}
+
+  /* ============ shard 数据流(STEP 2)============ */
+  .shardwrap{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;margin:6px 0 4px;}
+  .shardtrack{display:flex;gap:4px;flex-wrap:wrap;position:relative;}
+  .shard{flex:1 0 auto;min-width:26px;height:34px;border-radius:6px;background:#F1EEE6;border:1px solid var(--border);
+    display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;color:var(--ink2);
+    transition:background .25s,border-color .25s,transform .2s;}
+  .shard.done{background:#E4EFE9;border-color:#cfe3d8;color:#2c8a6b;}
+  .shard.cur{background:var(--accent);border-color:var(--accent);color:#fff;transform:translateY(-3px);
+    box-shadow:0 4px 10px rgba(217,119,87,.3);}
+  .pipeflow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-family:var(--mono);font-size:12.5px;
+    color:var(--ink2);margin:10px 0 2px;}
+  .pipeflow .stage{background:#F4F2EA;border:1px solid var(--border);border-radius:8px;padding:6px 11px;color:var(--ink);}
+  .pipeflow .arrow{color:var(--accent);font-weight:700;}
+  .tokchips{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0;}
+  .tokchip{font-family:var(--mono);font-size:12px;background:#E5EBF9;color:#3a63c0;border:1px solid #cdd9f3;
+    border-radius:6px;padding:2px 8px;}
+
+  /* ============ 蓄水槽(STEP 3)============ */
+  .tankwrap{display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap;background:#fff;border:1px solid var(--border);
+    border-radius:12px;padding:18px;margin:6px 0 4px;}
+  .tank{position:relative;width:120px;height:170px;border:2px solid var(--accent);border-top:none;
+    border-radius:0 0 14px 14px;background:#FBF6F3;overflow:hidden;}
+  .tank .water{position:absolute;left:0;bottom:0;width:100%;background:linear-gradient(180deg,#e89a7e,var(--accent));
+    transition:height .25s ease;}
+  .tank .marks{position:absolute;inset:0;}
+  .tank .fullline{position:absolute;left:0;width:100%;border-top:2px dashed #b8512f;top:0;}
+  .tank .fulllabel{position:absolute;right:4px;top:2px;font-family:var(--mono);font-size:9.5px;color:#b8512f;}
+  .tankinfo{flex:1;min-width:200px;}
+  .bigstat{font-family:var(--mono);font-size:26px;font-weight:700;color:var(--accent);}
+  .bigstat small{font-size:13px;color:var(--ink2);font-weight:400;}
+  .dripfx{font-family:var(--mono);font-size:12px;color:var(--ink2);margin-top:4px;min-height:18px;}
+
+  /* ============ canvas 图(STEP 4 / 5)============ */
+  .chartbox{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 14px 8px;margin:6px 0 4px;}
+  .chartbox canvas{width:100%;display:block;}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:11.5px;color:var(--ink2);
+    margin-top:6px;padding-top:8px;border-top:1px dashed var(--border);}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .legend .sw{width:14px;height:3px;border-radius:2px;display:inline-block;}
+  .legend .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+
+  /* ============ 端点对照卡(STEP 5)============ */
+  .endpts{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:6px 0 4px;}
+  @media(max-width:640px){ .endpts{grid-template-columns:1fr;} }
+  .epcard{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px;}
+  .epcard.short{border-color:#e8c4b5;}
+  .epcard.long{border-color:#bcd9c9;}
+  .epcard .eptag{font-family:var(--mono);font-size:12px;font-weight:700;margin-bottom:6px;}
+  .epcard.short .eptag{color:#b06a4d;} .epcard.long .eptag{color:#2c8a6b;}
+  .epcard .epval{font-family:var(--mono);font-size:30px;font-weight:700;color:var(--ink);}
+  .epcard .epval small{font-size:13px;color:var(--ink2);font-weight:400;}
+  .epcard .epmeta{font-family:var(--mono);font-size:11.5px;color:var(--ink2);margin-top:6px;line-height:1.5;}
+
+  /* ============ 名词气泡(全站统一组件)============ */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:264px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;
+    font-family:system-ui,-apple-system,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);
+    font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);
+    text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* ============ 通关庆祝 ============ */
+  .congrats{position:fixed;left:50%;top:24%;transform:translate(-50%,-50%) scale(.92);
+    z-index:10000;pointer-events:none;text-align:center;background:#fff;border:1px solid var(--accent);
+    box-shadow:0 8px 30px rgba(217,119,87,.25);border-radius:16px;padding:18px 28px;
+    font-family:var(--serif);font-size:22px;font-weight:600;color:var(--accent);
+    opacity:0;transition:opacity .45s ease,transform .45s ease;}
+  .congrats.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+  .congrats span{display:block;margin-top:6px;font-family:system-ui,sans-serif;font-size:13px;font-weight:400;color:var(--ink2);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <!-- ============ 顶部标题区 ============ -->
+  <header>
+    <span class="filename">07_pretraining_viz.html</span>
+    <h1>真训练:把玩具 GPT 喂真实数据(预训练 GPT-2 124M)</h1>
+    <p class="subtitle">
+      本页对应 <code>phase1-124m/04_gpt2_124m.py</code>。架构内核和前几关<b>一模一样</b>(注意力 + FFN + 残差 + LayerNorm),
+      变的是<b>规模</b>和一整套"让大模型训得稳、训得动"的<b>训练工程</b>。这一页把"配置怎么涨 → 真数据怎么喂 →
+      显存不够怎么办 → 学习率怎么排 → 最后收敛到哪"五步拆开,每步亲手拨一个旋钮。
+    </p>
+  </header>
+
+  <!-- ============ 步骤导航 ============ -->
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">从玩具到真模型</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">真数据 + BPE + shards</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">梯度累积</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">学习率 schedule</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">收敛 + 数据量对照</div></div>
+  </div>
+
+  <!-- ============ 超参速查条 ============ -->
+  <div class="hp-bar">
+    <span class="hp-label">GPT-2 124M</span>
+    <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">n_layer <b>12</b></span>
+    <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">n_head <b>12</b></span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">n_embd <b>768</b></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">block_size <b>1024</b></span>
+    <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">vocab <b>50304</b></span>
+    <span class="hp-chip" style="color:#2c7d8a;background:#DCEef0">total_batch <b>524288</b> <i>token/步</i></span>
+    <span class="hp-chip" style="color:#7a5bd0;background:#EAE4F8">max_lr <b>6e-4</b></span>
+    <span class="hp-note">这套就是 <code style="font-family:var(--mono)">GPTConfig</code> 真值 · 配套 <code style="font-family:var(--mono)">04_gpt2_124m.py</code></span>
+  </div>
+
+  <!-- ============ STEP 1:从玩具到真模型 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>① 从玩具到真模型:同一套积木,数字全部放大</h2>
+    <p class="lead">
+      第 3 关那个<b>字符级小 GPT</b>(nanoGPT 风格)和这一关的 <b>GPT-2 124M</b>,零件清单完全一样 ——
+      区别只是每个数字往上跳了一大截。点下面两个按钮,看同一张配置表里<b>哪一列被点亮</b>,以及每行涨了多少倍。
+    </p>
+
+    <div class="btn-row" id="s1Btns"></div>
+
+    <table class="cmp" id="s1Table">
+      <thead>
+        <tr><th class="rowname">超参</th><th>字符级玩具(03)</th><th>GPT-2 124M(04)</th></tr>
+      </thead>
+      <tbody id="s1Body"></tbody>
+    </table>
+    <div class="note" id="s1Note"></div>
+
+    <details class="dig">
+      <summary>vocab 为什么是 50304,不是 GPT-2 真实的 50257?</summary>
+      <div class="dig-body">
+        GPT-2 的 <span class="term" data-term="BPE · 子词分词" data-key="bpe" data-def="Byte-Pair Encoding:把文本切成「子词」单元的分词法。GPT-2 的 BPE 词表有 50257 个 token,介于字符级和整词级之间。">BPE</span> 词表真实大小是 <b>50257</b>。
+        代码里把它<b>向上取整到 128 的倍数 → 50304</b>(<code>GPTConfig.vocab_size</code>)。原因纯粹是<b>硬件</b>:
+        GPU 的矩阵乘对"维度是 2 的幂 / 128 的倍数"算得更快。多出来的 <code>50304-50257=47</code> 行
+        永远不会作为真实 token 出现,<b>学不到也无害</b>,白拿一点速度。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>玩具是"字符级",GPT-2 是"BPE",差在哪?</summary>
+      <div class="dig-body">
+        第 3 关 vocab 只有 <span class="d d-vocab">65<i>vocab</i></span> —— 那是把莎士比亚文本里出现的<b>不同字符</b>(字母、标点、空格)去重数出来的,
+        模型一次只预测<b>一个字母</b>。GPT-2 用 BPE,一个 token 往往是<b>一截子词</b>(如 <code>" the"</code>、<code>"ing"</code>),
+        50304 个 token 覆盖了真实英文,所以同样长度能塞下多得多的信息。架构没变,只是"最底层的字典"换大了。
+      </div>
+    </details>
+
+    <p class="next-hint">模型壳子放大了,但<b>真模型要喂真数据</b>。下一步:FineWeb-Edu 语料怎么变成能一块块喂进去的东西。</p>
+  </section>
+
+  <!-- ============ STEP 2:真数据 + BPE + shards ============ -->
+  <section class="panel" id="panel1">
+    <h2>② 真数据 + 真 BPE + shards:把 10B token 切成块,顺序喂</h2>
+    <p class="lead">
+      训练数据是 <span class="term" data-term="FineWeb-Edu · 教育向网页语料" data-key="fineweb" data-def="一个经过教育质量筛选的大规模英文网页语料,常用于预训练。本项目用它的子集做 GPT-2 复现。">FineWeb-Edu</span>:
+      先用 GPT-2 的 BPE 把文本切成 token id,再把上百亿个 id 存成一批
+      <span class="term" data-term="shard · 数据分片" data-key="shard" data-def="把超大数据集切成的一块块文件(这里是 .npy)。训练时一片片顺序读入,不必把整个数据集塞进内存。">shard</span>
+      (<code>.npy</code> 文件)。训练时 <code>DataLoaderLite</code> 一片片<b>顺序</b>读、读完换下一片。点「▶ 开始喂数据」看指针滑过。
+    </p>
+
+    <div class="pipeflow">
+      <span class="stage">FineWeb-Edu 原文</span><span class="arrow">→</span>
+      <span class="stage">GPT-2 BPE 分词</span><span class="arrow">→</span>
+      <span class="stage">token id</span><span class="arrow">→</span>
+      <span class="stage">存成 .npy shards</span><span class="arrow">→</span>
+      <span class="stage">顺序喂训练</span>
+    </div>
+
+    <div class="sub-h"><span class="badge">BPE 示意</span>一句话被切成 token(下面切法是<b>示意</b>,非真实 BPE)</div>
+    <div class="tokchips" id="s2Toks"></div>
+
+    <div class="sub-h"><span class="badge">shards</span>10B token 切成多片,指针顺序滑过</div>
+    <div class="shardwrap">
+      <div class="shardtrack" id="s2Shards"></div>
+    </div>
+    <div class="btn-row" id="s2Btns">
+      <button class="btn primary" id="s2Play">▶ 开始喂数据</button>
+      <button class="btn ghost" id="s2Reset">↺ 重置</button>
+      <span class="hp-note" id="s2Tip"></span>
+    </div>
+    <div class="note" id="s2Note">每片是一个 <code>.npy</code>(int token id);<code>DataLoaderLite.next_batch</code> 切出 <code>B×T+1</code> 个连续 token,前 B×T 个做输入、后移一位做标签。读完一片换下一片。</div>
+
+    <details class="dig">
+      <summary>为什么不一次性把整个数据集读进内存?</summary>
+      <div class="dig-body">
+        10B token 即使按 2 字节存也有几十 GB,塞不进显存、也未必塞得进内存。切成
+        shard 后,<code>DataLoaderLite</code> 同一时刻只 <code>np.load</code> <b>一片</b>到内存,指针 <code>pos</code> 在片内滑动,
+        到头了 <code>cur_shard+1</code> 换下一片(循环)。这样无论数据多大,<b>内存占用是常数</b>。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>上面这串 token 切法是真的吗?</summary>
+      <div class="dig-body">
+        <b>不是</b>,上面只是<b>示意</b>。真实 GPT-2 BPE 词表有 50304 行,切分规则复杂(按字节对频率合并),
+        一个空格、一个词尾都可能单独成 token。这里只为让你直观看到"一句话 → 若干 token"这件事,
+        别把具体切法当真。真实分词在 <code>prepare_fineweb.py</code> 里用 GPT-2 的 tokenizer 完成。
+      </div>
+    </details>
+
+    <p class="next-hint">数据备好了,但 GPT-2 一步要吃 <b>524288</b> 个 token —— 单卡一次根本喂不下。下一步:<b>梯度累积</b>。</p>
+  </section>
+
+  <!-- ============ STEP 3:梯度累积 ============ -->
+  <section class="panel" id="panel2">
+    <h2>③ 梯度累积:显存放不下大 batch,就攒梯度</h2>
+    <p class="lead">
+      GPT-2 的等效大 batch 是 <span class="d d-batch">524288<i>token/步</i></span>(<code>total_batch_size</code>,2<sup>19</sup>)。
+      单卡一次只喂得下一个<b>微 batch</b>:<span class="d d-batch">8<i>micro_batch</i></span> 条序列 × <span class="d d-block">1024<i>seq_len</i></span> = 8192 token。
+      办法:连喂若干个微 batch、把梯度<b>累加</b>进"蓄水槽",攒满了才 <code>optimizer.step()</code> 走一步。拖滑块看要攒几次。
+    </p>
+
+    <div class="sliderbox">
+      <div class="srow">
+        <label>grad_accum 累积次数</label>
+        <input type="range" id="gaSlider" min="1" max="128" step="1" value="64">
+        <span class="sval" id="gaVal">64</span>
+      </div>
+      <div class="ticks"><span>1(不累积)</span><span>64 = 真实默认</span><span>128</span></div>
+    </div>
+
+    <div class="tankwrap">
+      <div class="tank">
+        <div class="water" id="gaWater" style="height:0%"></div>
+        <div class="marks"><div class="fullline"></div><div class="fulllabel">放水线 = step()</div></div>
+      </div>
+      <div class="tankinfo">
+        <div class="bigstat"><span id="gaTokens">524,288</span> <small>token / 优化步(等效 batch)</small></div>
+        <div class="dripfx" id="gaDrip"></div>
+        <div class="note" id="gaNote" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div class="btn-row" id="gaBtns">
+      <button class="btn primary" id="gaFill">＋ 喂一个微 batch</button>
+      <button class="btn ghost" id="gaAuto">⏩ 自动攒满</button>
+      <button class="btn ghost" id="gaResetBtn">↺ 清空</button>
+    </div>
+
+    <details class="dig">
+      <summary>累积梯度,为什么 loss 要除以累积次数?</summary>
+      <div class="dig-body">
+        因为大 batch 的目标是对 <code>524288</code> 个 token 的损失求<b>平均</b>。代码里
+        <code>loss = loss / grad_accum</code> 再 <code>loss.backward()</code>:每个微 batch 贡献 <code>1/N</code>,
+        累加 N 次正好等于"在一个大 batch 上算一次平均梯度"。不除的话梯度会被放大 N 倍,等于偷偷把学习率乘了 N。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>累积出来的大 batch,和"真的一次喂这么大"完全等价吗?</summary>
+      <div class="dig-body">
+        在<b>数学梯度</b>上等价(忽略累加的浮点误差)。差别只在<b>含 batch 统计量的层</b> ——
+        好在 GPT-2 用的是 <span class="term" data-term="LayerNorm · 层归一化" data-key="layernorm" data-def="对每个 token 自己的特征做归一化,不跨样本统计。所以它不受 batch 大小影响,天然适合梯度累积。">LayerNorm</span>(只在单个 token 内部归一化,不跨样本),
+        所以累积和真大 batch 在这里<b>就是等价的</b>,可以放心拿显存换 batch。
+      </div>
+    </details>
+
+    <p class="next-hint">大 batch 攒好了,每一步该用<b>多大的学习率</b>?大模型不能一上来就猛冲。下一步:warmup + 余弦退火。</p>
+  </section>
+
+  <!-- ============ STEP 4:学习率 schedule ============ -->
+  <section class="panel" id="panel3">
+    <h2>④ 学习率 schedule:先热身,再余弦退火(本页交互重点)</h2>
+    <p class="lead">
+      学习率不是常数。前 <span class="d d-lr">warmup_steps<i>热身</i></span> 步从 0 <b>线性爬</b>到峰值
+      <span class="d d-lr">6e-4<i>max_lr</i></span>,之后<b>余弦</b>平滑退火到
+      <span class="d d-lr">6e-5<i>min_lr</i></span>(= max_lr × 0.1),末尾保持不变。
+      拖两个滑块,曲线<b>实时精确重画</b>(就是 <code>get_lr</code> 这个纯函数,不是示意)。
+    </p>
+
+    <div class="sliderbox">
+      <div class="srow">
+        <label>warmup_steps</label>
+        <input type="range" id="warmSlider" min="0" max="3000" step="5" value="715">
+        <span class="sval" id="warmVal">715</span>
+      </div>
+      <div class="ticks"><span>0(不热身)</span><span>715 = 真实默认</span><span>3000</span></div>
+    </div>
+    <div class="sliderbox" style="margin-top:0">
+      <div class="srow">
+        <label>max_steps</label>
+        <input type="range" id="maxSlider" min="2000" max="25000" step="100" value="19073">
+        <span class="sval" id="maxVal">19073</span>
+      </div>
+      <div class="ticks"><span>2000</span><span>19073 = 10B 跑</span><span>25000</span></div>
+    </div>
+
+    <div class="chartbox">
+      <canvas id="lrCanvas" height="300"></canvas>
+      <div class="legend">
+        <span><span class="sw" style="background:#7a5bd0"></span>学习率 lr(step)</span>
+        <span><span class="sw" style="background:#b8512f;height:0;border-top:2px dashed #b8512f"></span>warmup 区</span>
+        <span><span class="dot" style="background:#7a5bd0"></span>峰值 max_lr=6e-4</span>
+        <span><span class="dot" style="background:#3f7d63"></span>谷底 min_lr=6e-5</span>
+      </div>
+    </div>
+    <div class="note" id="lrNote"></div>
+
+    <details class="dig">
+      <summary>为什么大模型不 warmup、开局就崩?</summary>
+      <div class="dig-body">
+        刚初始化时参数是随机的,梯度<b>又大又乱</b>。这时若直接上峰值学习率,一步就能把参数推到很离谱的地方,
+        loss 直接发散(NaN)。warmup 让学习率<b>从 0 慢慢爬</b>,给模型几百步"找到合理方向"的时间,
+        等梯度稳定了再加速。<code>get_lr</code> 里就是 <code>step &lt; warmup_steps</code> 时
+        <code>max_lr × (step+1) / warmup_steps</code> 这条线性斜坡。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>为什么后面要余弦退火,不一直用大学习率?</summary>
+      <div class="dig-body">
+        大学习率适合"大步快走"快速下降,但接近谷底时步子太大会在最优点附近<b>反复横跳</b>下不去。
+        余弦退火让学习率<b>越走越小</b>,后期小步精修、稳稳收敛。代码里是
+        <code>coeff = 0.5×(1+cos(π·ratio))</code>,把进度 <code>ratio</code> 从 0→1 平滑映射成系数 1→0,
+        再插值到 <code>[min_lr, max_lr]</code> 之间。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>优化器那一行还有哪些"老司机"设置?</summary>
+      <div class="dig-body">
+        优化器是 <span class="term" data-term="AdamW · 带权重衰减的 Adam" data-key="adamw" data-def="Adam 优化器的改良版,把权重衰减(L2 正则)从梯度里拆出来单独做。是训练 Transformer 的事实标准。">AdamW</span>:
+        <code>betas=(0.9, 0.95)</code>(GPT 系比默认 0.999 更小的二阶动量)、<code>eps=1e-8</code>、<code>fused=True</code>(把更新融合成一个 CUDA kernel 提速)。
+        <code>weight_decay=0.1</code> 还<b>分组</b>:只对 2 维参数(矩阵、嵌入)做衰减,bias 和 LayerNorm 的增益/偏置<b>不衰减</b>
+        (<code>configure_optimizers</code> 里的 decay / nodecay 两组)。另外每步还做<b>梯度裁剪</b>把范数截到 1.0,防偶发巨梯度炸训练。
+      </div>
+    </details>
+
+    <p class="next-hint">学习率排好了,训练真跑起来 —— loss 会从哪降到哪?下一步用<b>两个真实端点</b>看收敛和数据量的关系。</p>
+  </section>
+
+  <!-- ============ STEP 5:收敛 + 数据量对照 ============ -->
+  <section class="panel" id="panel4">
+    <h2>⑤ 收敛 + 数据量对照:两个真实端点,数据多 33×</h2>
+    <p class="lead">
+      随机初始化时,模型对 50257 个 token 完全瞎猜,loss ≈ <code>ln(50257) ≈ 10.82</code>(代码开训前会打印这个基线)。
+      训练让它一路下降。本项目<b>没有保存逐 step 的 loss</b>,只有两次跑各自的<b>终点</b> —— 下面是这两个真实端点,
+      以及它们对应的<b>数据量差 33×</b>。
+    </p>
+
+    <div class="endpts">
+      <div class="epcard short">
+        <div class="eptag">短跑 · 约 300M token</div>
+        <div class="epval">3.65 <small>val_loss</small></div>
+        <div class="epmeta">step 1999 · max_steps≈2000<br>快速验证管线能跑通</div>
+      </div>
+      <div class="epcard long">
+        <div class="eptag">长跑 · 约 10B token</div>
+        <div class="epval">3.02 <small>val_loss</small></div>
+        <div class="epmeta">step 19072 · max_steps=19073<br>warmup 715 · 完整余弦退火</div>
+      </div>
+    </div>
+
+    <div class="sub-h"><span class="badge">⚠️ 示意</span>下降趋势(<b>非实测逐 step</b>,只有两端点是真的)</div>
+    <div class="chartbox">
+      <canvas id="lossCanvas" height="280"></canvas>
+      <div class="legend">
+        <span><span class="dot" style="background:#b8512f"></span>真实端点 1:300M → 3.65</span>
+        <span><span class="dot" style="background:#2c8a6b"></span>真实端点 2:10B → 3.02</span>
+        <span><span class="sw" style="background:#bbb;height:0;border-top:2px dashed #bbb"></span>示意趋势(非实测)</span>
+      </div>
+    </div>
+    <div class="note">
+      数据量从 <b>300M → 10B</b> 翻了约 <b>33×</b>,val_loss 从 <b>3.65 → 3.02</b>。
+      虚线只是<b>示意</b>大致形状,中间没有任何实测点 —— 别把它当真实曲线。两个圆点才是项目里真实跑出来的数。
+    </div>
+
+    <details class="dig">
+      <summary>那 bf16 / torch.compile / Flash-Attention 是什么,这页为什么不细讲?</summary>
+      <div class="dig-body">
+        它们是<b>纯工程提速</b>,不改训练数学:<span class="term" data-term="bf16 · 混合精度" data-key="bf16" data-def="bfloat16,16 位浮点。前向用它算更快、省一半显存,数值范围和 fp32 一样大,精度几乎无损。">bf16</span> 混合精度(算得快、省显存)、
+        <code>torch.compile</code>(把模型编译成更快的 kernel)、<span class="term" data-term="Flash-Attention" data-key="flash-attention" data-def="一种省显存又更快的注意力实现(F.scaled_dot_product_attention),不显式构造 T×T 的注意力矩阵。">Flash-Attention</span>
+        (<code>F.scaled_dot_product_attention</code>,不显式建 T×T 矩阵)。它们让同样的训练<b>更快更省</b>,但 loss 曲线该到哪还是到哪 —— 所以本页只点到为止。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>loss 3.02 到底算好还是不好?</summary>
+      <div class="dig-body">
+        从 10.82 的随机基线降到 3.02,已经是一个能写出<b>通顺英文</b>的 base 模型了(GPT-2 124M 原版量级)。
+        但它仍<b>只会续写、不会答题</b>。而且 loss 还没到底:继续喂更多 token、训更多步还能再降 ——
+        这正是"数据量 33× → loss 明显更低"想说的:<b>规模和数据,是预训练最朴素也最硬的杠杆</b>。
+      </div>
+    </details>
+
+    <p class="next-hint">训练好了,这台机器怎么把字<b>吐出来</b>?去看「采样」那一关(<code>05_sample.py</code> / 05_sampling_viz)。点右下角「完成 🎉」。</p>
+  </section>
+
+  <!-- ============ 上一步 / 下一步 ============ -->
+  <div class="nav">
+    <button class="btn ghost" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<script>
+/* =====================================================================
+   步骤切换(tab + 上一步/下一步 + #step-N 深链)
+   ===================================================================== */
+const LAST = 4;
+let cur = 0;
+const tabs = document.querySelectorAll('.step-tab');
+const panels = ['panel0','panel1','panel2','panel3','panel4'].map(id=>document.getElementById(id));
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+
+function goto(i){
+  cur = Math.max(0, Math.min(LAST, i));
+  tabs.forEach(t=>t.classList.toggle('active', +t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active', idx===cur));
+  prevBtn.disabled = cur===0;
+  nextBtn.textContent = cur===LAST ? '完成 🎉' : '下一步 →';
+  if(cur===0) initStep1();
+  if(cur===1) initStep2();
+  if(cur===2) initStep3();
+  if(cur===3) initStep4();
+  if(cur===4) initStep5();
+  const hash = '#step-'+(cur+1);
+  if(location.hash !== hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function stepFromHash(){
+  const m = /^#step-(\d+)$/.exec(location.hash);
+  if(!m) return 0;
+  const n = parseInt(m[1],10)-1;
+  return (n>=0 && n<=LAST) ? n : 0;
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+prevBtn.addEventListener('click',()=>goto(cur-1));
+nextBtn.addEventListener('click',()=>{ if(cur===LAST){ celebrate(); } else { goto(cur+1); } });
+
+const fmt = n => n.toLocaleString('en-US');
+
+/* =====================================================================
+   STEP 1:配置对比表(玩具 char-level vs GPT-2 124M)
+   真值:玩具来自 03_transformer.py 默认(Mac 友好版);124M 来自 GPTConfig。
+   ===================================================================== */
+const S1_ROWS = [
+  { name:'n_layer',    toy:'4',   real:'12',    grow:'×3' },
+  { name:'n_head',     toy:'4',   real:'12',    grow:'×3' },
+  { name:'n_embd',     toy:'128', real:'768',   grow:'×6' },
+  { name:'block_size', toy:'64',  real:'1024',  grow:'×16' },
+  { name:'vocab_size', toy:'65 (字符)', real:'50304 (BPE)', grow:'×773' },
+];
+let s1focus = 'real';   // 'toy' | 'real'
+function initStep1(){
+  const host=document.getElementById('s1Btns'); host.innerHTML='';
+  [['real','▶ 看 GPT-2 124M 这列'],['toy','▶ 看字符级玩具这列']].forEach(([k,label])=>{
+    const b=document.createElement('button');
+    b.className='btn'+(k===s1focus?' primary':'');
+    b.textContent=label;
+    b.onclick=()=>{ s1focus=k; initStep1(); };
+    host.appendChild(b);
+  });
+  const body=document.getElementById('s1Body'); body.innerHTML='';
+  S1_ROWS.forEach(r=>{
+    const tr=document.createElement('tr');
+    tr.className = s1focus==='toy' ? 'hl-toy' : 'hl-real';
+    tr.innerHTML = '<td class="rowname">'+r.name+'</td>'
+      + '<td class="cell-toy">'+r.toy+'</td>'
+      + '<td class="cell-real">'+r.real+' <span class="grow">'+r.grow+'</span></td>';
+    body.appendChild(tr);
+  });
+  // 参数量总行
+  const tr=document.createElement('tr'); tr.className='totalrow';
+  tr.innerHTML='<td class="rowname">参数量(运行时打印)</td>'
+    + '<td class="cell-toy">≈ 0.8 M</td>'
+    + '<td class="cell-real">≈ 124 M <span class="grow">×155</span></td>';
+  body.appendChild(tr);
+  document.getElementById('s1Note').innerHTML = s1focus==='real'
+    ? '当前高亮:<b>GPT-2 124M</b>。同一套零件(注意力+FFN+残差+LayerNorm),数字全面放大 → 参数量从 ≈0.8M 涨到 ≈124M。'
+    : '当前高亮:<b>字符级玩具</b>(03 默认 Mac 版)。麻雀虽小五脏俱全,正因为内核一样,放大就能变 124M。';
+}
+
+/* =====================================================================
+   STEP 2:shards 数据流 + BPE 示意
+   ===================================================================== */
+const S2_NSHARD = 20;          // 示意:屏上画 20 片(真实约 100 片,每片约 100M token)
+const S2_BPE = ['Edu','cation',' is',' the',' most',' power','ful',' weapon','.'];  // 示意切法
+let s2pos = 0, s2timer = null;
+function initStep2(){
+  // BPE chips(静态示意)
+  const tk=document.getElementById('s2Toks'); tk.innerHTML='';
+  S2_BPE.forEach(t=>{ const c=document.createElement('span'); c.className='tokchip'; c.textContent=t.replace(/ /g,'␣'); tk.appendChild(c); });
+  buildShards(); resetS2();
+}
+function buildShards(){
+  const tr=document.getElementById('s2Shards'); tr.innerHTML='';
+  for(let i=0;i<S2_NSHARD;i++){
+    const s=document.createElement('div'); s.className='shard'; s.id='shard'+i; s.textContent=(i+1); tr.appendChild(s);
+  }
+}
+function paintS2(){
+  for(let i=0;i<S2_NSHARD;i++){
+    const e=document.getElementById('shard'+i); if(!e) continue;
+    e.className='shard'+(i<s2pos?' done':'')+(i===s2pos?' cur':'');
+  }
+  const pct=((s2pos)/S2_NSHARD*100).toFixed(0);
+  document.getElementById('s2Tip').innerHTML='已喂 <b>'+s2pos+'</b> / '+S2_NSHARD+' 片(示意)· 约 '+pct+'% · 真实约 <b>100</b> 片 × <b>~100M</b> token';
+}
+function resetS2(){
+  if(s2timer){clearInterval(s2timer);s2timer=null;}
+  s2pos=0; paintS2();
+  document.getElementById('s2Play').disabled=false;
+  document.getElementById('s2Play').textContent='▶ 开始喂数据';
+}
+document.getElementById('s2Play').onclick=()=>{
+  if(s2timer) return;
+  document.getElementById('s2Play').textContent='…喂数据中';
+  s2timer=setInterval(()=>{
+    s2pos++;
+    if(s2pos>=S2_NSHARD){ s2pos=S2_NSHARD; paintS2(); clearInterval(s2timer); s2timer=null;
+      document.getElementById('s2Play').disabled=true; document.getElementById('s2Play').textContent='✅ 一轮喂完';
+      document.getElementById('s2Tip').innerHTML='全部 '+S2_NSHARD+' 片喂完(示意)。真实里读完所有 shard 还会循环回第 0 片继续。'; return; }
+    paintS2();
+  }, 220);
+};
+document.getElementById('s2Reset').onclick=resetS2;
+
+/* =====================================================================
+   STEP 3:梯度累积蓄水槽
+   B=8 micro_batch, T=1024 seq_len -> 每微 batch 8192 token
+   total_batch_size=524288 -> grad_accum 默认 64
+   ===================================================================== */
+const MICRO_TOK = 8*1024;       // 8192
+let gaFilled = 0, gaTimer = null;
+function gaTarget(){ return parseInt(document.getElementById('gaSlider').value); }
+function initStep3(){
+  const sl=document.getElementById('gaSlider');
+  sl.oninput=()=>{ document.getElementById('gaVal').textContent=gaTarget(); gaResetTank(); drawGaStatic(); };
+  drawGaStatic(); gaResetTank();
+}
+function drawGaStatic(){
+  const N=gaTarget(); const eff=N*MICRO_TOK;
+  document.getElementById('gaTokens').textContent=fmt(eff);
+  const exact = (eff===524288);
+  document.getElementById('gaNote').innerHTML = '累积 <b>'+N+'</b> 次 × 每次 <b>8192</b> token = <b>'+fmt(eff)+'</b> token/步。'
+    + (exact ? ' 正好等于真实 <code>total_batch_size = 524288</code>(64 次)。' : ' 真实默认是 <b>64 次 → 524288</b>(<code>total_batch_size</code>)。');
+}
+function gaPaint(){
+  const N=gaTarget();
+  const h=Math.min(100, gaFilled/N*100);
+  document.getElementById('gaWater').style.height=h+'%';
+  document.getElementById('gaDrip').innerHTML='蓄水槽:<b>'+gaFilled+'</b> / '+N+' 个微 batch · 已攒 <b>'+fmt(gaFilled*MICRO_TOK)+'</b> token';
+}
+function gaResetTank(){
+  if(gaTimer){clearInterval(gaTimer);gaTimer=null;}
+  gaFilled=0; gaPaint();
+  document.getElementById('gaFill').disabled=false;
+}
+function gaOneFill(){
+  const N=gaTarget();
+  if(gaFilled>=N){
+    // 放水 = optimizer.step()
+    gaFilled=0; gaPaint();
+    document.getElementById('gaDrip').innerHTML='💧 <b>放水!</b> 攒满 '+N+' 次 → <code>optimizer.step()</code> 走一步,清空重攒。';
+    return;
+  }
+  gaFilled++; gaPaint();
+  if(gaFilled>=N){
+    document.getElementById('gaDrip').innerHTML='✅ 攒满 <b>'+N+'</b> 次(='+fmt(N*MICRO_TOK)+' token)。再点一下 = <code>optimizer.step()</code> 放水走一步。';
+  }
+}
+document.getElementById('gaFill').onclick=gaOneFill;
+document.getElementById('gaAuto').onclick=()=>{
+  if(gaTimer) return;
+  gaResetTank();
+  gaTimer=setInterval(()=>{
+    const N=gaTarget();
+    if(gaFilled>=N){ clearInterval(gaTimer); gaTimer=null;
+      document.getElementById('gaDrip').innerHTML='✅ 攒满 <b>'+N+'</b> 次 → 该 <code>optimizer.step()</code> 放水走一步了。'; return; }
+    gaFilled++; gaPaint();
+  }, 70);
+};
+document.getElementById('gaResetBtn').onclick=()=>{ gaResetTank(); document.getElementById('gaDrip').innerHTML=''; };
+
+/* =====================================================================
+   STEP 4:学习率曲线(精确复刻 get_lr,纯函数实时重画)
+   ===================================================================== */
+const MAX_LR=6e-4, MIN_LR=6e-5;
+function getLR(step, warmup, maxSteps){
+  if(step < warmup) return MAX_LR * (step+1) / Math.max(1,warmup);
+  if(step >= maxSteps) return MIN_LR;
+  const ratio=(step-warmup)/Math.max(1,(maxSteps-warmup));
+  const coeff=0.5*(1+Math.cos(Math.PI*ratio));
+  return MIN_LR + coeff*(MAX_LR-MIN_LR);
+}
+function initStep4(){
+  const w=document.getElementById('warmSlider'), m=document.getElementById('maxSlider');
+  w.oninput=drawLR; m.oninput=drawLR;
+  drawLR();
+}
+function drawLR(){
+  const warmup=parseInt(document.getElementById('warmSlider').value);
+  const maxSteps=parseInt(document.getElementById('maxSlider').value);
+  document.getElementById('warmVal').textContent=warmup;
+  document.getElementById('maxVal').textContent=maxSteps;
+  const cv=document.getElementById('lrCanvas');
+  const W=cv.clientWidth||760, H=300;
+  cv.width=W; cv.height=H;
+  const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+  const padL=58,padR=18,padT=22,padB=34;
+  const x0=padL, x1=W-padR, y0=H-padB, y1=padT;
+  const sx = s => x0 + s/Math.max(1,maxSteps)*(x1-x0);
+  const sy = lr => y0 - lr/MAX_LR*(y0-y1);
+  // 网格 + y 轴刻度(lr)
+  ctx.font='10px '+getComputedStyle(document.body).getPropertyValue('--mono');
+  ctx.textBaseline='middle';
+  const yticks=[0,1.5e-4,3e-4,4.5e-4,6e-4];
+  yticks.forEach(v=>{
+    const y=sy(v);
+    ctx.strokeStyle='#EFEBE0'; ctx.beginPath(); ctx.moveTo(x0,y); ctx.lineTo(x1,y); ctx.stroke();
+    ctx.fillStyle='#6B6B68'; ctx.textAlign='right'; ctx.fillText(v.toExponential(0).replace('e','e'), x0-6, y);
+  });
+  // min_lr / max_lr 参考线
+  ctx.setLineDash([5,4]);
+  ctx.strokeStyle='#3f7d63'; ctx.beginPath(); ctx.moveTo(x0,sy(MIN_LR)); ctx.lineTo(x1,sy(MIN_LR)); ctx.stroke();
+  ctx.strokeStyle='#7a5bd0'; ctx.beginPath(); ctx.moveTo(x0,sy(MAX_LR)); ctx.lineTo(x1,sy(MAX_LR)); ctx.stroke();
+  ctx.setLineDash([]);
+  // warmup 阴影区
+  if(warmup>0){
+    ctx.fillStyle='rgba(184,81,47,.08)';
+    ctx.fillRect(x0, y1, sx(warmup)-x0, y0-y1);
+    ctx.setLineDash([4,3]); ctx.strokeStyle='#b8512f';
+    ctx.beginPath(); ctx.moveTo(sx(warmup),y0); ctx.lineTo(sx(warmup),y1); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#b8512f'; ctx.textAlign='left';
+    ctx.fillText('warmup '+warmup, sx(warmup)+4, y1+8);
+  }
+  // 主曲线
+  ctx.strokeStyle='#7a5bd0'; ctx.lineWidth=2.4; ctx.beginPath();
+  const NPT=Math.min(W, 700);
+  for(let i=0;i<=NPT;i++){
+    const step=Math.round(i/NPT*maxSteps);
+    const lr=getLR(step,warmup,maxSteps);
+    const X=sx(step), Y=sy(lr);
+    if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y);
+  }
+  ctx.stroke(); ctx.lineWidth=1;
+  // 峰值点
+  ctx.fillStyle='#7a5bd0'; ctx.beginPath(); ctx.arc(sx(warmup),sy(MAX_LR),4,0,7); ctx.fill();
+  // 轴标签
+  ctx.fillStyle='#6B6B68'; ctx.textAlign='center';
+  ctx.fillText('step →  (0 … '+maxSteps+')', (x0+x1)/2, H-12);
+  ctx.save(); ctx.translate(14,(y0+y1)/2); ctx.rotate(-Math.PI/2); ctx.textAlign='center';
+  ctx.fillText('learning rate', 0,0); ctx.restore();
+  // note
+  const peakStep=warmup;
+  let msg;
+  if(warmup===0) msg='⚠️ <b>warmup=0</b>:开局直接顶到 <b>6e-4</b> —— 真实大模型这样常常一步就发散。';
+  else msg='前 <b>'+warmup+'</b> 步线性爬到峰值 <b>6e-4</b>(约占总训练 '+(warmup/maxSteps*100).toFixed(1)+'%),之后余弦退火到 <b>6e-5</b>。真实默认 warmup=715 / max_steps=19073。';
+  document.getElementById('lrNote').innerHTML=msg;
+}
+
+/* =====================================================================
+   STEP 5:收敛趋势(两个真实端点 + 示意虚线,非实测逐 step)
+   端点:300M token -> step1999 / val 3.65;10B token -> step19072 / val 3.02
+   ===================================================================== */
+const BASE_LOSS=10.82;          // ln(50257) 随机基线(代码打印 ln(50257))
+function initStep5(){ drawLoss(); }
+function drawLoss(){
+  const cv=document.getElementById('lossCanvas');
+  const W=cv.clientWidth||760, H=280;
+  cv.width=W; cv.height=H;
+  const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+  const padL=54,padR=110,padT=24,padB=40;
+  const x0=padL,x1=W-padR,y0=H-padB,y1=padT;
+  // x 轴:log10(token),从 1e7(10M)到 2e10
+  const xMinL=Math.log10(1e7), xMaxL=Math.log10(2e10);
+  const sx = tok => x0 + (Math.log10(tok)-xMinL)/(xMaxL-xMinL)*(x1-x0);
+  const lossMin=2.5, lossMax=11;
+  const sy = l => y0 - (l-lossMin)/(lossMax-lossMin)*(y0-y1);
+  ctx.font='10px '+getComputedStyle(document.body).getPropertyValue('--mono');
+  ctx.textBaseline='middle';
+  // y 网格 (loss)
+  [3,4,5,6,8,10].forEach(v=>{
+    const y=sy(v);
+    ctx.strokeStyle='#EFEBE0'; ctx.beginPath(); ctx.moveTo(x0,y); ctx.lineTo(x1,y); ctx.stroke();
+    ctx.fillStyle='#6B6B68'; ctx.textAlign='right'; ctx.fillText(v.toFixed(0), x0-6, y);
+  });
+  // x 刻度
+  [[1e7,'10M'],[1e8,'100M'],[3e8,'300M'],[1e9,'1B'],[1e10,'10B']].forEach(([t,lab])=>{
+    const x=sx(t);
+    ctx.fillStyle='#6B6B68'; ctx.textAlign='center'; ctx.fillText(lab, x, H-14);
+    ctx.strokeStyle='#EFEBE0'; ctx.beginPath(); ctx.moveTo(x,y0); ctx.lineTo(x,y1); ctx.stroke();
+  });
+  // 随机基线
+  ctx.setLineDash([5,4]); ctx.strokeStyle='#bbb';
+  ctx.beginPath(); ctx.moveTo(x0,sy(BASE_LOSS)); ctx.lineTo(x1,sy(BASE_LOSS)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#999'; ctx.textAlign='left'; ctx.fillText('随机基线 ln(50257)≈10.82', x0+6, sy(BASE_LOSS)-9);
+  // 示意虚线趋势:基线 -> 端点1 -> 端点2(明确标注非实测)
+  const P0={t:5e6, l:BASE_LOSS};      // 起点示意(开训附近)
+  const P1={t:3e8, l:3.65};           // 真实端点
+  const P2={t:1e10, l:3.02};          // 真实端点
+  ctx.setLineDash([6,5]); ctx.strokeStyle='#c9c4ba'; ctx.lineWidth=2;
+  ctx.beginPath();
+  // 平滑些:基线->P1 用幂律感的折线采样
+  const segA=[];
+  for(let i=0;i<=40;i++){ const f=i/40; const tok=Math.pow(10, Math.log10(P0.t)+(Math.log10(P1.t)-Math.log10(P0.t))*f);
+    const l=P0.l+(P1.l-P0.l)*Math.pow(f,0.55); segA.push([sx(tok),sy(l)]); }
+  segA.forEach((p,i)=> i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));
+  for(let i=0;i<=40;i++){ const f=i/40; const tok=Math.pow(10, Math.log10(P1.t)+(Math.log10(P2.t)-Math.log10(P1.t))*f);
+    const l=P1.l+(P2.l-P1.l)*f; ctx.lineTo(sx(tok),sy(l)); }
+  ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth=1;
+  // 水印
+  ctx.fillStyle='rgba(150,150,150,.55)'; ctx.font='italic 13px '+getComputedStyle(document.body).getPropertyValue('--serif');
+  ctx.textAlign='center'; ctx.fillText('示意趋势 · 非实测逐 step', (x0+x1)/2, y1+30);
+  // 真实端点
+  function dot(p,color,label,meta){
+    ctx.fillStyle=color; ctx.beginPath(); ctx.arc(sx(p.t),sy(p.l),6,0,7); ctx.fill();
+    ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke(); ctx.lineWidth=1;
+    ctx.fillStyle=color; ctx.font='bold 12px '+getComputedStyle(document.body).getPropertyValue('--mono');
+    ctx.textAlign='left'; ctx.fillText(label, sx(p.t)+10, sy(p.l)-4);
+    ctx.fillStyle='#6B6B68'; ctx.font='10px '+getComputedStyle(document.body).getPropertyValue('--mono');
+    ctx.fillText(meta, sx(p.t)+10, sy(p.l)+10);
+  }
+  dot(P1,'#b8512f','3.65','300M·step1999');
+  dot(P2,'#2c8a6b','3.02','10B·step19072');
+  // 33x 注释
+  ctx.fillStyle='#2c8a6b'; ctx.font='bold 12px '+getComputedStyle(document.body).getPropertyValue('--mono');
+  ctx.textAlign='center'; ctx.fillText('数据 ×33', (sx(P1.t)+sx(P2.t))/2, sy(3.0)-2);
+}
+window.addEventListener('resize', ()=>{ if(cur===3) drawLR(); if(cur===4) drawLoss(); });
+
+/* =====================================================================
+   通关庆祝:横幅 + confetti(纯 vanilla,与全站一致)
+   ===================================================================== */
+function showCongrats(){
+  const old=document.getElementById('congrats'); if(old) old.remove();
+  const el=document.createElement('div'); el.id='congrats'; el.className='congrats';
+  el.innerHTML='🎉 真训练 · 跑通了!<span>配置跃迁 → 真数据 shards → 梯度累积 → warmup+余弦 → loss 3.02,GPT-2 124M 预训练拼齐了</span>';
+  document.body.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>el.remove(),500); }, 3400);
+}
+function launchConfetti(){
+  const cv=document.createElement('canvas');
+  cv.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9999';
+  document.body.appendChild(cv);
+  const ctx=cv.getContext('2d'); cv.width=window.innerWidth; cv.height=window.innerHeight;
+  const colors=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const parts=[];
+  for(let i=0;i<160;i++) parts.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    r:4+Math.random()*5,c:colors[i%colors.length],vx:(Math.random()-0.5)*3.2,vy:2+Math.random()*4,
+    rot:Math.random()*Math.PI,vr:(Math.random()-0.5)*0.3,rect:Math.random()<0.55});
+  const start=performance.now(), DUR=3800;
+  function frame(now){
+    const t=now-start; ctx.clearRect(0,0,cv.width,cv.height);
+    const fade=t>DUR-900?Math.max(0,(DUR-t)/900):1; ctx.globalAlpha=fade;
+    parts.forEach(p=>{ p.x+=p.vx;p.y+=p.vy;p.vy+=0.06;p.rot+=p.vr;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot);ctx.fillStyle=p.c;
+      if(p.rect) ctx.fillRect(-p.r,-p.r*0.6,p.r*2,p.r*1.2);
+      else{ctx.beginPath();ctx.arc(0,0,p.r,0,Math.PI*2);ctx.fill();} ctx.restore(); });
+    ctx.globalAlpha=1;
+    if(t<DUR) requestAnimationFrame(frame); else cv.remove();
+  }
+  requestAnimationFrame(frame);
+}
+function celebrate(){ showCongrats(); launchConfetti(); }
+
+/* =====================================================================
+   名词气泡(全站统一组件)
+   ===================================================================== */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent;
+    const def=el.dataset.def||'';
+    const key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def
+      +(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect();
+    const tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8;
+    if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw;
+    if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el));
+    el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* 初始化 */
+goto(stepFromHash());
+window.addEventListener('hashchange',()=>goto(stepFromHash()));
+</script>
+</body>
+</html>

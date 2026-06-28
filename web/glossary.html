@@ -88,6 +88,7 @@
     <a href="#post-training">后训练</a><a href="#preference-alignment">偏好对齐</a><a href="#full-finetune">全量微调</a>
     <a href="#peft">PEFT</a><a href="#lora">LoRA</a><a href="#loss-mask">loss mask</a>
     <a href="#chat-template">对话模板</a><a href="#dpo">DPO</a><a href="#rlhf">RLHF</a>
+    <a href="#bpe">BPE</a><a href="#fineweb">FineWeb-Edu</a><a href="#shard">shard</a><a href="#adamw">AdamW</a><a href="#bf16">bf16</a><a href="#flash-attention">Flash-Attention</a>
     <a href="#attention-paper">Attention Is All You Need</a>
   </div>
 
@@ -348,6 +349,39 @@
   </div>
 
   <!-- ============ 后训练与对齐(Phase 2)============ -->
+  <!-- ============ 预训练工程(124M)============ -->
+  <div class="sec-h"><span class="sh-num">G</span>预训练工程(124M)</div>
+
+  <div class="gentry" id="bpe">
+    <h3>BPE <span class="en">子词分词 · Byte-Pair Encoding</span></h3>
+    <p>把文本切成<b>子词</b>单元的分词法,介于<a href="#tokenizer" style="color:var(--accent)">字符级</a>和整词级之间。GPT-2 的 BPE 词表有 <b>50257</b> 个 token —— 本项目 124M 复现就用它(代码里向上取整到 50304,凑 128 的倍数更省 GPU)。</p>
+  </div>
+
+  <div class="gentry" id="fineweb">
+    <h3>FineWeb-Edu <span class="en">教育向网页语料</span></h3>
+    <p>经过<b>教育质量筛选</b>的大规模英文网页语料,常用于预训练。本项目用其子集(300M / 10B token)做 GPT-2 124M 复现 —— 全英文,所以模型<b>不会中文</b>。</p>
+  </div>
+
+  <div class="gentry" id="shard">
+    <h3>shard <span class="en">数据分片</span></h3>
+    <p>把超大数据集切成的<b>一块块文件</b>(这里是 <code>.npy</code>),训练时<b>一片片顺序读入</b>,不必把整个 10B token 数据集一次塞进内存。</p>
+  </div>
+
+  <div class="gentry" id="adamw">
+    <h3>AdamW <span class="en">带权重衰减的 Adam</span></h3>
+    <p><a href="#optimizer" style="color:var(--accent)">优化器</a>的事实标准:Adam 的改良版,把<b>权重衰减</b>从梯度里拆出来单独做。本项目用 <code>betas=(0.9, 0.95)</code>,并对参数<b>分组</b>(权重给衰减、bias/LayerNorm 不给)。</p>
+  </div>
+
+  <div class="gentry" id="bf16">
+    <h3>bf16 <span class="en">混合精度 · bfloat16</span></h3>
+    <p>16 位浮点。前向用它算<b>更快、省一半显存</b>,数值范围和 fp32 一样大、精度几乎无损 —— 大模型训练的常规操作。<b>需要 N 卡</b>支持。</p>
+  </div>
+
+  <div class="gentry" id="flash-attention">
+    <h3>Flash-Attention <span class="en">省显存的注意力实现</span></h3>
+    <p>把<a href="#self-attention" style="color:var(--accent)">注意力</a>算得<b>又快又省显存</b>的实现(<code>F.scaled_dot_product_attention</code>):不显式构造 T×T 注意力矩阵,边算边融合。和普通注意力<b>数学等价</b>,只是更高效。</p>
+  </div>
+
   <div class="sec-h"><span class="sh-num">F</span>后训练与对齐(Phase 2)</div>
 
   <div class="gentry" id="post-training">

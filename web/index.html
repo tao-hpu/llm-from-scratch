@@ -239,7 +239,7 @@
     <div class="phase-title">
       <span class="pt-num">PHASE 1 · 124M</span>
       <h2>第一阶段 · 124M 模型</h2>
-      <span class="pt-state">▶ 部分上线</span>
+      <span class="pt-state">▶ 已上线</span>
     </div>
     <div class="chapters">
 
@@ -258,14 +258,19 @@
         <div class="card-foot">共 5 步 · <a href="05_sampling_viz.html#step-1">从第一步开始 →</a></div>
       </section>
 
-      <!-- 训练过程(预训练)· 占位 -->
-      <section class="card locked">
-        <div class="card-head"><span class="ch-num">规模化</span></div>
-        <h3>把 nanoGPT 放大到 GPT-2 124M</h3>
-        <p class="desc">同一套架构放大到 124M 参数,体会更大规模下的训练与工程取舍。</p>
-        <div class="soon-hint" data-soon role="button" tabindex="0">
-          敬请期待:对应 <code>04_gpt2_124m.py</code> 训练过程(LR 退火 / 梯度累积)的可视化正在路上。
-        </div>
+      <!-- 124M 训练 · 预训练过程 -->
+      <section class="card">
+        <div class="card-head"><span class="ch-num">训练 · 124M</span></div>
+        <h3><a href="07_pretraining_viz.html#step-1">真训练:把玩具 GPT 喂真实数据</a></h3>
+        <p class="desc">对应 <code>phase1-124m/04_gpt2_124m.py</code>:把 GPT-2 124M 预训练拆成五步亲手拨——配置从字符级玩具跃迁到 <code>12/12/768</code>、FineWeb-Edu 切 <code>shard</code> 顺序喂、梯度累积攒满 524288 token 再走一步、<code>warmup + 余弦</code>学习率实时画曲线、用两个真实端点(300M→3.65 / 10B→3.02)看数据量 33× 的收敛对照。</p>
+        <ul class="steps">
+          <li><a href="07_pretraining_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">从玩具到真模型</span><span class="arrow">→</span></a></li>
+          <li><a href="07_pretraining_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">真数据 + BPE + shards</span><span class="arrow">→</span></a></li>
+          <li><a href="07_pretraining_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">梯度累积:攒满 524288 token</span><span class="arrow">→</span></a></li>
+          <li><a href="07_pretraining_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">学习率 schedule:warmup + 余弦</span><span class="arrow">→</span></a></li>
+          <li><a href="07_pretraining_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">收敛 + 数据量对照</span><span class="arrow">→</span></a></li>
+        </ul>
+        <div class="card-foot">共 5 步 · <a href="07_pretraining_viz.html#step-1">从第一步开始 →</a></div>
       </section>
     </div>
   </section>
@@ -312,7 +317,7 @@
     一个从零理解大语言模型的教学项目 —— 先<b>看懂直觉</b>,再读代码。
     全部页面均为单文件、零依赖,离线双击即可打开。遇到不懂的术语,查 <a href="glossary.html" style="color:var(--accent);text-decoration:none;font-weight:600">名词表</a>;
     想看边角料故事,翻 <a href="notes.html" style="color:var(--accent);text-decoration:none;font-weight:600">学习札记 🥚</a>。
-    <div class="progress">进度:第 1–3 章 + 整机俯瞰 + 124M 推理采样 + Phase 2 后训练白皮书 已上线 · 124M 训练过程与 Phase 2 三脚本筹备中</div>
+    <div class="progress">进度:第 1–3 章 + 整机俯瞰 + 124M 训练 + 124M 推理采样 + Phase 2 后训练白皮书 已上线 · Phase 2 三脚本筹备中</div>
   </footer>
 
 </div>
