@@ -15,6 +15,8 @@
 
 除了代码,每一关还配一套**交互式 HTML 可视化**——把抽象的张量、损失、注意力拆成可以亲手拨动的动画,**先看懂直觉,再读代码**。全部单文件、零依赖,**双击 [`web/index.html`](web/index.html) 即可离线打开**。
 
+> 🌐 **在线版(免下载,手机也能看):<https://learn-llm.fim.ai>**
+
 - [`web/index.html`](web/index.html) — 总入口,扁平列出所有章节
 - [`web/01_bigram_crossentropy_viz.html`](web/01_bigram_crossentropy_viz.html) — 第 1 章:logits 摊平 & 交叉熵
 - [`web/02_attention_viz.html`](web/02_attention_viz.html) — 第 2 章:自注意力,让每个位置"往回看"
@@ -219,6 +221,8 @@ python 05_sample.py --ckpt /path/to/gpt2-124m-10b-val3.02.pt --prompt "The histo
 **Build an LLM from scratch — with line-by-line Chinese explanations.**
 
 A learning path, not a framework: hand-build a Transformer step by step (01 → 02 → 03), then reproduce GPT-2 124M with real data, real BPE, and a real optimizer. Code is kept short and over-commented on purpose — the goal is *understanding*, not speed.
+
+> 🌐 **Interactive visualizations (no download, mobile-friendly): <https://learn-llm.fim.ai>**
 
 Heavily based on Andrej Karpathy's [nanoGPT](https://github.com/karpathy/nanoGPT) and [build-nanogpt](https://github.com/karpathy/build-nanogpt). **The added value here is the detailed Chinese walkthrough**, so the inline comments and `导读.md` are in Chinese. If there's interest in an English-commented version, open an issue.
 
