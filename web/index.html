@@ -139,22 +139,32 @@
       nanoGPT,再扩展到 124M 规模与 <code>SFT + LoRA</code> 微调。
       每一章都配交互式可视化 —— 先看懂直觉,再读代码。
     </p>
-    <p style="margin-top:16px">
+    <div style="margin-top:16px;display:flex;flex-wrap:wrap;align-items:stretch;gap:10px">
       <a href="glossary.html" style="display:inline-flex;align-items:center;gap:7px;text-decoration:none;
-        font-size:14px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--border);
+        font-size:14px;font-weight:600;line-height:1.2;color:var(--ink);background:#fff;border:1px solid var(--border);
         border-radius:12px;padding:9px 16px;transition:all .2s ease"
         onmouseover="this.style.borderColor='#D97757';this.style.color='#D97757'"
         onmouseout="this.style.borderColor='#E5E2D9';this.style.color='#1A1A18'">
         📖 名词表 · 不懂的术语点这里 →
       </a>
       <a href="notes.html" style="display:inline-flex;align-items:center;gap:7px;text-decoration:none;
-        font-size:14px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--border);
-        border-radius:12px;padding:9px 16px;margin-left:10px;transition:all .2s ease"
+        font-size:14px;font-weight:600;line-height:1.2;color:var(--ink);background:#fff;border:1px solid var(--border);
+        border-radius:12px;padding:9px 16px;transition:all .2s ease"
         onmouseover="this.style.borderColor='#D97757';this.style.color='#D97757'"
         onmouseout="this.style.borderColor='#E5E2D9';this.style.color='#1A1A18'">
         🥚 学习札记 · 彩蛋小故事 →
       </a>
-    </p>
+      <a href="https://github.com/tao-hpu/llm-from-scratch" target="_blank" rel="noopener"
+        style="display:inline-flex;align-items:center;gap:7px;text-decoration:none;
+        font-size:14px;font-weight:600;line-height:1.2;color:#fff;background:var(--accent);border:1px solid var(--accent);
+        border-radius:12px;padding:9px 16px;transition:all .2s ease;
+        box-shadow:0 2px 8px rgba(217,119,87,.25)"
+        onmouseover="this.style.background='#C9633F';this.style.borderColor='#C9633F'"
+        onmouseout="this.style.background='#D97757';this.style.borderColor='#D97757'">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.42 7.42 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        在 GitHub 上点个 Star ⭐
+      </a>
+    </div>
   </header>
 
   <!-- ============ PHASE 1 · nanoGPT ============ -->
@@ -353,6 +363,13 @@
     全部页面均为单文件、零依赖,离线双击即可打开。遇到不懂的术语,查 <a href="glossary.html" style="color:var(--accent);text-decoration:none;font-weight:600">名词表</a>;
     想看边角料故事,翻 <a href="notes.html" style="color:var(--accent);text-decoration:none;font-weight:600">学习札记 🥚</a>。
     <div class="progress">进度:第 1–3 章 + 整机俯瞰 + 124M 训练 + 124M 推理采样 + Phase 2 后训练白皮书 + 手搓三关(SFT / LoRA / DPO)全部上线 🎉</div>
+    <div style="margin-top:14px">
+      觉得有帮助?到 <a href="https://github.com/tao-hpu/llm-from-scratch" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">GitHub 仓库 ⭐ 点个 Star</a> 是对作者最大的鼓励,也方便你回来追更新。
+    </div>
+    <!--site-copyright-->
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:12px;color:var(--ink2)">
+      © 2026 <a href="https://fim.ai" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">FIM Labs</a> · 从零手写大语言模型 · MIT License
+    </div>
   </footer>
 
 </div>
