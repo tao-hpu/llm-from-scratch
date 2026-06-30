@@ -189,12 +189,12 @@ python 05_sample.py --ckpt ckpt/latest.pt --prompt "The history of Rome" --n 3
 >
 > 下面的权重是给两类人的**捷径**:① 没有 N 卡、只想在 Mac/CPU 上玩玩推理(`05_sample.py`)的;② 自己训完了,想拿我的结果**对照验证**复现是否到位的。**下载是捷径,自训才是正道。**
 
-为了保持仓库轻量,训练好的 checkpoint 不放进 git。**主推 10B 那份**;300M 那份是数据量对照样本(见上「数据量对照」)。
+为了保持仓库轻量,训练好的 checkpoint 不放进 git。**主推 10B 那份**;300M 那份是数据量对照样本(见上「数据量对照」)。两处下载**字节一致**,优先用 HuggingFace;HF 下不动(国内网络偶发镜像/重定向问题)时再走 GitHub Release 镜像。
 
-- 🤗 **HuggingFace**: [tao-hpu/gpt2-124m-fineweb-edu-10b](https://huggingface.co/tao-hpu/gpt2-124m-fineweb-edu-10b) — 含模型卡,**两份权重都在这个仓库**(`...-10b-val3.02.pt` / `...-300m-val3.65.pt`)
-- 📦 **GitHub Release**:
-  - [10B · val_loss 3.02](https://github.com/tao-hpu/llm-from-scratch/releases/tag/gpt2-124m-10b)（主推）
-  - [300M · val_loss 3.65](https://github.com/tao-hpu/llm-from-scratch/releases/tag/gpt2-124m-300m)（数据量对照样本）
+- 🤗 **HuggingFace(正源)**: [tao-hpu/gpt2-124m-fineweb-edu-10b](https://huggingface.co/tao-hpu/gpt2-124m-fineweb-edu-10b) — 含模型卡,**两份权重都在这个仓库**(`...-10b-val3.02.pt` / `...-300m-val3.65.pt`)
+- 📦 **GitHub Release(备用镜像)** — 与 HF 同一份文件,HF 抽风时用:
+  - [10B · val_loss 3.02](https://github.com/tao-hpu/llm-from-scratch/releases/tag/gpt2-124m-10b)（主推)
+  - [300M · val_loss 3.65](https://github.com/tao-hpu/llm-from-scratch/releases/tag/gpt2-124m-300m)（数据量对照样本)
 
 ```bash
 # 下载权重后直接推理(三平台通用)
