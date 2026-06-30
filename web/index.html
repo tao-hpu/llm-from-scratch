@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LLM from Scratch · 从零手写大语言模型</title>
+<meta name="description" content="从零手写大语言模型的教学项目:每一关 = 真实现的 Python 代码 + 可亲手拨动的交互可视化。先建直觉,再落到代码 —— bigram 一路搭到 GPT 与对齐。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph -->
+<meta property="og:title" content="从零手写大语言模型 · LLM from Scratch">
+<meta property="og:description" content="每一关 = 真实现的 Python 代码 + 可亲手拨动的交互可视化。先建直觉,再落到代码。">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://learn-llm.fim.ai">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="从零手写大语言模型 · LLM from Scratch">
+<meta name="twitter:description" content="每一关 = 真实现的 Python 代码 + 可亲手拨动的交互可视化。先建直觉,再落到代码。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
 <style>
   /* ============ 全局基础样式(暖色变量,全站统一)============ */
   :root{
@@ -200,7 +215,7 @@
         <h3><a href="02_attention_viz.html#step-1">第 2 章 · 自注意力</a></h3>
         <p class="desc">
           给模型装上"往回看"的能力。从"对过去做平均"出发,一步步升级成
-          由内容算权重的自注意力,打破 bigram 的 <code>2.5</code> 天花板。
+          由内容算权重的自注意力,打破 bigram 的 <code>2.49</code> 天花板。
         </p>
         <ul class="steps">
           <li><a href="02_attention_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">往回看:每个位置看过去(因果)</span><span class="arrow">→</span></a></li>
@@ -217,7 +232,7 @@
       <section class="card">
         <div class="card-head"><span class="ch-num">CHAPTER 03</span></div>
         <h3><a href="03_transformer_viz.html#step-1">第 3 章 · 完整 Transformer</a></h3>
-        <p class="desc">四块新积木拼出 GPT:<code>多头</code>(同时看多种关系)、<code>FFN</code>(逐位置思考)、<code>残差 + LayerNorm</code>(让深网络训得动),再摞成多层。val loss 从 2.41 掉到 ~1.9。</p>
+        <p class="desc">四块新积木拼出 GPT:<code>多头</code>(同时看多种关系)、<code>FFN</code>(逐位置思考)、<code>残差 + LayerNorm</code>(让深网络训得动),再摞成多层。val loss 从 2.41 掉到 ~1.57。</p>
         <ul class="steps">
           <li><a href="03_transformer_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">切蛋糕:128 维 → 4 个头</span><span class="arrow">→</span></a></li>
           <li><a href="03_transformer_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">每个头各看各的(分化)</span><span class="arrow">→</span></a></li>
@@ -231,8 +246,8 @@
 
       <!-- 整机俯瞰 · 全景收尾 -->
       <section class="card">
-        <div class="card-head"><span class="ch-num">整机俯瞰 · 全景</span></div>
-        <h3><a href="04_gpt_machine_viz.html#part-1">把零件拼成整机:一个字符流过 GPT</a></h3>
+        <div class="card-head"><span class="ch-num">CHAPTER 04</span></div>
+        <h3><a href="04_gpt_machine_viz.html#part-1">第 4 章 · 把零件拼成整机:一个字符流过 GPT</a></h3>
         <p class="desc">第 1–3 章的零件拼成整台 tiny GPT(≈0.8M)。两段全自动动画:<code>① 装机</code>(训练把所有权重调到位)+ <code>② 跑起来</code>(<code>forward</code> 算出 logits → <code>decode</code> 采样,预设开头自回归生成)。跑起来里点开 <code>4×Block</code> 还能掀盖看注意力热力图 + FFN 内部。</p>
         <ul class="steps">
           <li><a href="04_gpt_machine_viz.html#part-1"><span class="sn">PART 1</span><span class="st">🔧 装机:训练把权重调到位</span><span class="arrow">→</span></a></li>
@@ -255,8 +270,8 @@
 
       <!-- 124M 推理 · 采样与 KV-cache -->
       <section class="card">
-        <div class="card-head"><span class="ch-num">推理 · 采样</span></div>
-        <h3><a href="05_sampling_viz.html#step-1">跑起来:从 logits 到文字(采样与 KV-cache)</a></h3>
+        <div class="card-head"><span class="ch-num">CHAPTER 05</span></div>
+        <h3><a href="05_sampling_viz.html#step-1">第 5 章 · 跑起来:从 logits 到文字(采样与 KV-cache)</a></h3>
         <p class="desc">对应 <code>phase1-124m/05_sample.py</code>:把推理"从打分到吐字"拆成五步亲手拨——<code>base</code> 只续写不答题、<code>temperature</code> 捏尖/摊平分布、<code>top_k</code> 砍掉长尾、自回归逐 token 滚动、<code>KV-cache</code> 并排省掉重复计算(实测约 2.5–3.1×)。</p>
         <ul class="steps">
           <li><a href="05_sampling_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">base 只会续写</span><span class="arrow">→</span></a></li>
@@ -270,8 +285,8 @@
 
       <!-- 124M 训练 · 预训练过程 -->
       <section class="card">
-        <div class="card-head"><span class="ch-num">训练 · 124M</span></div>
-        <h3><a href="07_pretraining_viz.html#step-1">真训练:把玩具 GPT 喂真实数据</a></h3>
+        <div class="card-head"><span class="ch-num">CHAPTER 06</span></div>
+        <h3><a href="07_pretraining_viz.html#step-1">第 6 章 · 真训练:把玩具 GPT 喂真实数据</a></h3>
         <p class="desc">对应 <code>phase1-124m/04_gpt2_124m.py</code>:把 GPT-2 124M 预训练拆成五步亲手拨——配置从字符级玩具跃迁到 <code>12/12/768</code>、FineWeb-Edu 切 <code>shard</code> 顺序喂、梯度累积攒满 524288 token 再走一步、<code>warmup + 余弦</code>学习率实时画曲线、用两个真实端点(300M→3.65 / 10B→3.02)看数据量 33× 的收敛对照。</p>
         <ul class="steps">
           <li><a href="07_pretraining_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">从玩具到真模型</span><span class="arrow">→</span></a></li>
@@ -295,8 +310,8 @@
 
       <!-- Phase 2 开篇 · 后训练白皮书 -->
       <section class="card">
-        <div class="card-head"><span class="ch-num">开篇 · 白皮书</span></div>
-        <h3><a href="06_posttraining_viz.html#step-1">从"会续写"到"会听话":后训练地图</a></h3>
+        <div class="card-head"><span class="ch-num">CHAPTER 07</span></div>
+        <h3><a href="06_posttraining_viz.html#step-1">第 7 章 · 从"会续写"到"会听话":后训练地图</a></h3>
         <p class="desc">动手写代码前先对齐全景与术语:<code>参数量 vs 数据量</code>、<code>任务 vs 手段</code>(SFT/DPO × 全量/LoRA)、SFT 改了哪三处(数据/模板/<code>loss mask</code>)、偏好对齐里 <code>RLHF</code> 与 <code>DPO</code> 的关系。</p>
         <ul class="steps">
           <li><a href="06_posttraining_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">你练出来的底座(124M ≠ 10B)</span><span class="arrow">→</span></a></li>
@@ -311,8 +326,8 @@
 
       <!-- SFT · 监督微调 -->
       <section class="card">
-        <div class="card-head"><span class="ch-num">SFT · 监督微调</span></div>
-        <h3><a href="08_sft_viz.html#step-1">SFT:把 base 调成会答题</a></h3>
+        <div class="card-head"><span class="ch-num">CHAPTER 08</span></div>
+        <h3><a href="08_sft_viz.html#step-1">第 8 章 · SFT:把 base 调成会答题</a></h3>
         <p class="desc">拿 Phase 1 的 124M base 做监督微调:<code>对话模板 + EOS</code>、<code>loss mask</code>(只对回答算 loss)、训练循环。配套代码 <code>06_sft.py</code>,内含训练前后真实采样对比。</p>
         <ul class="steps">
           <li><a href="08_sft_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">起点:base 跑题、停不下来</span><span class="arrow">→</span></a></li>
@@ -326,8 +341,8 @@
 
       <!-- LoRA · 低秩微调 -->
       <section class="card">
-        <div class="card-head"><span class="ch-num">LoRA · 低秩微调</span></div>
-        <h3><a href="09_lora_viz.html#step-1">手搓 LoRA:冻结底座,只训 1% 参数</a></h3>
+        <div class="card-head"><span class="ch-num">CHAPTER 09</span></div>
+        <h3><a href="09_lora_viz.html#step-1">第 9 章 · 手搓 LoRA:冻结底座,只训 1% 参数</a></h3>
         <p class="desc">换手段不换任务:同一件 SFT,冻住 124M 底座,只在每层旁挂低秩旁路 <code>B·A</code>,只训 <code>~0.94%</code> 参数、存 <code>4.7MB</code> adapter。配套代码 <code>07_lora.py</code>,内含真实采样与 loss 曲线。</p>
         <ul class="steps">
           <li><a href="09_lora_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">为何不动整座大楼</span><span class="arrow">→</span></a></li>
@@ -341,8 +356,8 @@
 
       <!-- DPO · 偏好对齐 -->
       <section class="card">
-        <div class="card-head"><span class="ch-num">DPO · 偏好对齐</span></div>
-        <h3><a href="10_dpo_viz.html#step-1">手搓 DPO:从会答到答得合人意</a></h3>
+        <div class="card-head"><span class="ch-num">CHAPTER 10</span></div>
+        <h3><a href="10_dpo_viz.html#step-1">第 10 章 · 手搓 DPO:从会答到答得合人意</a></h3>
         <p class="desc">换任务:从"会答"到"答得合人意"。接在 SFT 之后,用偏好对(chosen/rejected)+ 冻结参考模型做 DPO——<code>不训奖励模型、不走 RL</code>。配套代码 <code>08_dpo.py</code>,真实曲线 loss↓ / margin↑ / 准确率 0→100%;加 <code>--lora</code> 可切 LoRA 手段。</p>
         <ul class="steps">
           <li><a href="10_dpo_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">会答 ≠ 答得好(偏好对)</span><span class="arrow">→</span></a></li>

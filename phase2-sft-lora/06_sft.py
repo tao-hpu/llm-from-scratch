@@ -62,6 +62,9 @@ torch.manual_seed(args.seed)
 # 模型定义：与 04 / 05 完全一致，这样 base 的 state_dict 键才对得上
 # （训练版 forward：给 targets 就用 cross_entropy 算 loss，默认 ignore_index=-100）
 # ---------------------------------------------------------------------------
+# GPT-2 真实词表 50257;模型 vocab 取 50304 是为效率对齐到 64 的倍数(多出的 47 行从没训过)
+GPT2_REAL_VOCAB = 50257
+
 @dataclass
 class GPTConfig:
     block_size: int = 1024
@@ -208,7 +211,7 @@ def chat(model, instruction, max_new_tokens, temperature, top_k):
     for _ in range(max_new_tokens):
         logits, _ = model(x[:, -model.cfg.block_size:])
         logits = logits[:, -1, :]
-        logits[:, 50257:] = float("-inf")      # 屏蔽词表里没训过的对齐空行(但保留 50256=EOS)
+        logits[:, GPT2_REAL_VOCAB:] = float("-inf")  # 屏蔽词表里没训过的对齐空行(50256=EOS 仍保留)
         logits = logits / temperature
         if top_k:
             v, _ = torch.topk(logits, top_k)
@@ -257,8 +260,8 @@ def main():
     model.train()
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.95), weight_decay=0.0)
     print(f"\n开始 SFT | 样本 {len(DATA)} 条 | epochs {args.epochs} | lr {args.lr} | batch {args.batch_size}")
+    batches = make_batches(DATA, args.batch_size)   # 无 shuffle,各 epoch 一致,故只切一次
     for ep in range(args.epochs):
-        batches = make_batches(DATA, args.batch_size)   # 每个 epoch 重切(可加 shuffle,这里从简)
         ep_loss, nb = 0.0, 0
         for xb, yb in batches:
             opt.zero_grad(set_to_none=True)

@@ -21,13 +21,13 @@
 - [`web/01_bigram_crossentropy_viz.html`](web/01_bigram_crossentropy_viz.html) — 第 1 章:logits 摊平 & 交叉熵
 - [`web/02_attention_viz.html`](web/02_attention_viz.html) — 第 2 章:自注意力,让每个位置"往回看"
 - [`web/03_transformer_viz.html`](web/03_transformer_viz.html) — 第 3 章:完整 Transformer(多头 + FFN + 残差 + LayerNorm)
-- [`web/04_gpt_machine_viz.html`](web/04_gpt_machine_viz.html) — 整机俯瞰:零件拼成 tiny GPT,装机 + 前向/采样全自动动画
+- [`web/04_gpt_machine_viz.html`](web/04_gpt_machine_viz.html) — 第 4 章:整机俯瞰,零件拼成 tiny GPT,装机 + 前向/采样全自动动画
 - [`web/05_sampling_viz.html`](web/05_sampling_viz.html) — 第 5 章(124M 推理):从 logits 到文字——temperature / top_k / 自回归 / KV-cache 加速
-- [`web/06_posttraining_viz.html`](web/06_posttraining_viz.html) — Phase 2 开篇 · 后训练白皮书:参数量 vs 数据量、任务 vs 手段、SFT 机制(loss mask)、RLHF vs DPO
-- [`web/07_pretraining_viz.html`](web/07_pretraining_viz.html) — 第 7 章(124M 训练,对应 `04_gpt2_124m.py`):配置跃迁 / BPE + shards / 梯度累积 / warmup+余弦学习率 / 数据量收敛对照
-- [`web/08_sft_viz.html`](web/08_sft_viz.html) — SFT(对应 `06_sft.py`):把 124M base 调成会答题——对话模板 + EOS + loss mask + 训练前后真实采样对比
-- [`web/09_lora_viz.html`](web/09_lora_viz.html) — 手搓 LoRA(对应 `07_lora.py`):冻结底座只训低秩旁路 B·A(~0.94% 参数 / 4.7MB adapter)——拨 r 算账 + B=0 平滑出发 + 真实 loss 曲线与采样
-- [`web/10_dpo_viz.html`](web/10_dpo_viz.html) — 手搓 DPO(对应 `08_dpo.py`):偏好对齐,不训奖励模型/不走 RL——policy+冻结 ref + 隐式奖励 + DPO loss 滑块 + 真实曲线(loss↓/margin↑/准确率 0→100%)
+- [`web/07_pretraining_viz.html`](web/07_pretraining_viz.html) — 第 6 章(124M 训练,对应 `04_gpt2_124m.py`):配置跃迁 / BPE + shards / 梯度累积 / warmup+余弦学习率 / 数据量收敛对照
+- [`web/06_posttraining_viz.html`](web/06_posttraining_viz.html) — 第 7 章 · Phase 2 开篇 · 后训练白皮书:参数量 vs 数据量、任务 vs 手段、SFT 机制(loss mask)、RLHF vs DPO
+- [`web/08_sft_viz.html`](web/08_sft_viz.html) — 第 8 章 · SFT(对应 `06_sft.py`):把 124M base 调成会答题——对话模板 + EOS + loss mask + 训练前后真实采样对比
+- [`web/09_lora_viz.html`](web/09_lora_viz.html) — 第 9 章 · 手搓 LoRA(对应 `07_lora.py`):冻结底座只训低秩旁路 B·A(~0.94% 参数 / 4.7MB adapter)——拨 r 算账 + B=0 平滑出发 + 真实 loss 曲线与采样
+- [`web/10_dpo_viz.html`](web/10_dpo_viz.html) — 第 10 章 · 手搓 DPO(对应 `08_dpo.py`):偏好对齐,不训奖励模型/不走 RL——policy+冻结 ref + 隐式奖励 + DPO loss 滑块 + 真实曲线(loss↓/margin↑/准确率 0→100%)
 - [`web/glossary.html`](web/glossary.html) — 名词表(术语字典,正文术语 hover 即弹气泡)
 - [`web/notes.html`](web/notes.html) — 学习札记 / 彩蛋:正课之外的小故事(如 Transformer 前世今生:8 作者、翻译起源、家谱)
 

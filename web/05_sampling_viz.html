@@ -64,8 +64,8 @@
   .d i{font-style:normal;font-size:9.5px;font-weight:600;opacity:.9;letter-spacing:.2px;}
   .d-vocab{color:#a87b1f;background:#FAEFD6;}
   .d-temp{color:#b8512f;background:#F7E6DE;}
-  .d-topk{color:#3f7d63;background:#E4EFE9;}
-  .d-block{color:#3a63c0;background:#E5EBF9;}
+  .d-topk{color:#168f8f;background:#D9EDED;}    /* top_k 采样池(非标准维度,用青色区分) */
+  .d-block{color:#3f7d63;background:#E4EFE9;}    /* block_size 绿,与全站一致 */
 
   /* ============ 面板 ============ */
   .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
@@ -227,7 +227,7 @@
       本页对应 <code>phase1-124m/05_sample.py</code>。模型每一步只做一件事:对<b>下一个 token</b> 打分(<span class="term"
         data-term="logits · 原始打分" data-key="logits" data-def="模型最后一层对词表里每个 token 输出的一排实数打分,还没归一化成概率。越大越倾向选它。">logits</span>)。
       这一页把"打分 → 怎么挑一个字 → 一个字接一个字滚成句子 → 怎么加速"五步拆开,每步亲手拨一个旋钮。
-      演示用一个<b>小示意词表</b>(标着「示意」),真实里词表是 <span class="d d-vocab">50304<i>vocab</i></span> 个 token。
+      演示用一个<b>小示意词表</b>(标着「示意」),真实里词表是 <span class="d d-vocab">50304<i>vocab</i></span> 个 token —— 其中 <b>50257</b> 个是真 token,另 47 个是为对齐 GPU 补的空位,采样时会被屏蔽掉,所以每步实际只在 <b>50257</b> 个里挑。
     </p>
   </header>
 
@@ -244,10 +244,10 @@
   <div class="hp-bar">
     <span class="hp-label">采样旋钮</span>
     <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">temperature <b>0.9</b> <i>默认</i></span>
-    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">top_k <b>50</b> <i>默认</i></span>
+    <span class="hp-chip" style="color:#168f8f;background:#D9EDED">top_k <b>50</b> <i>默认</i></span>
     <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">vocab <b>50304</b> <i>词表大小</i></span>
-    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">block_size <b>1024</b> <i>能回看多远</i></span>
-    <span class="hp-note">演示词表只 <b>8</b> 个是<b>示意</b> · 真实每步在 50304 个里挑 · 配套 <code style="font-family:var(--mono)">05_sample.py</code></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">block_size <b>1024</b> <i>能回看多远</i></span>
+    <span class="hp-note">演示词表只 <b>8</b> 个是<b>示意</b> · 真实每步在 50257 个真 token 里挑 · 配套 <code style="font-family:var(--mono)">05_sample.py</code></span>
   </div>
 
   <!-- ============ STEP 1:base 只会续写 ============ -->
@@ -320,7 +320,7 @@
       就算温度不高,词表里仍有一长串<b>低概率 token</b>,偶尔被抽中就是一处"胡言"。
       <span class="term" data-term="top_k 采样" data-key="top-k" data-def="每一步只保留概率最高的 k 个 token,其余直接置为 0(−∞),再归一化采样。把长尾的低概率 token 一刀切掉。">top_k</span>
       只保留<b>最高的 k 个</b>,其余打分设成 −∞(等于概率 0),再归一化采样。
-      真实默认 <span class="d d-topk">50<i>top_k</i></span>(在 50304 里留 50 个)。这里示意词表只有 8 个,拖 k 看尾巴被切、概率质量重新分配。
+      真实默认 <span class="d d-topk">50<i>top_k</i></span>(在 50257 个真 token 里留 50 个)。这里示意词表只有 8 个,拖 k 看尾巴被切、概率质量重新分配。
     </p>
 
     <div class="sliderbox">
@@ -393,7 +393,7 @@
 
   <!-- ============ STEP 5:KV-cache ============ -->
   <section class="panel" id="panel4">
-    <h2>⑤ KV-cache:别把过去重算一遍(作者自己加的优化)</h2>
+    <h2>⑤ KV-cache:别把过去重算一遍(<code>05_sample.py</code> 里加的推理优化)</h2>
     <p class="lead">
       注意力要用到序列里每个位置的 <span class="term" data-term="K / V · key 与 value" data-key="kv-cache" data-def="注意力里每个 token 算出的 key 和 value 向量。新 token 要去和过去所有 token 的 K/V 做注意力。把过去的 K/V 缓存下来就不用重算。">K/V</span>。
       <b>无 cache</b>:每生成一个 token,都把<b>过去所有位置</b>的 K/V <b>从头重算一遍</b>(下图不断变大的橙色三角 = 纯浪费);
@@ -602,7 +602,7 @@ function drawTopK(){
   const cut=kept.filter(x=>!x).length;
   let msg;
   if(k===1)      msg='✂️ <b>k=1</b>:只剩冠军,等于<b>贪心(argmax)</b> —— 结果唯一、无随机。';
-  else if(k>=8)  msg='<b>k=8</b>:示意词表全留,等于<b>没裁剪</b>;真实里这相当于在 50304 个里一个不删。';
+  else if(k>=8)  msg='<b>k=8</b>:示意词表全留,等于<b>没裁剪</b>;真实里这相当于在 50257 个真 token 里一个不删。';
   else           msg='✂️ <b>k='+k+'</b>:切掉了尾部 <b>'+cut+'</b> 个低概率 token(置 0),剩下的重新归一化 —— 概率质量集中到靠谱候选上。真实默认 <b>50</b>。';
   document.getElementById('s3Note').innerHTML=msg;
 }

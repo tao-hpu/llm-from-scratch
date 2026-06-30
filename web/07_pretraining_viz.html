@@ -62,7 +62,7 @@
   .d{display:inline-flex;align-items:baseline;gap:3px;font-family:var(--mono);font-weight:700;
     padding:0 5px;border-radius:6px;line-height:1.5;white-space:nowrap;}
   .d i{font-style:normal;font-size:9.5px;font-weight:600;opacity:.9;letter-spacing:.2px;}
-  .d-layer{color:#b8512f;background:#F7E6DE;}
+  .d-layer{color:#9a7b2f;background:#F4ECD6;}
   .d-head{color:#a3548c;background:#F6E6F0;}
   .d-emb{color:#3a63c0;background:#E5EBF9;}
   .d-block{color:#3f7d63;background:#E4EFE9;}
@@ -252,7 +252,7 @@
   <!-- ============ 超参速查条 ============ -->
   <div class="hp-bar">
     <span class="hp-label">GPT-2 124M</span>
-    <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">n_layer <b>12</b></span>
+    <span class="hp-chip" style="color:#9a7b2f;background:#F4ECD6">n_layer <b>12</b></span>
     <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">n_head <b>12</b></span>
     <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">n_embd <b>768</b></span>
     <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">block_size <b>1024</b></span>
@@ -424,7 +424,7 @@
         <input type="range" id="warmSlider" min="0" max="3000" step="5" value="715">
         <span class="sval" id="warmVal">715</span>
       </div>
-      <div class="ticks"><span>0(不热身)</span><span>715 = 真实默认</span><span>3000</span></div>
+      <div class="ticks"><span>0(不热身)</span><span>715 = 10B 跑</span><span>3000</span></div>
     </div>
     <div class="sliderbox" style="margin-top:0">
       <div class="srow">
@@ -490,7 +490,7 @@
       <div class="epcard short">
         <div class="eptag">短跑 · 约 300M token</div>
         <div class="epval">3.65 <small>val_loss</small></div>
-        <div class="epmeta">step 1999 · max_steps≈2000<br>快速验证管线能跑通</div>
+        <div class="epmeta">step 1999 · 快速验证管线<br>(用了比 524288 更小的 batch)</div>
       </div>
       <div class="epcard long">
         <div class="eptag">长跑 · 约 10B token</div>
@@ -796,13 +796,13 @@ function drawLR(){
   const peakStep=warmup;
   let msg;
   if(warmup===0) msg='⚠️ <b>warmup=0</b>:开局直接顶到 <b>6e-4</b> —— 真实大模型这样常常一步就发散。';
-  else msg='前 <b>'+warmup+'</b> 步线性爬到峰值 <b>6e-4</b>(约占总训练 '+(warmup/maxSteps*100).toFixed(1)+'%),之后余弦退火到 <b>6e-5</b>。真实默认 warmup=715 / max_steps=19073。';
+  else msg='前 <b>'+warmup+'</b> 步线性爬到峰值 <b>6e-4</b>(约占总训练 '+(warmup/maxSteps*100).toFixed(1)+'%),之后余弦退火到 <b>6e-5</b>。这里的 warmup=715 / max_steps=19073 是 <b>10B 完整跑</b>的设置;脚本 argparse 默认是 warmup=100 / max_steps=2000。';
   document.getElementById('lrNote').innerHTML=msg;
 }
 
 /* =====================================================================
    STEP 5:收敛趋势(两个真实端点 + 示意虚线,非实测逐 step)
-   端点:300M token -> step1999 / val 3.65;10B token -> step19072 / val 3.02
+   端点:300M token -> step1999 / val 3.65(短跑用更小 batch);10B token -> step19072 / val 3.02
    ===================================================================== */
 const BASE_LOSS=10.82;          // ln(50257) 随机基线(代码打印 ln(50257))
 function initStep5(){ drawLoss(); }

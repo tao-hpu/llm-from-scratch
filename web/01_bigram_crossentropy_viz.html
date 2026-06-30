@@ -107,6 +107,30 @@
   .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
   .hp-note{font-size:12px;color:var(--ink2);}
 
+  /* 维度色标:凡是出现维度数字都套它,颜色与 hp-bar 一一对应,数字永不裸奔 */
+  .d{display:inline-flex;align-items:baseline;gap:3px;font-family:var(--mono);font-weight:700;
+    padding:0 5px;border-radius:6px;line-height:1.5;white-space:nowrap;}
+  .d i{font-style:normal;font-size:9.5px;font-weight:600;opacity:.9;letter-spacing:.2px;}
+  .d-batch{color:#b8512f;background:#F7E6DE;}   /* batch_size 句子数 */
+  .d-block{color:#3f7d63;background:#E4EFE9;}   /* block_size 位置数 T */
+  .d-emb{color:#3a63c0;background:#E5EBF9;}     /* n_embd 维度 C */
+  .d-head{color:#a3548c;background:#F6E6F0;}    /* head_size 头维度 */
+  .d-vocab{color:#a87b1f;background:#FAEFD6;}   /* vocab_size 词表 */
+
+  /* 渐进展开:带问题的解释一律折叠,主线保持干净 */
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig+.dig{margin-top:8px;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
   /* ============ 面板卡片 ============ */
   .panel{
     background:var(--card);border:1px solid var(--border);
@@ -465,7 +489,7 @@
     <span class="hp-label">超参速查</span>
     <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">batch_size <b>32</b> <i>句子数</i></span>
     <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">block_size <b>8</b> <i>位置数 T</i></span>
-    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">vocab_size <b>65</b> <i>词表大小 C</i></span>
+    <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">vocab_size <b>65</b> <i>词表大小</i></span>
     <span class="hp-note">⚠ 本页为看清楚,用 B=2 / T=3 的小例子演示(真实 32 / 8)</span>
   </div>
 
@@ -487,7 +511,7 @@
 
     <div class="note">
       一个 <span class="term" data-term="批 · batch" data-key="batch" data-def="一次喂给模型并行处理的一组样本。batch_size=32 表示一次处理 32 条序列。它是「几条样本」,和向量维度无关。">batch</span> 的"题目数" = <b>batch_size × block_size</b> = 2 × 3 = <b>6 道独立的分类题</b>。
-      真实代码里是 32 × 8 = <b>256 道</b>。每道题都是:在 65 个字符里选出正确的下一个。
+      真实代码里是 <span class="d d-batch">32<i>batch</i></span> × <span class="d d-block">8<i>block</i></span> = <b>256 道</b>。每道题都是:在 <span class="d d-vocab">65<i>vocab</i></span> 个字符里选出正确的下一个。
     </div>
   </section>
 
@@ -656,7 +680,7 @@
           </div>
         </div>
         <div class="bcard-foot">
-          真实是 65×65 = 4225 个开关,这里画 6 个示意;每个旋钮下方箭头 = 梯度提示(该往哪扭)。
+          真实是 <span class="d d-vocab">65<i>vocab</i></span>×<span class="d d-vocab">65<i>vocab</i></span> = 4225 个开关,这里画 6 个示意;每个旋钮下方箭头 = 梯度提示(该往哪扭)。
         </div>
       </div>
 
@@ -706,8 +730,9 @@
     </div>
 
     <!-- (D) zero_grad 提示 -->
-    <div class="callout">
-      <div class="co-title">⚠ 为什么每轮要先 <code>optimizer.zero_grad()</code>?</div>
+    <details class="dig">
+      <summary>为什么每轮要先 <code>optimizer.zero_grad()</code>?</summary>
+      <div class="dig-body">
       PyTorch 的<span class="term" data-term="梯度 · gradient" data-key="gradient" data-def="loss 对每个参数的偏导数,指出参数往哪个方向调、loss 下降最快。backward() 负责算它。">梯度</span>是<b>累加</b>的:<code>loss.backward()</code> 会把新梯度<b>加到</b>旧梯度上,而不是覆盖。
       若不清零,这一轮就会带着上一轮的"陈旧方向",越走越偏。所以每圈开头必须先清零。
       <div class="order-flow">
@@ -718,7 +743,8 @@
         <span class="oc">step 扭开关</span>
         <span class="oa">· 顺序不能乱</span>
       </div>
-    </div>
+      </div>
+    </details>
   </section>
 
   <!-- ============ 上一步 / 下一步 ============ -->

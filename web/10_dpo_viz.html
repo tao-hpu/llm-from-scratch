@@ -212,7 +212,7 @@
     <span class="filename">10_dpo_viz.html</span>
     <h1>手搓 DPO:从"会答"到"答得合人意"</h1>
     <p class="subtitle">
-      手搓三关的收尾。06/07 用 SFT 把 base 教成<b>会答题</b>;这一关换<b>任务</b> ——
+      手搓三关的收尾。第 8、9 关用 SFT 把 base 教成<b>会答题</b>;这一关换<b>任务</b> ——
       <span class="term" data-term="偏好对齐 · preference alignment" data-key="preference-alignment" data-def="让模型在'都能答'的多个回答里,更偏向人类更喜欢的那个(更礼貌/简洁/得体)。">偏好对齐</span>。
       用 <span class="term" data-term="DPO · 直接偏好优化" data-key="dpo" data-def="Direct Preference Optimization。不训奖励模型、不走 RL,直接用偏好对(chosen/rejected)做分类式优化。">DPO</span>:
       <b>不训奖励模型、不走 RL</b>,拿一份冻结的<b>参考模型</b>当锚,直接把"chosen 比 rejected 好"这件事用一个 sigmoid loss 学进去。
@@ -335,7 +335,7 @@
     <div class="losswrap">
       <div class="readout">
         <div class="ro"><div class="rv" id="roLoss" style="color:var(--accent)">0.693</div><div class="rl">loss</div></div>
-        <div class="ro"><div class="rv" id="roMargin" style="color:var(--accent)">+0.0</div><div class="rl">奖励 margin</div></div>
+        <div class="ro"><div class="rv" id="roMargin" style="color:var(--accent)">+0.0</div><div class="rl">margin (Δc−Δr)</div></div>
         <div class="ro"><div class="rv" id="roAcc" style="color:var(--good)">0%</div><div class="rl">偏好准确率</div></div>
       </div>
       <div class="lossbars" id="lossBars"></div>
@@ -359,8 +359,8 @@
     </div>
 
     <div class="note">
-      <b>关键观察(实测):</b>margin 一路从 0 拉到 <b>+19</b>,但它<b>几乎全靠把 rejected 的奖励往下压</b>(降到约 −1.9),
-      chosen 的奖励基本贴着 0 没怎么动。这是 DPO 常见现象 —— "对齐"很多时候是<b>学会少说不好的</b>,而非多说好的。
+      <b>关键观察(实测):</b>margin(Δc−Δr,<b>logπ 单位</b>)一路从 0 拉到 <b>+19</b> —— 换算成<b>奖励 margin</b> 就是 β·19 ≈ <b>+1.9</b>(正好等于下方 chosen≈0 与 rejected≈−1.9 两条奖励之差)。
+      它<b>几乎全靠把 rejected 的奖励往下压</b>(降到约 −1.9),chosen 的奖励基本贴着 0 没怎么动。这是 DPO 常见现象 —— "对齐"很多时候是<b>学会少说不好的</b>,而非多说好的。
       所以 lr 要<b>极小</b>(<code>5e-7</code>)、配 ref 当锚,否则 policy 会把 rejected 压垮、连带把语言能力带崩。
     </div>
     <div class="codepath">↳ 代码:<b>08_dpo.py</b> 的 <b>main</b> 训练循环 · 真实曲线 loss 0.693→0.171 / margin 0→+19 / 准确率 0%→100%</div>
@@ -383,7 +383,7 @@
     <ul class="checklist">
       <li><span class="ck">✓</span><div>DPO loss 从 <b>ln2≈0.693 稳步下降到 0.171</b>(不再"瞎猜")。</div></li>
       <li><span class="ck">✓</span><div><b>偏好准确率 0% → 100%</b>:隐式奖励把每一对的 chosen 都排到了 rejected 前面。</div></li>
-      <li><span class="ck">✓</span><div><b>奖励 margin 0 → +19</b>,主要由"压低 rejected"驱动;部分指令采样可见往 chosen 风格靠(如礼貌改写)。</div></li>
+      <li><span class="ck">✓</span><div><b>margin(Δc−Δr)0 → +19</b>(换算成奖励 margin = β·19 ≈ +1.9),主要由"压低 rejected"驱动;部分指令采样可见往 chosen 风格靠(如礼貌改写)。</div></li>
     </ul>
 
     <div class="note">
@@ -412,11 +412,11 @@
       </div>
     </details>
     <details class="dig">
-      <summary>那 06(全量 SFT)、07(LoRA)、08(DPO)三者怎么拼?</summary>
+      <summary>那 第 8 章(全量 SFT)、第 9 章(LoRA)、第 10 章(DPO)三者怎么拼?</summary>
       <div class="dig-body">
         <b>任务 × 手段是两个正交的轴</b>(<a href="06_posttraining_viz.html#step-3" style="color:var(--accent)">白皮书的 2×2 表</a>):
         任务有 SFT(会答)/ 偏好对齐(答得好);手段有 全量 / LoRA。
-        06=全量×SFT,07=LoRA×SFT,08=全量×DPO。本关加 <code>--lora</code> 就补上了 LoRA×DPO 那一格 —— 四格都能跑通,证明两轴可自由组合。
+        第 8 章=全量×SFT,第 9 章=LoRA×SFT,第 10 章=全量×DPO。本关加 <code>--lora</code> 就补上了 LoRA×DPO 那一格 —— 四格都能跑通,证明两轴可自由组合。
         典型生产流水线就是:<b>预训练 → SFT → 偏好对齐</b>,每步都可选全量或 LoRA。
       </div>
     </details>

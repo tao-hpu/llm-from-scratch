@@ -122,7 +122,9 @@ cfg = GPTConfig(**ckpt["config"])
 model = GPT(cfg).to(device)
 model.load_state_dict(ckpt["model"])
 model.eval()
-print(f"checkpoint 来自 step {ckpt.get('step','?')}, val_loss={ckpt.get('val_loss','?'):.4f}")
+_vl = ckpt.get("val_loss")
+_vl = f"{_vl:.4f}" if isinstance(_vl, (int, float)) else "?"   # 缺键时别套 :.4f，否则 ValueError
+print(f"checkpoint 来自 step {ckpt.get('step','?')}, val_loss={_vl}")
 
 enc = tiktoken.get_encoding("gpt2")
 
@@ -138,6 +140,8 @@ def sample_next(logits, temperature, top_k):
     logits = logits[:, -1, :]
     # 词表里 50257~50303 是为对齐 GPU 补的"空行"，从没训过，屏蔽掉防止解码报错
     logits[:, 50257:] = float("-inf")
+    if temperature == 0.0:                       # temperature=0 → 贪心解码(取最高分)，避免除零
+        return logits.argmax(dim=-1, keepdim=True)
     logits = logits / temperature
     if top_k:
         v, _ = torch.topk(logits, top_k)
@@ -171,6 +175,13 @@ class TokenStreamer:
 @torch.no_grad()
 def generate_cached(idx, max_new_tokens, temperature, top_k, streamer=None):
     """KV Cache：prompt 只预填充一次，之后每步只喂「上一个新 token」+ 历史 KV"""
+    # wpe 只有 block_size 个位置；本 demo 不做滑窗截断，故把总长度限制在 block_size 内，
+    # 否则位置嵌入会越界。prompt 超长就只保留最近 block_size 个 token(与 nocache 的滑窗一致)。
+    if idx.size(1) > cfg.block_size:
+        idx = idx[:, -cfg.block_size:]
+    max_new_tokens = min(max_new_tokens, cfg.block_size - idx.size(1))
+    if max_new_tokens <= 0:
+        return idx
     logits, past = model(idx)                     # 预填充整个 prompt
     out = idx
     for step in range(max_new_tokens):

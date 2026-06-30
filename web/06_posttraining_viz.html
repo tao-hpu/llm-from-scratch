@@ -412,7 +412,7 @@
       <div class="dig-body">
         base 模型的老毛病是<b>不会停</b>,会一直往下续写。SFT 在每条回答末尾放一个
         <code>&lt;EOS&gt;</code>(结束标记)并让它算进 loss,就是在教模型"答完就输出 EOS、然后停"。
-        没有这一步,模型答完正事还会continue瞎扯。
+        没有这一步,模型答完正事还会继续瞎扯。
       </div>
     </details>
 
@@ -435,7 +435,7 @@
     <div id="routeBody"></div>
 
     <div class="note">
-      关键澄清:<b>DPO 不是 PPO 的变体或分形</b>,它俩是实现"偏好对齐"的<b>两条平行路线</b> ——
+      关键澄清:<b>DPO 不是 PPO 的变体或衍生版</b>,它俩是实现"偏好对齐"的<b>两条平行路线</b> ——
       <span class="term" data-term="RLHF · 人类反馈强化学习" data-key="rlhf" data-def="用强化学习做偏好对齐:先训一个奖励模型给回答打分,再用 PPO 让模型最大化这个分数。要采样 rollout、要价值网络,工程重。">RLHF</span>
       走真<span class="term" data-term="强化学习 · RL" data-key="rlhf" data-def="智能体通过『试错 + 奖励信号』来学策略。RLHF 用的 PPO 就是一种 RL 算法。">强化学习</span>(PPO),
       <span class="term" data-term="DPO · 直接偏好优化" data-key="dpo" data-def="Direct Preference Optimization。把 RLHF 的目标推成闭式解,直接在偏好对上做一个类监督损失,不需要奖励模型、不需要采样、不走 RL 循环。">DPO</span>

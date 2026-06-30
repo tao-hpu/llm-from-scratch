@@ -85,4 +85,6 @@ for local in PARQUETS:
             prog = shard_idx + count / args.shard_size
             print(f"  …{docs:,} 篇文档，进度 {prog:.2f}/{args.shards} 片", flush=True)
 
+# 说明：只产出"填满 shard_size"的完整片;循环结束时 buf 里剩的不足一片的尾部 token 会被丢弃
+# （val 片 idx 0 总是先填满,不受影响;丢的是训练尾巴）。nanoGPT 原版会把残片也写出,这里从简。
 print(f"\n完成：{shard_idx} 片（目标 {args.shards}），共 {docs:,} 篇文档。", flush=True)

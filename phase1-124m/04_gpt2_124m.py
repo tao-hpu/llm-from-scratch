@@ -22,6 +22,10 @@
 
 数据来自 prepare_fineweb.py 产出的 .npy shards（真 BPE 分词的 FineWeb-Edu）。
 
+⚠️ 仅支持 CUDA（4090 级 N 卡）：本脚本写死 device="cuda"，并用了 fused AdamW /
+   torch.autocast("cuda") / torch.cuda.synchronize()，在 CPU / Mac(MPS) 上会直接报错。
+   想在 Mac 上感受同款架构，去跑 03_transformer.py（玩具版，三平台通用）。
+
 用法：python 04_gpt2_124m.py --max_steps 2000
 """
 import os

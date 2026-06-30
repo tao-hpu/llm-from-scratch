@@ -329,7 +329,7 @@
     <span class="filename">02_attention_viz.html</span>
     <h1>自注意力:让每个位置学会"往回看"</h1>
     <p class="subtitle">
-      配套 <code>02_attention.py</code>。上一章 bigram 只看前 1 个字符,撞在 <code>loss ≈ 2.5</code> 的墙上。
+      配套 <code>02_attention.py</code>。上一章 bigram 只看前 1 个字符,撞在 <code>val loss ≈ 2.49</code> 的墙上。
       这一章一步步搭出自注意力 —— 六步看懂直觉,再回去读代码就豁然开朗。
     </p>
   </header>
@@ -922,9 +922,9 @@
       </div>
     </details>
 
-    <div class="sub-h"><span class="badge">D</span>跑起来:loss 怎么跌破 bigram 那道 2.47 的墙</div>
+    <div class="sub-h"><span class="badge">D</span>跑起来:loss 怎么跌破 bigram 那道 2.49 的墙</div>
     <p class="lead" style="margin-bottom:6px">
-      <code>02_attention.py</code> 训练 5000 步。点「<b>▶ 跑训练</b>」,看注意力的 loss 一路下探,<b>穿过</b> bigram 卡死的 <b>2.47</b> 虚线 —— 这就是这一章的兑现。
+      <code>02_attention.py</code> 训练 5000 步。点「<b>▶ 跑训练</b>」,看注意力的 loss 一路下探,<b>穿过</b> bigram 卡死的 <b>2.49</b> 虚线 —— 这就是这一章的兑现。
     </p>
     <div class="btn-row" id="lossBtns">
       <button class="btn primary" onclick="trainLoss()">▶ 跑训练</button>
@@ -933,15 +933,15 @@
     <div class="loss-wrap"><svg id="lossSvg" viewBox="0 0 780 240"></svg></div>
     <div class="loss-leg">
       <span><i style="border-top-style:solid;border-color:var(--accent)"></i>attention(本章)val loss</span>
-      <span><i style="border-top-style:dashed;border-color:#9a948a"></i>bigram 的墙 ≈ 2.47</span>
+      <span><i style="border-top-style:dashed;border-color:#9a948a"></i>bigram 的墙 ≈ 2.49</span>
       <span style="margin-left:auto;font-family:var(--mono)">step <b id="lossStepEl" style="color:var(--ink)">0</b> · loss <b id="lossValEl" style="color:var(--accent)">4.17</b></span>
     </div>
     <div class="note" id="lossNote"></div>
     <p class="lead" style="margin:6px 0 14px;font-size:12px">(示意曲线:数量级与趋势对得上 <code>02_attention.py</code> 的实际打印,非逐位精确复现。)</p>
 
     <div class="note" style="border-style:solid;background:#fff">
-      🎯 <b>结果:打破 2.5 的墙。</b>装上注意力后,每个位置都能参考前文,
-      <code>val loss</code> 终于跌破 bigram 那道 <code>2.47</code> 的天花板。这就是这一章的兑现。
+      🎯 <b>结果:打破 2.49 的墙。</b>装上注意力后,每个位置都能参考前文,
+      <code>val loss</code> 终于跌破 bigram 那道 <code>2.49</code> 的天花板(2.49 → 2.41,小但真实)。这就是这一章的兑现。
     </div>
     <p class="next-hint">点右下角「完成 🎉」收下这一章。</p>
   </section>
@@ -1328,13 +1328,13 @@ function setTruth(trained){
 }
 
 /* =====================================================================
-   STEP 6 (D):loss 曲线 —— 像第 1 章那样平滑生长 + 移动圆点,穿过 2.47 墙
+   STEP 6 (D):loss 曲线 —— 像第 1 章那样平滑生长 + 移动圆点,穿过 2.49 墙
    ===================================================================== */
-const L_START=Math.log(65), L_WALL=2.47, L_FLOOR=2.31, L_TAU=380, L_SMAX=5000;
+const L_START=Math.log(65), L_WALL=2.49, L_FLOOR=2.41, L_TAU=380, L_SMAX=5000;
 const LY_MIN=2.2, LY_MAX=4.3;
 const lcX=s=>44+s/L_SMAX*716;
 const lcY=v=>16+(LY_MAX-v)/(LY_MAX-LY_MIN)*198;
-// 示意曲线:指数下降 → 收敛到 ~2.31 的地板,叠加极小抖动更像真实曲线(非逐位精确复现)
+// 示意曲线:指数下降 → 收敛到 ~2.41 的地板,叠加极小抖动更像真实曲线(非逐位精确复现)
 function lossAt(s){ const base=L_FLOOR+(L_START-L_FLOOR)*Math.exp(-s/L_TAU); const wob=s>150?0.012*Math.sin(s/120):0; return Math.max(L_FLOOR,base+wob); }
 let lossRAF=null;
 function drawLoss(upto){
@@ -1342,7 +1342,7 @@ function drawLoss(upto){
   let s='';
   const wy=lcY(L_WALL);
   s+=`<line x1="44" y1="${wy.toFixed(1)}" x2="760" y2="${wy.toFixed(1)}" stroke="#9a948a" stroke-width="1.5" stroke-dasharray="6 4"/>`;
-  s+=`<text x="758" y="${(wy-6).toFixed(1)}" text-anchor="end" font-size="12" fill="#9a948a" font-family="monospace">bigram 墙 2.47</text>`;
+  s+=`<text x="758" y="${(wy-6).toFixed(1)}" text-anchor="end" font-size="12" fill="#9a948a" font-family="monospace">bigram 墙 2.49</text>`;
   [2.5,3.0,3.5,4.0].forEach(v=>{ const y=lcY(v); s+=`<text x="38" y="${(y+3).toFixed(1)}" text-anchor="end" font-size="11" fill="#b5afa3" font-family="monospace">${v.toFixed(1)}</text>`; });
   [0,1000,2000,3000,4000,5000].forEach(it=>{ s+=`<text x="${lcX(it).toFixed(1)}" y="232" text-anchor="middle" font-size="11" fill="#b5afa3" font-family="monospace">${it}</text>`; });
   let d=''; const N=140;
@@ -1356,8 +1356,8 @@ function drawLoss(upto){
   if(valEl) valEl.textContent=lv.toFixed(2);
   const note=document.getElementById('lossNote');
   if(upto<5) note.innerHTML='<b>起点</b>:还没训练,loss ≈ <code>4.17</code> = <code>ln(65)</code>,等于"<b>65 个字符里瞎猜</b>"。点「▶ 跑训练」看它往下掉。';
-  else if(lv>=L_WALL) note.innerHTML=`<b>训练中</b>:loss ≈ <code>${lv.toFixed(2)}</code>,正在逼近 bigram 那道 2.47 的墙……`;
-  else note.innerHTML=`loss ≈ <code>${lv.toFixed(2)}</code> —— <b style="color:var(--accent)">已跌破 2.47!</b>这是只看 1 个字符的 bigram 永远到不了的地方。`;
+  else if(lv>=L_WALL) note.innerHTML=`<b>训练中</b>:loss ≈ <code>${lv.toFixed(2)}</code>,正在逼近 bigram 那道 2.49 的墙……`;
+  else note.innerHTML=`loss ≈ <code>${lv.toFixed(2)}</code> —— <b style="color:var(--accent)">已跌破 2.49!</b>这是只看 1 个字符的 bigram 永远到不了的地方。`;
 }
 function resetLoss(){ if(lossRAF){ cancelAnimationFrame(lossRAF); lossRAF=null; } drawLoss(0); }
 function trainLoss(){

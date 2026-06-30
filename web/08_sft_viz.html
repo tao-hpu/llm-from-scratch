@@ -321,7 +321,7 @@
     <div class="btn-row">
       <button class="btn primary" id="epochBtn">▶ 跑一个 epoch</button>
       <button class="btn" id="epochReset">重置</button>
-      <span class="hp-note">实测起点 <b>2.16</b> → 收敛到 <b>~0.28</b>(ckpt10b 上,几十秒)</span>
+      <span class="hp-note">实测起点 <b>2.16</b> → 收敛到 <b>~0.15</b>(ckpt10b 上,几十秒)</span>
     </div>
     <div class="losswrap">
       <div>回答段 loss:<span class="lossval" id="lossNow">—</span> <span class="hp-note" id="epLabel"></span></div>
@@ -350,7 +350,7 @@
 
     <div class="sub-h"><span class="badge">达标</span>玩具级 · 看行为不刷榜</div>
     <ul class="checklist">
-      <li><span class="ck">✓</span><div><b>回答段 loss 明显下降</b>(实测 2.16 → 0.28)。</div></li>
+      <li><span class="ck">✓</span><div><b>回答段 loss 明显下降</b>(实测 2.16 → 0.15)。</div></li>
       <li><span class="ck">✓</span><div>套上模板给指令,模型产出<b>"回答形状"并在 EOS 处主动停下</b>(不再无限续写)。</div></li>
       <li><span class="ck">✓</span><div>在训过的指令上大致扣题;甚至对<b>没训过</b>的 "capital of Germany" 也套用了格式(格式会泛化)。</div></li>
     </ul>
@@ -377,17 +377,17 @@
       </div>
     </details>
     <details class="dig">
-      <summary>下一步 07/08 会做什么?</summary>
+      <summary>接下来两关会做什么?</summary>
       <div class="dig-body">
-        <b>07 手搓 LoRA</b>:这一关是<b>全量微调</b>(更新全部参数);07 改成只训旁挂的低秩小矩阵,~1% 参数拿到同款效果。
-        <b>08 DPO</b>:从"会答"进一步到"答得合人意"(偏好对齐)。机制见
+        <b>第 9 章 · 手搓 LoRA</b>:这一关是<b>全量微调</b>(更新全部参数);下一关改成只训旁挂的低秩小矩阵,~1% 参数拿到同款效果。
+        <b>第 10 章 · DPO</b>:从"会答"进一步到"答得合人意"(偏好对齐)。机制见
         <a href="06_posttraining_viz.html#step-3" style="color:var(--accent)">白皮书的任务×手段表</a>。
       </div>
     </details>
 
     <div class="congrats" id="congrats">
       <div class="ct">🎉 SFT · 监督微调 · 通关</div>
-      <div class="cs">你已经把 base 亲手调成了"会答题、会停"的模型,并看懂了模板 / loss mask / EOS。下一关:<code>07 手搓 LoRA</code>。</div>
+      <div class="cs">你已经把 base 亲手调成了"会答题、会停"的模型,并看懂了模板 / loss mask / EOS。下一关:<b>第 9 章 · 手搓 LoRA</b>。</div>
     </div>
   </section>
 

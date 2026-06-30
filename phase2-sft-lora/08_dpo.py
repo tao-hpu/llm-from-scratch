@@ -290,6 +290,9 @@ def dpo_pass(policy, ref, train=True):
         logit = args.beta * (d_chosen - d_rejected)
         loss = -F.logsigmoid(logit)
         if train:
+            # 注意:这里对每个偏好对逐个 backward 累加(求和,非平均)。
+            # 所以真正用于 opt.step() 的梯度尺度 ≈ 平均梯度的 n 倍,而下面返回/打印的 total_loss/n 是平均值,
+            # 两者尺度不同。靠 clip_grad_norm_(…,1.0)+ 极小 lr 兜住,玩具规模下不影响收敛。
             loss.backward()
         total_loss += loss.item()
         margin_sum += (d_chosen - d_rejected).item()

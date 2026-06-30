@@ -228,7 +228,7 @@
     <p class="subtitle">
       配套 <code>03_transformer.py</code>。第 2 章是<b>单头</b>注意力。这一章加四样东西凑成完整 GPT:
       <b>多头</b>(同时看多种关系)、<b>FeedForward</b>(逐位置思考)、<b>残差 + LayerNorm</b>(让深网络训得动),
-      再把它们摞成多层 —— 六步走完,val loss 从 2.41 掉到 ~1.9。
+      再把它们摞成多层 —— 六步走完,val loss 从 2.41 掉到 ~1.57。
     </p>
   </header>
 
@@ -250,6 +250,7 @@
     <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">head_size <b>32</b> <i>每头维度</i></span>
     <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">block_size <b>64</b> <i>位置数 T</i></span>
     <span class="hp-chip" style="color:#9a7b2f;background:#F4ECD6">n_layer <b>4</b> <i>层数</i></span>
+    <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">vocab_size <b>65</b> <i>字符表</i></span>
     <span class="hp-note">⚠ <code style="font-family:var(--mono)">head_size = n_embd / n_head = 128/4 = 32</code></span>
   </div>
 
@@ -292,8 +293,7 @@ self.heads = nn.ModuleList([Head(head_size) <span style="color:var(--ink2)"># he
     <h2>Step 2 · 每个头各看各的:分工是训练"逼"出来的</h2>
     <p class="lead">
       4 个头吃<b>同一个</b>输入,但各有独立的 <code>Wq/Wk/Wv</code> → 各自算出一张<b>不同</b>的注意力权重表 <code>wei</code>。
-      <b>点下面的头</b>,看它们关注的位置多么不一样。每个头是 <span class="d d-block">8<i>T</i></span>×<span class="d d-block">8<i>T</i></span>
-      的下三角(只能看过去),格子越深 = 关注越多。
+      <b>点下面的头</b>,看它们关注的位置多么不一样。每个头画成 <b>8×8</b> 的下三角(<b>只是上屏占位:真实 <span class="d d-block">block_size=64<i>T</i></span></b>,只能看过去),格子越深 = 关注越多。
     </p>
 
     <div class="head-tabs" id="headTabs"></div>
@@ -507,7 +507,7 @@ nn.Sequential(
 
     <div class="sub-h"><span class="badge">跑起来</span>loss 跌破第 2 章的 2.41</div>
     <p class="lead" style="margin-bottom:6px">
-      <code>03_transformer.py</code> 每 500 步打印一次 loss。下面的曲线<b>自动播放</b>训练过程,看它<b>穿过</b>第 2 章单头注意力卡住的 <b>2.41</b> 虚线,一路下探到 ~1.9。
+      <code>03_transformer.py</code> 每 500 步打印一次 loss。下面的曲线<b>自动播放</b>训练过程,看它<b>穿过</b>第 2 章单头注意力卡住的 <b>2.41</b> 虚线,一路下探到 ~1.57。
     </p>
     <div class="btn-row">
       <button class="btn" id="lossReplay" onclick="lossPlay()">▶ 重播动画</button>
@@ -522,7 +522,7 @@ nn.Sequential(
 
     <div class="note" style="border-style:solid;background:#fff">
       🎯 <b>结果:破墙。</b>多头(看多种关系)+ FFN(逐位置思考)+ 残差/LayerNorm(堆得动 4 层),
-      <code>val loss</code> 跌破第 2 章的 <code>2.41</code>,逼近 <code>~1.9</code> —— 采样开始有"词"和对话结构,不再是纯字母汤。
+      <code>val loss</code> 跌破第 2 章的 <code>2.41</code>,一路下探到 <code>~1.57</code> —— 采样开始有"词"和对话结构,不再是纯字母汤。
       这就是 nanoGPT 的内核。
     </div>
     <p class="next-hint">点右下角「完成 🎉」收下整章 —— 你已经从零搭出一个 GPT。</p>
@@ -727,11 +727,11 @@ function setRes(on){
 }
 
 /* =====================================================================
-   STEP 6:loss 曲线 —— 逐个检查点,穿过第 2 章 2.41,下探到 ~1.9
+   STEP 6:loss 曲线 —— 逐个检查点,穿过第 2 章 2.41,下探到 ~1.57
    ===================================================================== */
 const LOSS_ITERS=[0,1000,2000,3000,4999];
-const LOSS_GPT =[4.17,2.55,2.12,1.99,1.90];   // 示意:数量级/趋势对得上,非精确复现
-const CH2_FLOOR=2.41, LY_MIN=1.8, LY_MAX=4.3;
+const LOSS_GPT =[4.17,1.79,1.67,1.63,1.57];   // 真实 val loss(运行日志.md,seed 1337);step0 取 ln(65)=4.17 作锚点
+const CH2_FLOOR=2.41, LY_MIN=1.4, LY_MAX=4.3;
 const NL=LOSS_ITERS.length;
 // 坐标按 viewBox 780×240 排布(接近容器宽高比,等比缩放、绝不横向拉伸)
 const lx=i=>50+(i/(NL-1))*690;
@@ -749,7 +749,7 @@ function lossDraw(prog){            // prog ∈ [0, NL-1] 连续,支持半段插
   // 参考线 + 坐标轴标签(固定,不随动画变)
   s+=`<line x1="50" y1="${wy}" x2="740" y2="${wy}" stroke="#9a948a" stroke-width="1.5" stroke-dasharray="6 4"/>`;
   s+=`<text x="738" y="${wy-6}" text-anchor="end" font-size="11" fill="#9a948a" font-family="monospace">第2章单头 ≈ 2.41</text>`;
-  [2.0,2.5,3.0,3.5,4.0].forEach(v=>{ const y=ly(v); s+=`<text x="44" y="${y+3}" text-anchor="end" font-size="10" fill="#b5afa3" font-family="monospace">${v.toFixed(1)}</text>`; });
+  [1.5,2.0,2.5,3.0,3.5,4.0].forEach(v=>{ const y=ly(v); s+=`<text x="44" y="${y+3}" text-anchor="end" font-size="10" fill="#b5afa3" font-family="monospace">${v.toFixed(1)}</text>`; });
   LOSS_ITERS.forEach((it,i)=>{ s+=`<text x="${lx(i)}" y="233" text-anchor="middle" font-size="10" fill="#b5afa3" font-family="monospace">${it}</text>`; });
   // 折线:画到 prog 处(含最后一截半段)
   const full=Math.min(NL-1, Math.floor(prog+1e-9));

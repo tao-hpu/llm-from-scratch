@@ -209,7 +209,7 @@
     <span class="filename">09_lora_viz.html</span>
     <h1>手搓 LoRA:冻结底座,只训 1% 参数</h1>
     <p class="subtitle">
-      上一关 <a href="08_sft_viz.html" style="color:var(--accent);text-decoration:none">06 SFT</a> 是<b>全量微调</b> —— 124M 参数全更新。
+      上一关 <a href="08_sft_viz.html" style="color:var(--accent);text-decoration:none">第 8 章 · SFT</a> 是<b>全量微调</b> —— 124M 参数全更新。
       这一关换<b>手段</b>不换<b>任务</b>:还是同一件 SFT,但用
       <span class="term" data-term="LoRA · 低秩适配" data-key="lora" data-def="冻结原权重,在每层旁边并联一条低秩小矩阵 B·A,只训练它。约 1% 参数拿到接近全量微调的效果。">LoRA</span>
       —— <b>冻住底座</b>,只在每层旁边挂一条<b>低秩旁路</b> <code>B·A</code>,只训那 <b>~1%</b> 的新参数,存盘只是个几 MB 的
@@ -238,19 +238,19 @@
   <section class="panel active" id="panel0">
     <h2>① 同一件事,何必把整座大楼都翻新?</h2>
     <p class="lead">
-      06 的全量 SFT 把 <b>124M 个参数全部更新</b>了一遍,训练要为每个参数都存梯度/优化器状态,存盘是一份完整的
+      第 8 章的全量 SFT 把 <b>124M 个参数全部更新</b>了一遍,训练要为每个参数都存梯度/优化器状态,存盘是一份完整的
       <b>~498MB</b> 新模型。可我们要教的只是"答题的姿态"这点小改动 —— 真有必要动到每一根钢筋吗?
       <b>LoRA 的想法:底座一个数都不动,只在旁边搭一条很细的"改装管道",改动量压到 1% 级别。</b>
     </p>
 
     <div class="vs">
       <div class="card2 full">
-        <div class="t">全量 SFT(上一关 06)</div>
+        <div class="t">全量 SFT(上一关 · 第 8 章)</div>
         <div class="big">124M</div>
         <div class="sub">参数全部可训练 · 存一份 <b>~498MB</b> 完整模型</div>
       </div>
       <div class="card2 lora">
-        <div class="t">LoRA(这一关 07)</div>
+        <div class="t">LoRA(这一关 · 第 9 章)</div>
         <div class="big">1.18M <span style="font-size:14px;color:var(--ink2)">≈0.94%</span></div>
         <div class="sub">底座冻结 · 只存 <b>~4.7MB</b> adapter</div>
       </div>
@@ -343,12 +343,12 @@
       </div>
     </details>
 
-    <div class="next-hint">↳ 下一步:除了"优化器只拿到 A、B",训练循环和 06 一字不差。</div>
+    <div class="next-hint">↳ 下一步:除了"优化器只拿到 A、B",训练循环和 <code>06_sft.py</code> 一字不差。</div>
   </section>
 
   <!-- ============ STEP 4 ============ -->
   <section class="panel" id="panel3">
-    <h2>④ 训练循环:和 06 逐字相同,只是优化器只拿到 A、B</h2>
+    <h2>④ 训练循环:和 <code>06_sft.py</code> 逐字相同,只是优化器只拿到 A、B</h2>
     <p class="lead">
       <code>zero_grad → forward(算 loss) → backward → step</code> —— 一步没变。
       <a href="08_sft_viz.html#step-3" style="color:var(--accent);text-decoration:none">loss mask</a>、对话模板、EOS 全照搬 06。
@@ -377,7 +377,7 @@
     </div>
 
     <div class="note">
-      注意两个旋钮和 06 反着调:LoRA 可训练参数少,通常用<b>更大的学习率</b>(<code>1e-3</code> vs 全量 <code>2e-5</code>)、
+      注意两个旋钮和第 8 章 SFT 反着调:LoRA 可训练参数少,通常用<b>更大的学习率</b>(<code>1e-3</code> vs 全量 <code>2e-5</code>)、
       <b>多过几遍数据</b>。底座本来就冻着,不怕学崩,可以大胆点。
     </div>
     <div class="codepath">↳ 代码:<b>07_lora.py</b> 的 <b>main</b> 训练循环 · <code>lora_params=[p for p in model.parameters() if p.requires_grad]</code> 只把它们交给优化器</div>
@@ -390,7 +390,7 @@
     <h2>⑤ 训练前 vs 训练后:1% 参数,同款效果</h2>
     <p class="lead">
       下面是 <code>07_lora.py</code> 在 124M 上的<b>真实采样</b>。"训练前"是装了 LoRA 但 <code>B=0</code>(等价 base),
-      "训练后"只更新了 A、B。重点和 06 一样:<b>有没有套上格式、有没有在 EOS 处停</b>。
+      "训练后"只更新了 A、B。重点和第 8 章一样:<b>有没有套上格式、有没有在 EOS 处停</b>。
     </p>
 
     <div class="ba-tabs" id="baTabs"></div>
@@ -427,10 +427,10 @@
       </div>
     </details>
     <details class="dig">
-      <summary>下一步 08 会做什么?</summary>
+      <summary>下一关(第 10 章)会做什么?</summary>
       <div class="dig-body">
-        06、07 解决的都是"<b>会答题</b>"(SFT 任务,分别用全量 / LoRA 两种手段)。
-        <b>08 DPO</b> 进一步到"<b>答得合人意</b>"——
+        第 8、9 关解决的都是"<b>会答题</b>"(SFT 任务,分别用全量 / LoRA 两种手段)。
+        <b>第 10 章 · DPO</b> 进一步到"<b>答得合人意</b>"——
         <span class="term" data-term="偏好对齐 · preference alignment" data-key="preference-alignment" data-def="让模型在'都能答'的多个回答里,更偏向人类更喜欢的那个。DPO 直接用偏好对(chosen/rejected)优化,不走 RL。">偏好对齐</span>。
         机制见 <a href="06_posttraining_viz.html#step-5" style="color:var(--accent)">白皮书:RLHF vs DPO</a>。
       </div>
@@ -438,7 +438,7 @@
 
     <div class="congrats" id="congrats">
       <div class="ct">🎉 手搓 LoRA · 通关</div>
-      <div class="cs">你已经亲手冻结底座、挂上低秩旁路,用 1% 参数做完了 SFT,并看懂了 B=0 的小心机。下一关:<code>08 DPO</code>。</div>
+      <div class="cs">你已经亲手冻结底座、挂上低秩旁路,用 1% 参数做完了 SFT,并看懂了 B=0 的小心机。下一关:<b>第 10 章 · DPO</b>。</div>
     </div>
   </section>
 

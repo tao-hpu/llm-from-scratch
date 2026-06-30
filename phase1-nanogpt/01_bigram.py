@@ -89,6 +89,8 @@ class BigramLanguageModel(nn.Module):
     @torch.no_grad()
     def generate(self, idx, max_new_tokens):
         # idx: (B, T) 已有的上下文；每次预测下一个字符，拼上去，循环。
+        # 注意：bigram 只看最后 1 个字符，所以这里不必像 02/03 那样把 idx 裁到 block_size——
+        #       idx 一直变长也没关系，反正只取最后一个位置的预测。
         for _ in range(max_new_tokens):
             logits, _ = self(idx)            # (B, T, C)
             logits = logits[:, -1, :]        # 只要最后一个位置的预测 (B, C)

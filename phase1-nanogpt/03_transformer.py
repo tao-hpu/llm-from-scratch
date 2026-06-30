@@ -13,7 +13,7 @@
 数据管线 / 训练循环 / generate 还是没怎么变。变的是模型从"一个 class"长成了"堆叠的 Block"。
 
 跑法：python3 03_transformer.py
-预期：val loss 从 2.41 掉到 ~1.9，采样开始有"词"和对话结构（不再是纯字母汤）。
+预期：val loss 从 2.41 掉到 ~1.57，采样开始有"词"和对话结构（不再是纯字母汤）。
 """
 
 import torch
