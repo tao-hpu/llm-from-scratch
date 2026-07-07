@@ -28,6 +28,7 @@
 - [`web/08_sft_viz.html`](web/08_sft_viz.html) — 第 8 章 · SFT(对应 `06_sft.py`):把 124M base 调成会答题——对话模板 + EOS + loss mask + 训练前后真实采样对比
 - [`web/09_lora_viz.html`](web/09_lora_viz.html) — 第 9 章 · 手搓 LoRA(对应 `07_lora.py`):冻结底座只训低秩旁路 B·A(~0.94% 参数 / 4.7MB adapter)——拨 r 算账 + B=0 平滑出发 + 真实 loss 曲线与采样
 - [`web/10_dpo_viz.html`](web/10_dpo_viz.html) — 第 10 章 · 手搓 DPO(对应 `08_dpo.py`):偏好对齐,不训奖励模型/不走 RL——policy+冻结 ref + 隐式奖励 + DPO loss 滑块 + 真实曲线(loss↓/margin↑/准确率 0→100%)
+- [`web/11_moe_viz.html`](web/11_moe_viz.html) — 第 11 章 · 手搓 MoE(对应 `09_moe.py`):把 FFN 拆成 4 专家 + 路由器 top-2 派单,分工涌现热力图、负载均衡对照(top-1 关 aux 实测偏载滚雪球)、"参数翻倍算力不变"账本
 - [`web/glossary.html`](web/glossary.html) — 名词表(术语字典,正文术语 hover 即弹气泡)
 - [`web/notes.html`](web/notes.html) — 学习札记 / 彩蛋:正课之外的小故事(如 Transformer 前世今生:8 作者、翻译起源、家谱)
 
@@ -63,6 +64,9 @@ phase2-sft-lora/     后训练：SFT + LoRA + DPO（逐步上线中）
   06_sft.py            全量 SFT：复用 124M base，对话模板 + EOS + loss mask，训练前后采样对比（已上线）
   07_lora.py           手搓 LoRA：冻结底座，只训低秩旁路 B·A（~0.94% 参数 / 4.7MB adapter，已上线）
   08_dpo.py            DPO 偏好对齐：policy + 冻结 ref + 隐式奖励，不训奖励模型/不走 RL（--lora 切换手段，已上线）
+
+phase3-moe/          现代架构：MoE 专家混合
+  09_moe.py            手搓 MoE：FFN 换成 4 专家 + top-2 路由 + 负载均衡 aux loss（--top-k 1 --aux 0 观察偏载雪球）
 ```
 
 ---
@@ -76,13 +80,16 @@ phase2-sft-lora/     后训练：SFT + LoRA + DPO（逐步上线中）
 - [x] 拼出完整 Transformer,在莎士比亚上训出能采样的模型
 - [x] 真实数据 + 真实 BPE,复现 GPT-2 124M,理解 AdamW 每个超参
 
-### Phase 2 — 用生产工具做后训练 🚧 规划中
+### Phase 2 — 手搓后训练三关 ✅
 
-1. **手写一次 LoRA**(在一个 Linear 上加 A、B 两个低秩矩阵,~30 行)——彻底懂 LoRA 是什么
-2. **PEFT + TRL**:`SFTTrainer` / `DPOTrainer`,代码级控制
-3. **LLaMA-Factory / Unsloth**:配置驱动、省显存,scale 和复现方便
+- [x] **全量 SFT**(`06_sft.py`):对话模板 + EOS + loss mask,把 base 教成会答题
+- [x] **手搓 LoRA**(`07_lora.py`):冻结底座,只训低秩旁路 B·A(~0.94% 参数)
+- [x] **手搓 DPO**(`08_dpo.py`):偏好对齐,不训奖励模型、不走 RL
 
-> Phase 2 代码尚未提交,敬请期待。
+### Phase 3 — 现代架构 🚧 进行中
+
+- [x] **手搓 MoE**(`09_moe.py`):FFN 拆成 4 专家 + top-2 路由,负载均衡与专家塌缩对照
+- [ ] 生产工具链(PEFT + TRL / LLaMA-Factory)等后续方向,视学习节奏排期
 
 ---
 

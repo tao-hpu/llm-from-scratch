@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>手搓 MoE · 参数翻倍,算力不变</title>
+<style>
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --good:#3f7d63; --good-soft:#D7EBE0; --bad:#9a3a22; --bad-soft:#F3D9CE;
+    --e0:#b8512f; --e0s:#F7E6DE; --e1:#3a63c0; --e1s:#E5EBF9;
+    --e2:#3f7d63; --e2s:#E4EFE9; --e3:#a3548c; --e3s:#F6E6F0;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 24px 90px;}
+
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:790px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  .steps-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:26px 0 18px;}
+  .step-tab{background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 14px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13.5px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 20px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:10px;padding:10px 14px;}
+
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;align-items:center;}
+
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:24px 0 6px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  .codepath{font-family:var(--mono);font-size:11.5px;color:var(--ink2);background:#F4F2EA;
+    border:1px solid var(--border);border-radius:8px;padding:5px 10px;display:inline-block;margin-top:10px;}
+  .codepath b{color:var(--accent);}
+
+  /* ===== STEP 1:dense FFN 全员上岗 ===== */
+  .ffn-stage{background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px;margin:8px 0 4px;}
+  .tokrow{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
+  .tok{font-family:var(--mono);font-size:14px;font-weight:700;background:#F4F2EA;color:var(--ink);
+    border:1px solid var(--border);border-radius:8px;padding:6px 11px;cursor:pointer;transition:all .15s ease;}
+  .tok:hover{border-color:var(--accent);}
+  .tok.sel{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .neurons{display:grid;grid-template-columns:repeat(32,1fr);gap:3px;margin:8px 0;}
+  .nr{aspect-ratio:1;border-radius:50%;background:#EAE7DD;transition:background .25s ease;}
+  .nr.on{background:var(--accent);}
+  .ffn-cap{font-family:var(--mono);font-size:12.5px;color:var(--ink2);text-align:center;margin-top:8px;}
+  .ffn-cap b{color:var(--accent);}
+
+  /* ===== STEP 2:router 派单 ===== */
+  .routebox{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin:8px 0 4px;}
+  .rbar-row{display:flex;align-items:center;gap:10px;margin:9px 0;}
+  .rbar-row .rb-name{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:82px;}
+  .rbar-row .rb-track{flex:1;height:22px;background:#F4F2EA;border-radius:7px;overflow:hidden;border:1px solid var(--border);position:relative;}
+  .rbar-row .rb-fill{height:100%;border-radius:6px 0 0 6px;transition:width .35s ease;opacity:.35;}
+  .rbar-row.picked .rb-fill{opacity:1;}
+  .rbar-row .rb-num{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:112px;text-align:right;color:var(--ink2);}
+  .rbar-row.picked .rb-num{color:var(--ink);}
+  .rb-tag{font-family:var(--mono);font-size:10px;font-weight:700;border-radius:5px;padding:1px 6px;margin-left:6px;}
+  .rb-tag.win{color:#fff;background:var(--accent);}
+  .routeout{font-family:var(--mono);font-size:13.5px;text-align:center;background:#FBF1EA;border:1px solid #F0DDD0;
+    border-radius:10px;padding:10px 12px;margin-top:12px;line-height:1.9;}
+
+  /* ===== STEP 3:分工热力图 ===== */
+  .hm{border-collapse:collapse;margin:10px auto 4px;font-family:var(--mono);}
+  .hm th{font-size:12px;font-weight:700;color:var(--ink2);padding:6px 8px;}
+  .hm td{width:86px;height:44px;text-align:center;font-size:13px;font-weight:700;border:2px solid var(--card);
+    border-radius:8px;transition:transform .15s ease;cursor:default;}
+  .hm td:hover{transform:scale(1.06);}
+  .hm .rowname{font-size:12.5px;font-weight:700;color:var(--ink);text-align:right;padding-right:10px;width:auto;height:auto;border:none;background:none!important;cursor:default;}
+  .hm .rowname:hover{transform:none;}
+  .expert-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:14px;}
+  .exc{background:#fff;border:1px solid var(--border);border-radius:12px;padding:11px 13px;}
+  .exc .eh{font-family:var(--mono);font-size:12px;font-weight:700;margin-bottom:4px;}
+  .exc .echars{font-family:var(--mono);font-size:13px;letter-spacing:2px;}
+  .exc .eshare{font-size:11px;color:var(--ink2);margin-top:3px;}
+
+  /* ===== STEP 4:负载演化 ===== */
+  .loadlab{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin:10px 0 4px;}
+  .lrow{display:flex;align-items:center;gap:10px;margin:8px 0;}
+  .lrow .lname{font-family:var(--mono);font-size:12px;font-weight:700;min-width:32px;}
+  .lrow .ltrack{flex:1;height:20px;background:#F4F2EA;border-radius:6px;overflow:hidden;border:1px solid var(--border);}
+  .lrow .lfill{height:100%;transition:width .4s ease;border-radius:5px 0 0 5px;}
+  .lrow .lnum{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:52px;text-align:right;}
+  .load-read{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px;}
+  .load-read .ro{text-align:center;}
+  .load-read .rv{font-family:var(--mono);font-size:18px;font-weight:700;}
+  .load-read .rl{font-size:11px;color:var(--ink2);}
+  .ideal-line{font-size:11.5px;color:var(--ink2);font-family:var(--mono);margin-top:6px;}
+
+  /* ===== STEP 5:账本 ===== */
+  .calc{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin:10px 0 4px;}
+  .rk-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0;}
+  .rk-row label{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:172px;}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;background:var(--accent-soft);
+    outline:none;flex:1;min-width:150px;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.2);}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid #fff;}
+  .rk-val{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent);min-width:52px;text-align:center;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:8px;padding:2px 0;}
+  .pbars{margin-top:14px;}
+  .pb-row{display:flex;align-items:center;gap:10px;margin:9px 0;}
+  .pb-row .pb-name{font-family:var(--mono);font-size:12px;font-weight:700;min-width:120px;}
+  .pb-row .pb-track{flex:1;height:22px;background:#F4F2EA;border-radius:7px;overflow:hidden;border:1px solid var(--border);}
+  .pb-row .pb-fill{height:100%;transition:width .35s ease;border-radius:6px 0 0 6px;}
+  .pb-row .pb-num{font-family:var(--mono);font-size:13px;font-weight:700;min-width:76px;text-align:right;}
+  .checklist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:8px;}
+  .checklist li{display:flex;gap:10px;align-items:flex-start;font-size:13px;background:#fff;border:1px solid var(--border);
+    border-radius:10px;padding:10px 13px;}
+  .checklist li .ck{color:#3f7d63;font-weight:700;flex-shrink:0;}
+  .checklist li b{color:var(--accent);}
+
+  .nav{display:flex;justify-content:space-between;margin-top:22px;gap:10px;}
+
+  /* 名词气泡 */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:280px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;font-family:system-ui,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* 庆祝 */
+  .congrats{display:none;text-align:center;background:linear-gradient(135deg,#FBF1EA,#F6E6F0);
+    border:1px solid var(--accent-soft);border-radius:16px;padding:22px;margin-top:18px;}
+  .congrats.show{display:block;animation:fade .5s ease;}
+  .congrats .ct{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--accent);}
+  .congrats .cs{font-size:13.5px;color:var(--ink2);margin-top:6px;}
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <header>
+    <span class="filename">11_moe_viz.html</span>
+    <h1>手搓 MoE:参数翻倍,算力不变</h1>
+    <p class="subtitle">
+      第 3 章的 GPT 里,FFN 是<b>每个 token 都要过的同一个小 MLP</b>。
+      <span class="term" data-term="MoE · 专家混合" data-key="moe" data-def="Mixture of Experts。把 FFN 拆成多个'专家',每个 token 只走其中 top-k 个 —— 总参数变多,每 token 计算量不变。">MoE</span>
+      把它拆开:多个<span class="term" data-term="专家 · expert" data-key="moe" data-def="MoE 里的一个小 FFN。结构和普通 FFN 一样,只是隐层更窄;分工是训练中自己涌现的。">专家</span>
+      + 一个<span class="term" data-term="路由器 · router" data-key="router" data-def="一个线性层,给每个 token 对每个专家打分,决定这个 token 派给哪 top-k 个专家。">路由器</span>,
+      每个 token 只走最对口的 2 个专家。这是 Mixtral / DeepSeek 这代模型"参数千亿、激活百亿"的核心机关。
+      配套代码 <code>phase3-moe/09_moe.py</code>。
+    </p>
+  </header>
+
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">全员上岗的 FFN</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">路由器:给 token 派单</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">分工是训出来的</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">偏心与塌缩</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">算账 & 落到代码</div></div>
+  </div>
+
+  <div class="hp-bar">
+    <span class="hp-label">这一关</span>
+    <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">n_expert <b>4</b> <i>每层专家数</i></span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">top_k <b>2</b> <i>每 token 走几个</i></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">expert_hidden <b>256</b> <i>=2·n_embd·单个专家隐层</i></span>
+    <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">aux <b>0.01</b> <i>负载均衡系数</i></span>
+    <span class="hp-chip" style="color:#6b6b68;background:#ECE9E0">底座 <b>03 的 GPT</b> <i>4 层·n_embd=128</i></span>
+  </div>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>① dense FFN:不管什么 token,全员上岗</h2>
+    <p class="lead">
+      第 3 章讲过:注意力负责 token 之间"沟通",FFN 负责每个 token 单独"思考"。
+      但这个思考很浪费 —— <b>随便点下面哪个 token</b>,看它过 FFN 时点亮了多少参数:
+    </p>
+
+    <div class="ffn-stage">
+      <div class="tokrow" id="tokRow1"></div>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--ink2);text-align:center">↓ 进入同一个 FFN(隐层 4·n_embd = 512 个神经元,下图 1 点 = 4 个)</div>
+      <div class="neurons" id="denseNeurons"></div>
+      <div class="ffn-cap" id="denseCap">点一个 token 试试</div>
+    </div>
+
+    <div class="note">
+      一个平平无奇的<b>空格</b>,和一个信息量很大的字母,动用的是<b>同一套全部 FFN 参数</b>。
+      模型越大这笔账越吓人:GPT 这类架构里 <b>FFN 占了参数的大约 2/3</b>,而它对每个 token 都是全量计算。
+    </div>
+    <details class="dig">
+      <summary>为什么偏偏对 FFN 下手,不拆注意力?</summary>
+      <div class="dig-body">
+        注意力的工作是 token <b>之间</b>的交互,拆开会破坏"谁都能看谁"的沟通;
+        FFN 是<b>逐位置独立</b>的加工 —— 每个 token 各算各的,谁跟谁都不打招呼。
+        这种"天生并行、互不依赖"的结构才方便按 token 派给不同专家。
+        (对注意力做稀疏化的研究也有,但主流 MoE 都是拆 FFN。)
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:把这个 512 隐层的大 FFN 拆成 4 个 256 隐层的小 FFN,每个 token 只走 2 个 —— 谁来决定走哪 2 个?</div>
+  </section>
+
+  <!-- ============ STEP 2 ============ -->
+  <section class="panel" id="panel1">
+    <h2>② 路由器:一个线性层,给每个 token 派单</h2>
+    <p class="lead">
+      <span class="term" data-term="路由器 · router" data-key="router" data-def="一个 n_embd → n_expert 的线性层:输入 token 向量,输出对每个专家的打分。">路由器</span>只是一个
+      <code>n_embd → n_expert</code> 的线性层:token 向量进去,4 个分数出来,softmax 变成概率,
+      <b>只留最高的 top_k=2 个</b>,权重重新归一化。选一个 token,看它被派给谁
+      (下面的概率是 <code>09_moe.py</code> <b>训练后</b> layer 0 的真实路由统计,按字符类别汇总):
+    </p>
+
+    <div class="routebox">
+      <div class="btn-row" id="routeToks"></div>
+      <div id="routeBars"></div>
+      <div class="routeout" id="routeOut"></div>
+    </div>
+
+    <div class="note">
+      输出 = <b>选中专家的加权和</b>:<code>out = w·Expert_i(x) + w'·Expert_j(x)</code>,权重就是归一化后的路由概率。
+      没被选中的专家<b>这个 token 完全不算</b> —— 这就是"参数在那儿,但不花算力"的稀疏激活。
+    </div>
+    <details class="dig">
+      <summary>top-k 是"挑选",挑选不可导,路由器怎么学?</summary>
+      <div class="dig-body">
+        梯度走的是<b>权重</b>那条路:被选中的专家,其输出乘的系数 <code>w</code> 来自 softmax,是可导的。
+        loss 对 <code>w</code> 的梯度会一路传回路由器 —— "这次派给 E1 效果好,下次给 E1 打分再高点"。
+        没被选中的专家确实拿不到梯度,这正是下一步"强者恒强"问题的根源。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>派单的单位是 token 还是整句话?</summary>
+      <div class="dig-body">
+        是 <b>token</b>。同一句话里,空格可能走 E1、字母 e 走 E2 —— 每个位置独立决策。
+        代码里先把 <code>(B,T,C)</code> 摊平成 <code>(B·T, C)</code> 再路由,就是在强调"逐 token 派单"。
+      </div>
+    </details>
+    <div class="codepath">↳ 代码:<b>09_moe.py</b> 的 <b>MoELayer.forward</b>:router 打分 → <code>topk</code> → 归一化 → 加权求和</div>
+
+    <div class="next-hint">↳ 下一步:派单派了 5000 步之后,4 个专家真的形成分工了吗?</div>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="panel" id="panel2">
+    <h2>③ 分工是训出来的,不是设计出来的</h2>
+    <p class="lead">
+      没有任何人规定"E1 管空格、E2 管元音"。但训练 5000 步后,把 val 集的 token 按类别统计
+      "每类字符被派往哪个专家"(layer 0 真实数据),分工自己浮出来了:
+    </p>
+
+    <table class="hm" id="heatmap"></table>
+    <div class="hp-note" style="text-align:center">每行加起来 = 100% · 颜色越深 = 该类字符越爱找这个专家 · 鼠标悬停看准确数值</div>
+
+    <div class="sub-h">每个专家最常接手的字符(同一次训练的真实统计)</div>
+    <div class="expert-cards" id="expertCards"></div>
+
+    <div class="note">
+      <b>这些分工是涌现的:</b>换个随机种子,分工方案会不一样,但"有分工"这件事稳定出现 ——
+      路由器 + 专家在训练里互相适应:专家碰巧对某类 token 加工得好,路由器就更爱把这类 token 派给它,它就练得更专。
+    </div>
+    <details class="dig">
+      <summary>专家 = "数学专家 / 法律专家"吗?</summary>
+      <div class="dig-body">
+        不是。大模型里的专家分工大多发生在<b>低层统计模式</b>上(词形、标点、语言、代码 token 之类),
+        很少出现人类意义上的"学科专家"。Mixtral 论文自己也承认:看不出专家按主题分工。
+        本页字符级模型的"空白/元音"分工,就是这种统计分工的微缩版。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:"接单多 → 练得好 → 接单更多"是个正反馈。它有一个危险的极端……</div>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="panel" id="panel3">
+    <h2>④ 偏心的尽头:专家塌缩,和治它的 aux loss</h2>
+    <p class="lead">
+      正反馈不加管束,路由器会把越来越多 token 塞给少数专家 ——
+      被冷落的专家拿不到梯度、逐渐报废,这叫<span class="term" data-term="专家塌缩 · expert collapse" data-key="expert-collapse" data-def="路由器把绝大多数 token 派给极少数专家,其余专家得不到训练、逐渐闲置,MoE 退化成小 dense 模型。">专家塌缩</span>。
+      要看清它,得用最脆的设定:<b>top-1 路由</b>(Switch Transformer 同款,aux loss 就是它提出的)。
+      下面是<b>同一份代码、都用 top-1 跑的两次真实训练</b>,唯一区别是负载均衡开关。点 ▶ 看 layer 0 的负载怎么随训练演化:
+    </p>
+
+    <div class="btn-row" id="auxToggle">
+      <button class="btn primary">top-1 · aux = 0.01(开)</button>
+      <button class="btn">top-1 · aux = 0(关,放飞路由器)</button>
+    </div>
+
+    <div class="loadlab">
+      <div class="load-read">
+        <div class="ro"><div class="rv" id="ldStep" style="color:var(--accent)">step 0</div><div class="rl">训练进度</div></div>
+        <div class="ro"><div class="rv" id="ldLoss" style="color:var(--accent)">–</div><div class="rl">val loss</div></div>
+        <div class="ro"><div class="rv" id="ldMax" style="color:var(--bad)">–</div><div class="rl">最忙专家的负载</div></div>
+      </div>
+      <div id="loadBars"></div>
+      <div class="ideal-line">完美均衡 = 每个专家 25%(虚线为参考)· 数据:layer 0,每 500 步采一次</div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn primary" id="ldPlay">▶ 播放训练过程</button>
+        <button class="btn" id="ldStepBtn">单步 +500</button>
+        <button class="btn" id="ldReset">重置</button>
+      </div>
+    </div>
+
+    <div class="note" id="auxNote"></div>
+    <details class="dig">
+      <summary>诚实交代:本关的 top-2 配置,关掉 aux 其实也没塌</summary>
+      <div class="dig-body">
+        实测(同 5000 步):<b>top-2 + 4 专家</b>就算 <code>--aux 0</code>,最终负载也只是 20/24/27/29% 的轻微偏,
+        val loss 1.549 和开 aux 打平。原因:top-2 下<b>每个 token 同时养 2 个专家</b>,4 选 2 让谁都分得到梯度,天生抗塌。
+        专家越多、top_k 越小,饿死人的风险越大 —— 所以 top-1 的 Switch 最先撞上这个问题,
+        而 64 选 8 的细粒度 MoE 全都标配负载均衡。上面的 top-1 实验还有一个诚实数字:这个玩具规模下,
+        偏载对 val loss 也<b>没有</b>可测的伤害(1.597 vs 1.600)—— 塌缩真正的代价是<b>买了的容量白买</b>,
+        以及大规模多机训练时忙闲不均拖慢整批,这两笔账在大模型上才要命。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>aux loss 的公式为什么长这样?</summary>
+      <div class="dig-body">
+        <code>aux = n_expert · Σ f_e · P_e</code>:<code>f_e</code> 是实际派给专家 e 的 token 占比(不可导),
+        <code>P_e</code> 是路由器给 e 的平均概率(可导)。两者都均匀时乘积和最小(=1);
+        谁的 f 偏大,压它的 P 就最能降 loss —— 梯度顺着可导的 P 把"过热"的专家分数往下压。
+        这是 Switch Transformer 的经典设计,系数 <code>aux_coef=0.01</code>,轻轻管一下就够。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>塌缩之后,MoE 退化成了什么?</summary>
+      <div class="dig-body">
+        退化成一个<b>只有少数专家在干活的小 dense 模型</b>:参数表上还是 4 个专家,
+        实际容量缩水一半甚至更多 —— 花了 MoE 的显存,买到的容量白买,最亏的局面。
+        所以工业级 MoE(Switch / Mixtral / DeepSeek)全都带某种负载均衡手段。
+      </div>
+    </details>
+    <div class="codepath">↳ 代码:<b>09_moe.py</b> 的 <b>MoELayer.forward</b> 末尾 aux loss · 复现本组对照:<code>python 09_moe.py --top-k 1 --aux 0</code></div>
+
+    <div class="next-hint">↳ 下一步:分工有了、均衡有了,回头算总账 —— 这笔交易到底赚在哪?</div>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="panel" id="panel4">
+    <h2>⑤ 算账:用 dense 的算力,买 2 倍的容量</h2>
+    <p class="lead">
+      MoE 的本质是一笔交易:<b>总参数(容量)↑,每 token 激活的计算量不变</b>。
+      拨动两个滑块,看这笔账怎么随 <code>n_expert</code> / <code>top_k</code> 变化(模型 = 本关的 4 层 GPT):
+    </p>
+
+    <div class="calc">
+      <div class="rk-row"><label>n_expert(每层专家数)</label><input type="range" id="neS" min="2" max="16" step="1" value="4"><span class="rk-val" id="neV">4</span></div>
+      <div class="rk-row"><label>top_k(每 token 走几个)</label><input type="range" id="tkS" min="1" max="4" step="1" value="2"><span class="rk-val" id="tkV">2</span></div>
+      <div class="pbars">
+        <div class="pb-row"><span class="pb-name">总参数(要存)</span><div class="pb-track"><div class="pb-fill" id="pbTotal" style="background:var(--accent)"></div></div><span class="pb-num" id="pbTotalN"></span></div>
+        <div class="pb-row"><span class="pb-name">每 token 激活</span><div class="pb-track"><div class="pb-fill" id="pbActive" style="background:var(--good)"></div></div><span class="pb-num" id="pbActiveN"></span></div>
+        <div class="pb-row"><span class="pb-name">dense 对照(03)</span><div class="pb-track"><div class="pb-fill" style="background:#B9B4A5;width:18.6%"></div></div><span class="pb-num">0.81 M</span></div>
+      </div>
+      <div class="hp-note" id="calcNote" style="margin-top:10px"></div>
+    </div>
+
+    <div class="note">
+      <b>MoE 省的是算力,不是显存</b> —— 总参数一个都不能少,全都得放在(显)存里待命;
+      省下的是每个 token 的 FLOPs。所以它适合"显存管够、算力金贵"的大规模训练与推理。
+      真实世界同款账本:<b>Mixtral 8×7B</b> 总 46.7B / 激活 12.9B;<b>DeepSeek-V3</b> 总 671B / 激活 37B。
+    </div>
+
+    <div class="sub-h"><span class="badge">达标</span>本关实测(四次训练 · 各 5000 步 · tiny shakespeare)</div>
+    <ul class="checklist" id="finalChecklist">
+      <li><span class="ck">✓</span><div>MoE val loss <b id="fLossMoe">–</b>,dense 对照(03)<b>~1.57</b>:同等每 token 算力下,容量翻倍换来更低的 loss。</div></li>
+      <li><span class="ck">✓</span><div>负载均衡有效:top-1 关 aux 实测偏载滚雪球(单专家吸到 45%+、也有专家饿到 9.4%),开 aux 则全程钉在 25% 均衡;本关的 top-2 配置天生抗塌(关 aux 也只轻微偏)。</div></li>
+      <li><span class="ck">✓</span><div>专家分工涌现且清晰:空白 70.5% 涌向 E1、大写 50.8% 归 E0、元音偏 E2、辅音偏 E3(见 STEP 3 热力图,val 集实测)。</div></li>
+    </ul>
+
+    <div class="sub-h"><span class="badge">Q&A</span>常见疑问</div>
+    <details class="dig">
+      <summary>MoE 的"专家"和多头注意力的"头",都是"多个小的",区别在哪?</summary>
+      <div class="dig-body">
+        <b>头是全员上岗,专家是按需点名。</b>多头注意力里,每个 token 都要过<b>所有</b>的头,只是各头看不同关系;
+        MoE 里每个 token 只走 top-k 个专家,其余专家对它零计算。
+        一个是"并行分视角"(算力照付),一个是"稀疏选路"(算力打折),目的完全不同。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>现在的 MoE 还是"4 选 2"这么糙吗?</summary>
+      <div class="dig-body">
+        本页教的是 Mixtral 同款的经典配方(少量大专家 + top-2),机制上够用,但前沿已经演进了一步:
+        <b>细粒度专家 + 共享专家</b>(DeepSeekMoE 提出,DeepSeek-V2/V3、Qwen 系 MoE 都在用)。
+        做法是把专家切得更碎(比如 64 个小专家选 top-8,而不是 8 个大专家选 2),
+        组合方式从 C(8,2)=28 种暴涨到 C(64,8)≈44 亿种,分工可以更精细;
+        再留 1~几个<b>共享专家</b>,所有 token 必走,兜底"人人都需要的通用加工",
+        让路由出去的部分专攻差异化。原理和本页完全一致,只是"切多碎、留不留必选项"这两个旋钮拧得更讲究。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>既然容量翻倍这么香,为什么不是所有模型都用 MoE?</summary>
+      <div class="dig-body">
+        代价在工程:<b>显存占用照总参数算</b>、多机并行时 token 要跨设备找专家(通信开销)、
+        负载不均会拖慢整批训练、微调也比 dense 娇气。小模型(显存不紧张)用 dense 更省心;
+        MoE 的甜区是"参数规模顶到显存上限、还想再大"的场景 —— 所以你在千亿级模型上才总看到它。
+      </div>
+    </details>
+
+    <div class="codepath">↳ 跑法:<code>python 09_moe.py</code> · 对照塌缩 <code>python 09_moe.py --aux 0</code> · 训完自动打印负载 + 分工报告</div>
+
+    <div class="congrats" id="congrats">
+      <div class="ct">🎉 手搓 MoE · 通关</div>
+      <div class="cs">你已经亲手把 dense GPT 的 FFN 换成"路由器 + 4 专家",看到了分工的涌现、塌缩的风险、和"参数翻倍算力不变"的账本。下次再看 Mixtral / DeepSeek 的参数表,你知道那两个数字是怎么来的了。</div>
+    </div>
+  </section>
+
+  <div class="nav">
+    <button class="btn" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<canvas id="confetti"></canvas>
+
+<script>
+/* ================================================================
+   REAL-DATA 常量:全部来自 09_moe.py 的两次真实训练
+   run A = python 09_moe.py        (aux_coef = 0.01)
+   run B = python 09_moe.py --aux 0(专家塌缩对照)
+   ================================================================ */
+const EVAL_STEPS = [0,500,1000,1500,2000,2500,3000,3500,4000,4500,4999];
+/* 真实数据:09_moe.py 四次完整训练(mps · 5000 步 · seed 1337)。
+   STEP 3 热力图/专家卡 = 本关配置(top-2 · aux 0.01);
+   STEP 4 负载演化 = Switch 同款 top-1 的两次对照(aux 0.01 vs 0)。 */
+const VAL_ON   = [4.33,1.99,1.83,1.76,1.72,1.68,1.66,1.63,1.62,1.61,1.60];  // top-1 · aux=0.01
+const VAL_OFF  = [4.33,1.99,1.82,1.75,1.71,1.67,1.65,1.64,1.62,1.60,1.60];  // top-1 · aux=0
+const USAGE_ON  = [[17,38,21,24],[24,26,24,26],[27,24,24,25],[27,24,24,25],[24,25,27,24],[26,22,27,25],[25,25,25,25],[26,24,25,25],[25,26,24,26],[24,24,26,26],[24,25,25,25]];
+const USAGE_OFF = [[17,38,21,24],[24,33,19,24],[20,38,16,25],[19,41,16,24],[17,44,17,22],[18,44,17,22],[16,45,17,21],[18,44,16,21],[17,44,17,22],[16,45,18,21],[16,45,18,21]];
+const CAT_MATRIX = {  /* 行=字符类别,列=E0..E3,占比 %(run A,layer 0,val 集) */
+  "空白":[20.3,70.5,0.1,9.1], "元音":[22.7,13.2,33.7,30.3], "辅音":[29.4,12.9,18.6,39.1],
+  "大写":[50.8,1.7,28.6,19.0], "标点":[16.9,37.5,36.0,9.6] };
+const TOP_CHARS = [["o","⏎","h","t","a","s"],["␣","i","t","y","m","."],["e",",","n","r","u","a"],["e","a","r","s","t","n"]];
+const EXPERT_SHARE = [27.3,24.2,20.8,27.7];
+const FINAL_MOE_LOSS = "1.549";
+const ECOL  = ['#b8512f','#3a63c0','#3f7d63','#a3548c'];
+const ECOLS = ['#F7E6DE','#E5EBF9','#E4EFE9','#F6E6F0'];
+
+/* ============ 步骤切换 ============ */
+const NSTEP=5;
+const tabs=document.querySelectorAll('.step-tab');
+const panels=[];for(let i=0;i<NSTEP;i++)panels.push(document.getElementById('panel'+i));
+let cur=0;
+function goto(i){
+  cur=Math.max(0,Math.min(NSTEP-1,i));
+  tabs.forEach(t=>t.classList.toggle('active',+t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active',idx===cur));
+  document.getElementById('prevBtn').disabled = cur===0;
+  document.getElementById('nextBtn').textContent = cur===NSTEP-1 ? '完成 🎉' : '下一步 →';
+  const hash='#step-'+(cur+1);
+  if(location.hash!==hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+document.getElementById('prevBtn').addEventListener('click',()=>goto(cur-1));
+document.getElementById('nextBtn').addEventListener('click',()=>{ if(cur===NSTEP-1) celebrate(); else goto(cur+1); });
+
+/* ============ STEP 1:dense FFN 全点亮 ============ */
+const TOKS1=['T','o','␣','b','e','␣','o','r'];
+(function(){
+  const row=document.getElementById('tokRow1');
+  TOKS1.forEach((t,i)=>{const b=document.createElement('span');b.className='tok';b.textContent=t;
+    b.onclick=()=>fire1(i);row.appendChild(b);});
+  const grid=document.getElementById('denseNeurons');
+  for(let i=0;i<128;i++){const d=document.createElement('div');d.className='nr';grid.appendChild(d);}
+})();
+let t1timer=null;
+function fire1(i){
+  document.querySelectorAll('#tokRow1 .tok').forEach((b,j)=>b.classList.toggle('sel',j===i));
+  const dots=document.querySelectorAll('#denseNeurons .nr');
+  dots.forEach(d=>d.classList.remove('on'));
+  if(t1timer)clearTimeout(t1timer);
+  let k=0;
+  (function wave(){ for(let s=0;s<16&&k<dots.length;s++,k++)dots[k].classList.add('on');
+    if(k<dots.length)t1timer=setTimeout(wave,26);
+    else document.getElementById('denseCap').innerHTML=
+      'token「'+TOKS1[i].replace('␣','空格')+'」→ 激活隐层神经元 <b>512 / 512(100%)</b> —— 换哪个 token 都一样';
+  })();
+}
+
+/* ============ STEP 2:router 派单(真实类别路由)============ */
+const ROUTE_TOKS=[
+  {ch:'␣ 空格',cat:'空白'},{ch:'e 元音',cat:'元音'},{ch:'t 辅音',cat:'辅音'},
+  {ch:'A 大写',cat:'大写'},{ch:', 标点',cat:'标点'}];
+let routeSel=0;
+function buildRouteToks(){
+  const host=document.getElementById('routeToks');host.innerHTML='';
+  ROUTE_TOKS.forEach((t,i)=>{const b=document.createElement('button');
+    b.className='btn'+(i===routeSel?' primary':'');b.textContent=t.ch;
+    b.onclick=()=>{routeSel=i;buildRouteToks();renderRoute();};host.appendChild(b);});
+}
+function renderRoute(){
+  const probs=CAT_MATRIX[ROUTE_TOKS[routeSel].cat];
+  const order=[...probs.keys()].sort((a,b)=>probs[b]-probs[a]);
+  const pick=order.slice(0,2);
+  const wsum=probs[pick[0]]+probs[pick[1]];
+  const host=document.getElementById('routeBars');host.innerHTML='';
+  probs.forEach((p,e)=>{
+    const picked=pick.includes(e);
+    const row=document.createElement('div');row.className='rbar-row'+(picked?' picked':'');
+    row.innerHTML='<span class="rb-name" style="color:'+ECOL[e]+'">Expert '+e+'</span>'
+      +'<div class="rb-track"><div class="rb-fill" style="width:'+p+'%;background:'+ECOL[e]+'"></div></div>'
+      +'<span class="rb-num">'+p.toFixed(1)+'%'+(picked?'<span class="rb-tag win">top-2 ✓</span>':'')+'</span>';
+    host.appendChild(row);
+  });
+  const w0=(probs[pick[0]]/wsum), w1=(probs[pick[1]]/wsum);
+  document.getElementById('routeOut').innerHTML=
+    '归一化:w = '+w0.toFixed(2)+' / '+w1.toFixed(2)+'<br>'
+    +'out = <b style="color:'+ECOL[pick[0]]+'">'+w0.toFixed(2)+' · E'+pick[0]+'(x)</b>'
+    +' + <b style="color:'+ECOL[pick[1]]+'">'+w1.toFixed(2)+' · E'+pick[1]+'(x)</b>'
+    +' <span style="color:var(--ink2)">(另外 2 个专家:这单不接,0 计算)</span>';
+}
+
+/* ============ STEP 3:分工热力图 + 专家卡 ============ */
+function buildHeatmap(){
+  const tb=document.getElementById('heatmap');
+  let html='<tr><th></th>';
+  for(let e=0;e<4;e++)html+='<th style="color:'+ECOL[e]+'">Expert '+e+'</th>';
+  html+='</tr>';
+  Object.entries(CAT_MATRIX).forEach(([name,row])=>{
+    html+='<tr><td class="rowname">'+name+'</td>';
+    row.forEach((v,e)=>{
+      const a=Math.min(1,v/60);
+      html+='<td style="background:'+hexA(ECOL[e],0.12+a*0.88)+';color:'+(a>0.45?'#fff':ECOL[e])
+        +'" title="'+name+' → Expert '+e+':'+v.toFixed(1)+'%">'+v.toFixed(0)+'%</td>';
+    });
+    html+='</tr>';
+  });
+  tb.innerHTML=html;
+}
+function hexA(hex,a){
+  const n=parseInt(hex.slice(1),16),r=n>>16,g=(n>>8)&255,b=n&255;
+  return 'rgba('+r+','+g+','+b+','+a.toFixed(2)+')';
+}
+function buildExpertCards(){
+  const host=document.getElementById('expertCards');host.innerHTML='';
+  TOP_CHARS.forEach((chs,e)=>{
+    const d=document.createElement('div');d.className='exc';d.style.borderColor=ECOL[e];
+    d.innerHTML='<div class="eh" style="color:'+ECOL[e]+'">Expert '+e+'</div>'
+      +'<div class="echars">'+chs.map(c=>c===' '?'␣':(c==='\\n'?'⏎':c)).join(' ')+'</div>'
+      +'<div class="eshare">接单量 '+EXPERT_SHARE[e].toFixed(1)+'%(均衡=25%)</div>';
+    host.appendChild(d);
+  });
+}
+
+/* ============ STEP 4:负载演化(两次真实训练)============ */
+let auxMode=0, ldIdx=0, ldTimer=null;
+const auxBtns=document.querySelectorAll('#auxToggle .btn');
+auxBtns.forEach((b,i)=>b.addEventListener('click',()=>{auxMode=i;
+  auxBtns.forEach((x,j)=>x.classList.toggle('primary',j===i));ldReset();renderAuxNote();}));
+function buildLoadBars(){
+  const host=document.getElementById('loadBars');host.innerHTML='';
+  for(let e=0;e<4;e++){
+    const r=document.createElement('div');r.className='lrow';
+    r.innerHTML='<span class="lname" style="color:'+ECOL[e]+'">E'+e+'</span>'
+      +'<div class="ltrack"><div class="lfill" id="lf'+e+'" style="background:'+ECOL[e]+';width:25%"></div></div>'
+      +'<span class="lnum" id="ln'+e+'" style="color:'+ECOL[e]+'">25%</span>';
+    host.appendChild(r);
+  }
+}
+function ldPaint(){
+  const U=(auxMode===0?USAGE_ON:USAGE_OFF)[ldIdx];
+  const V=(auxMode===0?VAL_ON:VAL_OFF)[ldIdx];
+  for(let e=0;e<4;e++){
+    document.getElementById('lf'+e).style.width=U[e]+'%';
+    document.getElementById('ln'+e).textContent=U[e].toFixed(0)+'%';
+  }
+  document.getElementById('ldStep').textContent='step '+EVAL_STEPS[ldIdx];
+  document.getElementById('ldLoss').textContent=V.toFixed(2);
+  document.getElementById('ldMax').textContent=Math.max(...U).toFixed(0)+'%';
+}
+function ldStep(){ if(ldIdx>=EVAL_STEPS.length-1)ldIdx=-1; ldIdx++; ldPaint(); }
+function ldPlay(){
+  if(ldTimer)return;
+  if(ldIdx>=EVAL_STEPS.length-1)ldIdx=0;
+  document.getElementById('ldPlay').disabled=true;
+  ldTimer=setInterval(()=>{ldIdx++;ldPaint();
+    if(ldIdx>=EVAL_STEPS.length-1){clearInterval(ldTimer);ldTimer=null;
+      document.getElementById('ldPlay').disabled=false;}},450);
+}
+function ldReset(){ if(ldTimer){clearInterval(ldTimer);ldTimer=null;}
+  ldIdx=0;ldPaint();document.getElementById('ldPlay').disabled=false; }
+function renderAuxNote(){
+  document.getElementById('auxNote').innerHTML= auxMode===0
+   ? '<b>开着 aux(=0.01):</b>从第一次更新起就被拽回均衡,四个专家全程钉在 25% 附近 —— 每个专家都持续拿到梯度、持续变强。这就是那 0.01 买到的东西。'
+   : '<b>关掉 aux(--aux 0):</b>"接单多 → 练得好 → 分数高 → 接单更多"的雪球肉眼可见:E1 从 38% 一路吸到 <b>45%+</b>,E0 被饿到 16%;别的层更狠(这次训练 layer 2 有专家只剩 <b>9.4%</b> 单量)。5000 步只是开始,这个趋势不会自己停。';
+}
+
+/* ============ STEP 5:参数账本 ============ */
+const NONFFN=0.30, PER_EXPERT=0.0655, NLAYER=4, DENSE=0.81;
+function renderCalc(){
+  let E=+document.getElementById('neS').value, K=+document.getElementById('tkS').value;
+  if(K>E){K=E;document.getElementById('tkS').value=E;}
+  document.getElementById('neV').textContent=E;
+  document.getElementById('tkV').textContent=K;
+  const total=NONFFN+NLAYER*E*PER_EXPERT, active=NONFFN+NLAYER*K*PER_EXPERT;
+  const MAX=NONFFN+NLAYER*16*PER_EXPERT;
+  document.getElementById('pbTotal').style.width=(total/MAX*100)+'%';
+  document.getElementById('pbActive').style.width=(active/MAX*100)+'%';
+  document.getElementById('pbTotalN').textContent=total.toFixed(2)+' M';
+  document.getElementById('pbActiveN').textContent=active.toFixed(2)+' M';
+  const note=(E===4&&K===2)
+    ? '← 本关配置:总参数 ≈ dense 的 1.7 倍,每 token 激活 ≈ dense 持平(0.82 M vs 0.81 M)。'
+    : '容量 ×'+(total/DENSE).toFixed(1)+',每 token 算力 ×'+(active/DENSE).toFixed(1)+'(相对 dense)。top_k 不变就"白拿"容量;top_k 加大,算力跟着涨。';
+  document.getElementById('calcNote').textContent=note;
+}
+document.getElementById('neS').addEventListener('input',renderCalc);
+document.getElementById('tkS').addEventListener('input',renderCalc);
+document.getElementById('fLossMoe').textContent=FINAL_MOE_LOSS;
+
+/* ============ 名词气泡 ============ */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent, def=el.dataset.def||'', key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def+(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8; if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw; if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el)); el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* ============ 通关庆祝 ============ */
+function celebrate(){
+  document.getElementById('congrats').classList.add('show');
+  const cv=document.getElementById('confetti'); cv.style.display='block';
+  const ctx=cv.getContext('2d'); cv.width=innerWidth; cv.height=innerHeight;
+  const COL=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const ps=[];for(let i=0;i<150;i++)ps.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    vx:(Math.random()-0.5)*3,vy:2+Math.random()*4,s:5+Math.random()*7,c:COL[i%COL.length],a:Math.random()*6.28,va:(Math.random()-0.5)*0.3});
+  let t0=null;
+  function frame(ts){ if(!t0)t0=ts; const el=ts-t0;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.04;p.a+=p.va;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.a);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.6);ctx.restore();});
+    if(el<3400) requestAnimationFrame(frame); else { ctx.clearRect(0,0,cv.width,cv.height); cv.style.display='none'; }
+  }
+  requestAnimationFrame(frame);
+  document.getElementById('congrats').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ============ 初始化 ============ */
+fire1(2);
+buildRouteToks(); renderRoute();
+buildHeatmap(); buildExpertCards();
+buildLoadBars(); ldPaint(); renderAuxNote();
+document.getElementById('ldPlay').addEventListener('click',ldPlay);
+document.getElementById('ldStepBtn').addEventListener('click',ldStep);
+document.getElementById('ldReset').addEventListener('click',ldReset);
+renderCalc();
+const m=/^#step-(\d+)$/.exec(location.hash);
+goto(m?parseInt(m[1],10)-1:0);
+window.addEventListener('hashchange',()=>{const mm=/^#step-(\d+)$/.exec(location.hash);goto(mm?parseInt(mm[1],10)-1:0);});
+</script>
+<!--site-copyright-->
+<footer style="max-width:880px;margin:56px auto 0;padding:18px 24px 44px;border-top:1px solid var(--border);text-align:center;font-size:12px;color:var(--ink2);line-height:1.7">
+  © 2026 <a href="https://fim.ai" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">FIM Labs</a> · 从零手写大语言模型 · MIT License
+</footer>
+</body>
+</html>

@@ -19,10 +19,14 @@ MoE(Mixture of Experts,专家混合)把这一块拆开:
            但每个 token 只走 2 个专家,激活的 FFN 计算量和 dense 完全一样(2 × 2*n_embd = 4*n_embd)
   → 同样的"每 token 算力"买到了双倍的"容量",这就是 MoE 的交易。
 
-跑法:python3 09_moe.py            (训 MoE)
-     python3 09_moe.py --aux 0    (关掉负载均衡,亲眼看专家塌缩)
+跑法:python3 09_moe.py                     (训 MoE,top-2)
+     python3 09_moe.py --top-k 1 --aux 0   (Switch 同款 top-1 + 关负载均衡,看偏载滚雪球)
 预期:val loss ≈ 1.55(略优于 dense 的 ~1.57);训练结尾打印每个专家的
      负载占比 + 最常接手的字符,能看到专家真的各有分工。
+实测提醒:top-2 + 4 专家的配置天生抗塌 —— 就算 --aux 0 也只轻微偏载
+     (每个 token 同时养 2 个专家,谁都饿不死);要观察"强者恒强"的偏载
+     雪球,请用上面的 top-1 组合(实测单专家从 38% 吸到 45%+,也有专家
+     被饿到 9% 单量)。
 """
 
 import argparse
@@ -50,10 +54,13 @@ eval_iters = 200
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--aux", type=float, default=0.01,
-                    help="负载均衡 loss 系数(默认 0.01;设 0 可观察专家塌缩)")
+                    help="负载均衡 loss 系数(默认 0.01;设 0 观察路由器放飞后的偏载)")
+parser.add_argument("--top-k", type=int, default=top_k,
+                    help="每 token 走几个专家(默认 2;top-1 是 Switch Transformer 的设定,更容易偏载)")
 parser.add_argument("--max-iters", type=int, default=max_iters)
 args = parser.parse_args()
 aux_coef = args.aux
+top_k = args.top_k
 max_iters = args.max_iters
 
 device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")

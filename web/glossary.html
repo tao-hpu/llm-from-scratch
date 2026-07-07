@@ -89,6 +89,8 @@
     <a href="#peft">PEFT</a><a href="#lora">LoRA</a><a href="#loss-mask">loss mask</a>
     <a href="#chat-template">对话模板</a><a href="#dpo">DPO</a><a href="#rlhf">RLHF</a>
     <a href="#bpe">BPE</a><a href="#fineweb">FineWeb-Edu</a><a href="#shard">shard</a><a href="#adamw">AdamW</a><a href="#bf16">bf16</a><a href="#flash-attention">Flash-Attention</a>
+    <a href="#moe">MoE / 专家</a><a href="#router">路由器</a><a href="#load-balancing">负载均衡</a>
+    <a href="#expert-collapse">专家塌缩</a><a href="#active-params">激活参数</a>
     <a href="#attention-paper">Attention Is All You Need</a>
   </div>
 
@@ -444,6 +446,50 @@
     <p>用<b>强化学习</b>做 <a href="#preference-alignment" style="color:var(--accent)">偏好对齐</a>:先用偏好数据训一个<b>奖励模型</b>给回答打分,
     再用 <b>PPO</b>(一种 RL 算法)让模型<b>最大化奖励</b>。要在线采样 rollout、要价值网络,工程量比 <a href="#dpo" style="color:var(--accent)">DPO</a> 大数倍。
     它和 DPO 是实现同一目标的两条路(<b>RLHF 走 RL,DPO 不走</b>)。本项目只在白皮书里讲原理,<b>不写成脚本</b>。</p>
+  </div>
+
+  <!-- ============ MoE 与稀疏激活 ============ -->
+  <div class="sec-h"><span class="sh-num">H</span>MoE 与稀疏激活(Phase 3)</div>
+
+  <div class="gentry" id="moe">
+    <h3>MoE / 专家 <span class="en">Mixture of Experts · expert</span></h3>
+    <p>把 Transformer 的 <a href="#feedforward" style="color:var(--accent)">FFN</a> 拆成多个"<b>专家</b>"(结构相同、各自更窄的小 FFN),
+    每个 token 由<a href="#router" style="color:var(--accent)">路由器</a>派给其中 <b>top-k 个</b>处理。
+    效果是<b>总参数(容量)变多、每 token 计算量不变</b> —— Mixtral 8×7B(总 46.7B / 激活 12.9B)、
+    DeepSeek-V3(总 671B / 激活 37B)都是这个机关。专家的分工不是人设计的,是训练中自己涌现的,
+    而且多为词形/标点这类<b>低层统计分工</b>,不是"数学专家/法律专家"。本项目在 <code>09_moe.py</code> 手搓(4 专家 · top-2)。</p>
+  </div>
+
+  <div class="gentry" id="router">
+    <h3>路由器 / top-k 门控 <span class="en">router · top-k gating</span></h3>
+    <p>MoE 的派单员:一个 <code>n_embd → n_expert</code> 的<b>线性层</b>,给每个 token 对每个专家打分,
+    softmax 后<b>只保留分数最高的 top_k 个</b>,权重重新归一化,输出 = 选中专家的加权和。
+    派单单位是 <b>token</b>(同一句话里相邻字符可以走不同专家)。top-k 挑选本身不可导,
+    但选中专家的权重来自 softmax、可导 —— 梯度顺着权重传回路由器,它就学会了"该派给谁"。</p>
+  </div>
+
+  <div class="gentry" id="load-balancing">
+    <h3>负载均衡 loss <span class="en">load balancing / auxiliary loss</span></h3>
+    <p>治路由器偏心的辅助损失(Switch Transformer 式):<code>aux = n_expert · Σ f_e·P_e</code>,
+    其中 <code>f_e</code> 是实际派给专家 e 的 token 占比(不可导)、<code>P_e</code> 是路由器给 e 的平均概率(可导)。
+    负载均匀时取最小值 1;谁过热,梯度就顺着可导的 P 压谁的分数。以小系数(如 0.01)加进总 loss,
+    防止<a href="#expert-collapse" style="color:var(--accent)">专家塌缩</a>。</p>
+  </div>
+
+  <div class="gentry" id="expert-collapse">
+    <h3>专家塌缩 <span class="en">expert collapse</span></h3>
+    <p>MoE 不加管束时的失败模式:"接单多 → 练得好 → 分数高 → 接单更多"的<b>正反馈滚雪球</b>,
+    路由器把绝大多数 token 塞给一两个专家,其余专家拿不到梯度、彻底闲置 ——
+    参数还在,容量已废,MoE 退化成小 dense 模型。解法就是<a href="#load-balancing" style="color:var(--accent)">负载均衡 loss</a>。
+    top_k 越小、专家越多,越容易塌;<code>09_moe.py</code> 里 <code>--top-k 1 --aux 0</code>(Switch 同款 top-1)可以亲眼看偏载滚雪球,
+    而默认的 top-2 + 4 专家配置天生抗塌(每个 token 同时养 2 个专家,谁都饿不死)。</p>
+  </div>
+
+  <div class="gentry" id="active-params">
+    <h3>激活参数 <span class="en">active parameters · 稀疏激活</span></h3>
+    <p>处理<b>一个 token</b> 实际参与计算的参数量。dense 模型里激活参数 = 总参数;
+    MoE 里每 token 只走 top-k 个专家,激活参数远小于总参数 —— 所以模型简介里会写两个数字
+    (如"总 671B / 激活 37B")。注意 <b>MoE 省的是算力(FLOPs),不是显存</b>:没被激活的专家参数也得放在显存里待命。</p>
   </div>
 
   <!-- ============ 里程碑 ============ -->
