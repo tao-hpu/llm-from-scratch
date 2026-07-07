@@ -214,6 +214,7 @@
       把它拆开:多个<span class="term" data-term="专家 · expert" data-key="moe" data-def="MoE 里的一个小 FFN。结构和普通 FFN 一样,只是隐层更窄;分工是训练中自己涌现的。">专家</span>
       + 一个<span class="term" data-term="路由器 · router" data-key="router" data-def="一个线性层,给每个 token 对每个专家打分,决定这个 token 派给哪 top-k 个专家。">路由器</span>,
       每个 token 只走最对口的 2 个专家。这是 Mixtral / DeepSeek 这代模型"参数千亿、激活百亿"的核心机关。
+      本关用 <b>1.35M</b> 参数把它完整跑通 —— 大概算<b>全球最小的 MoE 之一</b>,但路由、分工、塌缩,和 671B 的 DeepSeek 是同一套机制。
       配套代码 <code>phase3-moe/09_moe.py</code>。
     </p>
   </header>

@@ -384,7 +384,7 @@
       <section class="card">
         <div class="card-head"><span class="ch-num">CHAPTER 11</span></div>
         <h3><a href="11_moe_viz.html#step-1">第 11 章 · 手搓 MoE:参数翻倍,算力不变</a></h3>
-        <p class="desc">把第 3 章 GPT 的 FFN 拆成 <code>4 个专家 + 路由器</code>:top-2 派单、分工自己涌现、专家塌缩与负载均衡 aux loss,最后算清"总参数 ↑ 激活算力不变"这笔账。配套代码 <code>09_moe.py</code>,含四次真实训练对照(top-1 关 aux 实测偏载滚雪球)。</p>
+        <p class="desc">把第 3 章 GPT 的 FFN 拆成 <code>4 个专家 + 路由器</code>:top-2 派单、分工自己涌现、专家塌缩与负载均衡 aux loss,最后算清"总参数 ↑ 激活算力不变"这笔账。全部在 <code>1.35M</code> 参数上跑通,大概算全球最小的 MoE 之一,机制却和 671B 的 DeepSeek 同款。配套代码 <code>09_moe.py</code>,含四次真实训练对照。</p>
         <ul class="steps">
           <li><a href="11_moe_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">全员上岗的 FFN</span><span class="arrow">→</span></a></li>
           <li><a href="11_moe_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">路由器:给 token 派单</span><span class="arrow">→</span></a></li>

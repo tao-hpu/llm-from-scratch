@@ -28,7 +28,7 @@
 - [`web/08_sft_viz.html`](web/08_sft_viz.html) — 第 8 章 · SFT(对应 `06_sft.py`):把 124M base 调成会答题——对话模板 + EOS + loss mask + 训练前后真实采样对比
 - [`web/09_lora_viz.html`](web/09_lora_viz.html) — 第 9 章 · 手搓 LoRA(对应 `07_lora.py`):冻结底座只训低秩旁路 B·A(~0.94% 参数 / 4.7MB adapter)——拨 r 算账 + B=0 平滑出发 + 真实 loss 曲线与采样
 - [`web/10_dpo_viz.html`](web/10_dpo_viz.html) — 第 10 章 · 手搓 DPO(对应 `08_dpo.py`):偏好对齐,不训奖励模型/不走 RL——policy+冻结 ref + 隐式奖励 + DPO loss 滑块 + 真实曲线(loss↓/margin↑/准确率 0→100%)
-- [`web/11_moe_viz.html`](web/11_moe_viz.html) — 第 11 章 · 手搓 MoE(对应 `09_moe.py`):把 FFN 拆成 4 专家 + 路由器 top-2 派单,分工涌现热力图、负载均衡对照(top-1 关 aux 实测偏载滚雪球)、"参数翻倍算力不变"账本
+- [`web/11_moe_viz.html`](web/11_moe_viz.html) — 第 11 章 · 手搓 MoE(对应 `09_moe.py`):把 FFN 拆成 4 专家 + 路由器 top-2 派单,分工涌现热力图、负载均衡对照(top-1 关 aux 实测偏载滚雪球)、"参数翻倍算力不变"账本。1.35M 参数,大概是**全球最小的 MoE 之一**,机制却和 671B 的 DeepSeek 同款
 - [`web/glossary.html`](web/glossary.html) — 名词表(术语字典,正文术语 hover 即弹气泡)
 - [`web/notes.html`](web/notes.html) — 学习札记 / 彩蛋:正课之外的小故事(如 Transformer 前世今生:8 作者、翻译起源、家谱)
 
