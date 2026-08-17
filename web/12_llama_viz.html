@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>把 GPT-2 升级成 LLaMA · 四个零件</title>
+<meta name="description" content="把 GPT-2 的四个零件逐个换成 LLaMA 同款:RoPE 转角度、RMSNorm 少做一半、SwiGLU 装闸门、GQA 让 K/V 拼车,并跑六组真实对照。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 12 章 · GPT-2 升级成 LLaMA · 从零手写大语言模型">
+<meta property="og:description" content="把 GPT-2 的四个零件逐个换成 LLaMA 同款:RoPE 转角度、RMSNorm 少做一半、SwiGLU 装闸门、GQA 让 K/V 拼车,并跑六组真实对照。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/12_llama_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 12 章 · GPT-2 升级成 LLaMA · 从零手写大语言模型">
+<meta name="twitter:description" content="把 GPT-2 的四个零件逐个换成 LLaMA 同款:RoPE 转角度、RMSNorm 少做一半、SwiGLU 装闸门、GQA 让 K/V 拼车,并跑六组真实对照。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
+<style>
+
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --good:#3f7d63; --good-soft:#D7EBE0; --bad:#9a3a22; --bad-soft:#F3D9CE;
+    --e0:#b8512f; --e0s:#F7E6DE; --e1:#3a63c0; --e1s:#E5EBF9;
+    --e2:#3f7d63; --e2s:#E4EFE9; --e3:#a3548c; --e3s:#F6E6F0;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 24px 90px;}
+
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:790px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  .steps-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:26px 0 18px;}
+  .step-tab{background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 14px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13.5px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 20px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:10px;padding:10px 14px;}
+
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;align-items:center;}
+
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:24px 0 6px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  .codepath{font-family:var(--mono);font-size:11.5px;color:var(--ink2);background:#F4F2EA;
+    border:1px solid var(--border);border-radius:8px;padding:5px 10px;display:inline-block;margin-top:10px;}
+  .codepath b{color:var(--accent);}
+
+  /* ===== STEP 2:router 派单 ===== */
+  .routebox{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin:8px 0 4px;}
+  .rbar-row{display:flex;align-items:center;gap:10px;margin:9px 0;}
+  .rbar-row .rb-name{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:82px;}
+  .rbar-row .rb-track{flex:1;height:22px;background:#F4F2EA;border-radius:7px;overflow:hidden;border:1px solid var(--border);position:relative;}
+  .rbar-row .rb-fill{height:100%;border-radius:6px 0 0 6px;transition:width .35s ease;opacity:.35;}
+  .rbar-row.picked .rb-fill{opacity:1;}
+  .rbar-row .rb-num{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:112px;text-align:right;color:var(--ink2);}
+  .rbar-row.picked .rb-num{color:var(--ink);}
+  .rb-tag{font-family:var(--mono);font-size:10px;font-weight:700;border-radius:5px;padding:1px 6px;margin-left:6px;}
+  .rb-tag.win{color:#fff;background:var(--accent);}
+  .routeout{font-family:var(--mono);font-size:13.5px;text-align:center;background:#FBF1EA;border:1px solid #F0DDD0;
+    border-radius:10px;padding:10px 12px;margin-top:12px;line-height:1.9;}
+
+  /* 名词气泡 */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:280px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;font-family:system-ui,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* 庆祝 */
+  .congrats{display:none;text-align:center;background:linear-gradient(135deg,#FBF1EA,#F6E6F0);
+    border:1px solid var(--accent-soft);border-radius:16px;padding:22px;margin-top:18px;}
+  .congrats.show{display:block;animation:fade .5s ease;}
+  .congrats .ct{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--accent);}
+  .congrats .cs{font-size:13.5px;color:var(--ink2);margin-top:6px;}
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;}
+
+
+  /* ===== 通用件(与其余章节页一致)===== */
+  .nav{display:flex;justify-content:space-between;margin-top:22px;gap:10px;}
+  .checklist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:8px;}
+  .checklist li{display:flex;gap:10px;align-items:flex-start;font-size:13px;background:#fff;border:1px solid var(--border);
+    border-radius:10px;padding:10px 13px;}
+  .checklist li .ck{color:#3f7d63;font-weight:700;flex-shrink:0;}
+  .checklist li b{color:var(--accent);}
+  .rk-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0;}
+  .rk-row label{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:172px;}
+  .rk-val{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent);min-width:52px;text-align:center;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:8px;padding:2px 0;}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;background:var(--accent-soft);
+    flex:1;min-width:150px;max-width:340px;outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.18);}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid #fff;}
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;}
+
+  /* ===== STEP 1:四处别扭 ===== */
+  .painrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px;margin:6px 0 14px;}
+  .pain{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 13px;cursor:pointer;
+    transition:all .2s ease;text-align:left;}
+  .pain:hover{border-color:#cfc9ba;transform:translateY(-1px);}
+  .pain.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
+  .pain .pn{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--ink2);}
+  .pain .pt{font-size:14px;font-weight:700;margin-top:3px;}
+  .pain.active .pt{color:var(--accent);}
+  .pain .pw{font-size:11.5px;color:var(--ink2);margin-top:3px;}
+  .paincard{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;min-height:150px;}
+  .paincard .old,.paincard .new{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;margin:6px 0;}
+  .paincard .badge2{font-family:var(--mono);font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 8px;flex-shrink:0;margin-top:2px;}
+  .paincard .b-old{background:var(--bad-soft);color:var(--bad);}
+  .paincard .b-new{background:var(--good-soft);color:var(--good);}
+  .paincard code{font-family:var(--mono);font-size:12.5px;background:#F4F2EA;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .paincard .cost{font-size:12.5px;color:var(--ink2);margin-top:10px;padding-top:9px;border-top:1px dashed var(--border);}
+
+  /* ===== STEP 2:RoPE ===== */
+  .ropelab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin:10px 0;}
+  .ropedials{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:10px;}
+  .dial{text-align:center;}
+  .dial .dl{font-family:var(--mono);font-size:11px;color:var(--ink2);margin-bottom:2px;}
+  .dial .dv{font-family:var(--mono);font-size:11px;font-weight:700;margin-top:2px;}
+  .dotread{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:12px 0 4px;}
+  .dr{background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 13px;text-align:center;}
+  .dr .drv{font-family:var(--mono);font-size:21px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .dr .drl{font-size:11.5px;color:var(--ink2);margin-top:2px;}
+
+  /* ===== STEP 3:RMSNorm ===== */
+  .normlab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin:10px 0;}
+  .nsteps{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;}
+  .nstep{flex:1 1 160px;background:#fff;border:1px solid var(--border);border-radius:11px;padding:11px 13px;}
+  .nstep.skip{opacity:.42;border-style:dashed;}
+  .nstep .nh{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);}
+  .nstep.skip .nh{color:var(--ink2);text-decoration:line-through;}
+  .nstep .nb{font-size:12.5px;color:var(--ink2);margin-top:4px;}
+  .vecrow{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px;}
+  .vcell{font-family:var(--mono);font-size:11.5px;padding:3px 7px;border-radius:6px;background:#F4F2EA;
+    border:1px solid var(--border);font-variant-numeric:tabular-nums;}
+
+  /* ===== STEP 4:SwiGLU ===== */
+  .glulab{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0;}
+  @media (max-width:640px){ .glulab{grid-template-columns:1fr;} }
+  .gcard{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;}
+  .gcard h4{margin:0 0 8px;font-size:14px;font-family:var(--serif);}
+  .gbar{height:26px;background:#F4F2EA;border:1px solid var(--border);border-radius:7px;position:relative;overflow:hidden;margin:7px 0;}
+  .gbar .gf{position:absolute;top:0;bottom:0;left:50%;transition:all .18s ease;}
+  .gbar .gz{position:absolute;top:0;bottom:0;left:50%;width:1px;background:var(--ink2);opacity:.35;}
+  .glabel{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11.5px;color:var(--ink2);}
+  .glabel b{font-size:13px;font-variant-numeric:tabular-nums;}
+  .glucalc{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 18px;margin-top:10px;
+    font-family:var(--mono);font-size:12.5px;line-height:1.9;overflow-x:auto;}
+  .glucalc .hl{color:var(--accent);font-weight:700;}
+
+  /* ===== STEP 5:GQA ===== */
+  .gqalab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin:10px 0;
+    overflow-x:auto;}
+
+  /* ===== STEP 6:对照 ===== */
+  .ablab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin:10px 0;overflow-x:auto;}
+  .abrow{display:flex;align-items:center;gap:11px;margin:7px 0;cursor:pointer;}
+  .abrow .an{font-family:var(--mono);font-size:12px;width:118px;flex-shrink:0;color:var(--ink2);}
+  .abrow.sel .an{color:var(--accent);font-weight:700;}
+  .abrow .at{flex:1;min-width:130px;height:24px;background:#F4F2EA;border:1px solid var(--border);border-radius:7px;overflow:hidden;}
+  .abrow .af{height:100%;border-radius:6px 0 0 6px;transition:width .45s cubic-bezier(.2,.7,.2,1);}
+  .abrow .av{font-family:var(--mono);font-size:12.5px;font-weight:700;width:96px;text-align:right;flex-shrink:0;
+    font-variant-numeric:tabular-nums;}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <header>
+    <span class="filename">12_llama_viz.html</span>
+    <h1>把 GPT-2 升级成 LLaMA:四个零件</h1>
+    <p class="subtitle">
+      第 3 章那台 GPT 是 <b>2019 年</b>的样子。今天的开源模型(LLaMA / Qwen / Mistral / DeepSeek)长得不太一样了 ——
+      但换掉的<b>不是 Transformer 本身</b>,而是它身上四个零件:
+      <span class="term" data-term="RoPE · 旋转位置编码" data-key="rope" data-def="不再用一张可学习的位置表,而是把位置编成旋转角度,直接转进 q/k 里。注意力分数因此只依赖两个 token 的相对距离。">RoPE</span>、
+      <span class="term" data-term="RMSNorm · 均方根归一化" data-key="rmsnorm" data-def="LayerNorm 的简化版:只除以均方根,不减均值、不带 bias。少一半算子,效果基本持平。">RMSNorm</span>、
+      <span class="term" data-term="SwiGLU · 门控前馈网络" data-key="swiglu" data-def="FFN 的门控版:一路过 SiLU 当闸门,一路当内容,逐元素相乘。比 ReLU 一刀切负数更精细。">SwiGLU</span>、
+      <span class="term" data-term="GQA · 分组查询注意力" data-key="gqa" data-def="多个 query 头共享一份 K/V。推理时 KV cache 按 kv 头数算,所以显存直接按比例省。">GQA</span>。
+      注意力、残差、训练循环一行没动。本关一次换一个,每个都能单独开关,最后跑一组
+      <b>六选一的真实对照</b>。配套代码 <code>phase3-moe/10_llama.py</code>。
+    </p>
+  </header>
+
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">老架构的四处别扭</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">RoPE:位置变成角度</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">RMSNorm:少做一半</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">SwiGLU:给 FFN 装闸门</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">GQA:K/V 拼车</div></div>
+    <div class="step-tab" data-step="5"><div class="num">STEP 6</div><div class="label">四件齐上 · 算总账</div></div>
+  </div>
+
+  <div class="hp-bar">
+    <span class="hp-label">这一关</span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">n_embd <b>128</b> <i>主干维度</i></span>
+    <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">n_head <b>4</b> <i>query 头数</i></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">head_size <b>32</b> <i>=128/4</i></span>
+    <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">n_kv_head <b>2</b> <i>K/V 头数(GQA)</i></span>
+    <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">block_size <b>64</b> <i>上下文</i></span>
+    <span class="hp-note">底座 = 第 3 章那台 4 层 GPT · 配套 <code>10_llama.py</code></span>
+  </div>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>① 老架构的四处别扭</h2>
+    <p class="lead">
+      第 3 章那台 GPT 能跑、也训得动。但把它放到 2023 年之后的标准看,有四个地方会被换掉。
+      <b>点下面任意一处</b>,看它在第 3 章代码里是哪一行、代价是什么、今天换成了什么:
+    </p>
+
+    <div class="painrow" id="painRow"></div>
+    <div class="paincard" id="painCard"></div>
+
+    <div class="note">
+      四处别扭里,<b>只有 GQA 是纯粹为了省</b>(省推理显存),另外三个都是"既省一点、也更好训一点"。
+      这一关按 位置 → 归一化 → FFN → 注意力 的顺序一个一个换。
+    </div>
+
+    <details class="dig">
+      <summary>换了这四件,它还算 Transformer 吗?</summary>
+      <div class="dig-body">
+        算,而且骨架一动没动:<b>逐 token 嵌入 → N 层(注意力子层 + FFN 子层,各带残差与归一化)→ 映射回词表</b>,
+        这条主干和 2017 年那篇论文一模一样。四个零件换的是"每个子层内部用什么实现":
+        位置怎么进来、归一化怎么算、FFN 用什么非线性、K/V 存几份。
+        所以你在第 3 章学的那套结构,今天读 LLaMA 的代码依然直接够用。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>为什么这四件是一起出现的?它们之间有关系吗?</summary>
+      <div class="dig-body">
+        没有强耦合,四件<b>互相独立</b>,任何一件都能单独用(所以本关每件都做成了单独的开关)。
+        它们凑在一起,是因为都在 2021–2023 年被反复验证"便宜且不亏",于是被 LLaMA 一次性打包进同一套配方,
+        后来的开源模型就照着抄。真正有点关系的是 RoPE 和 GQA:两个都作用在注意力里,
+        而且都对"推理时怎么处理长上下文"有影响。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:先修最要命的那个 —— 位置表是"背下来"的,一超长度就抓瞎。</div>
+  </section>
+
+  <!-- ============ STEP 2 ============ -->
+  <section class="panel" id="panel1">
+    <h2>② RoPE:把位置从"查表"变成"转角度"</h2>
+    <p class="lead">
+      第 3 章的位置信息来自一张 <code>nn.Embedding(block_size, n_embd)</code> 表:第几个位置就查第几行,加到 token 向量上。
+      <b>RoPE 换了个思路</b>:不加任何东西,而是把 q 和 k 这两个向量按"你在第几个位置"<b>旋转</b>一个角度。
+      向量两两配对当成平面上的点,位置越靠后转得越多。拖滑块看它怎么转:
+    </p>
+
+    <div class="ropelab">
+      <div class="ropedials" id="ropeDials"></div>
+      <div class="rk-row"><label>token 的位置 m</label>
+        <input type="range" id="ropePos" min="0" max="63" step="1" value="0">
+        <span class="rk-val" id="ropePosV">0</span></div>
+      <div class="hp-note" style="margin-top:2px">
+        四对维度 = 四个不同的转速。<b>靠前的转得快</b>(管邻近关系),<b>靠后的转得慢</b>(几十个位置才转一圈,管远距离)。
+        真实每个头有 <b>16</b> 对(head_size=32),这里只画前 4 对。
+      </div>
+    </div>
+
+    <div class="sub-h"><span class="badge">关键</span>转完之后,注意力只看得见"相对距离"</div>
+    <p class="lead" style="margin-bottom:12px">
+      这是 RoPE 真正的好处,不是省参数。把 q 放在位置 <b>m</b>、k 放在位置 <b>n</b>,
+      算出来的注意力分数 <code>q·k</code> <b>只跟 m−n 有关</b>,跟它俩具体在第几个位置无关。
+      拖两个滑块试试:一起往右拖,距离不变,分数纹丝不动。
+    </p>
+
+    <div class="ropelab">
+      <div class="rk-row"><label>q 的位置 m</label>
+        <input type="range" id="ropeM" min="0" max="63" step="1" value="5">
+        <span class="rk-val" id="ropeMV">5</span></div>
+      <div class="rk-row"><label>k 的位置 n</label>
+        <input type="range" id="ropeN" min="0" max="63" step="1" value="3">
+        <span class="rk-val" id="ropeNV">3</span></div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="ropeDist">2</div><div class="drl">相对距离 m−n</div></div>
+        <div class="dr"><div class="drv" id="ropeDot" style="color:var(--accent)">–</div><div class="drl">注意力分数 q·k</div></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="ropeShift">两个一起 +1(距离不变)</button>
+        <button class="btn" id="ropeReset">复位</button>
+      </div>
+      <div class="note" id="ropeNote" style="margin-top:10px"></div>
+    </div>
+
+    <div class="codepath">↳ 代码:<b>10_llama.py</b> 的 <code>build_rope_cache</code> / <code>apply_rope</code> · 开关 <code>--rope 1</code></div>
+
+    <details class="dig">
+      <summary>"只依赖相对距离"为什么值钱?</summary>
+      <div class="dig-body">
+        因为语言里真正重要的是"<b>这个词和那个词隔多远</b>",不是"它们在第几个字符"。
+        同一句话出现在文章开头还是第 900 个 token,内部关系应该一样。
+        可学习的位置表做不到这点:它给每个绝对位置一行独立的参数,第 900 行和第 3 行毫无关系,
+        <b>而且训练时没见过的位置(超过 block_size)根本没有那一行</b> —— 这就是老架构"外推不了"的根源。
+        RoPE 把位置变成角度之后,超出训练长度也照样能转(效果会下降,但不是无中生有),
+        所以后来那些"把上下文从 4K 拉到 128K"的做法(NTK / YaRN 之类),动的都是 RoPE 的频率。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>为什么是"两两配对"地转?</summary>
+      <div class="dig-body">
+        旋转是<b>平面</b>上的操作,得有两个坐标才能定义"转多少度"。
+        所以 RoPE 把 head_size=32 的向量拆成 <b>16 对</b>,每一对当成一个平面上的点,各自按自己的频率转。
+        每对配一个不同的转速,是为了让模型同时拥有"看近"和"看远"两种尺度 ——
+        转得快的那几对,隔几个位置角度就差很多,适合分辨近处;转得慢的那几对,几十个位置才转一点,
+        用来编码长距离。这和傅里叶那套"用不同频率叠出复杂信号"的思路是一个味道。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>它对 v 也转吗?</summary>
+      <div class="dig-body">
+        <b>不转</b>,只转 q 和 k。因为位置信息是要影响"<b>谁该看谁</b>"这个打分过程,
+        而打分只用到 q·k;v 是"被搬运的内容",不参与打分。代码里也就是
+        <code>apply_rope(q, …)</code> 和 <code>apply_rope(k, …)</code> 两行,没有 v 的份。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:位置解决了。再看每一层都要做两次、但其实做多了的那个操作 —— 归一化。</div>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="panel" id="panel2">
+    <h2>③ RMSNorm:同一件事,少做一半</h2>
+    <p class="lead">
+      <span class="term" data-term="LayerNorm · 层归一化" data-key="layernorm" data-def="对每个位置那一根向量做归一化:先减均值,再除以标准差,最后乘缩放、加偏置。">LayerNorm</span>
+      做两件事:<b>①减均值</b>(把这根向量挪到 0 附近)、<b>②除以标准差</b>(把尺度拉回 1 附近)。
+      RMSNorm 发现第 ① 步基本没用,干脆只做第 ②:<b>直接除以均方根</b>。
+      点下面切换,看同一根向量在两种归一化下的处理步骤:
+    </p>
+
+    <div class="btn-row" id="normToggle">
+      <button class="btn primary">LayerNorm(第 3 章)</button>
+      <button class="btn">RMSNorm(LLaMA)</button>
+    </div>
+    <div class="normlab" id="normLab"></div>
+
+    <div class="note" id="normNote"></div>
+
+    <div class="codepath">↳ 代码:<b>10_llama.py</b> 的 <code>RMSNorm</code> · 开关 <code>--rmsnorm 1</code></div>
+
+    <details class="dig">
+      <summary>减均值这一步,凭什么说它"基本没用"?</summary>
+      <div class="dig-body">
+        这是个<b>经验结论,不是数学定理</b>。RMSNorm 那篇论文(2019)做的就是拆开来做消融:
+        把 LayerNorm 的"减均值"去掉,在多个任务上训练稳定性和最终效果都没有明显损失,
+        但省掉了一次求均值、一次减法,以及每层的 bias 参数。
+        后来 LLaMA 等一批模型跟进采用,等于用大规模训练又验证了一遍。
+        本关的玩具规模也能看到同样的现象:val loss 基本打平(见 STEP 6 的对照),参数还少了一点。
+        <b>省下的那点算力单看很小</b>,但归一化在每层要做两次、几十上百层累起来就不小了。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:归一化省完了,轮到占参数大头的 FFN —— 那个一刀切负数的 ReLU。</div>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="panel" id="panel3">
+    <h2>④ SwiGLU:给 FFN 装一道闸门</h2>
+    <p class="lead">
+      第 3 章的 FFN 是 <code>放大 → ReLU → 压回</code>。ReLU 很粗暴:<b>负的全归零,正的原样通过</b>。
+      SwiGLU 换成<b>门控</b>:同一个输入走两路,一路过
+      <span class="term" data-term="SiLU · Swish 激活" data-key="swiglu" data-def="SiLU(x) = x · sigmoid(x)。形状像平滑版 ReLU,负半轴不是硬归零而是缓慢趋近 0,处处可导。">SiLU</span>
+      当<b>闸门</b>,一路当<b>内容</b>,两路<b>逐元素相乘</b>——
+      闸门决定每个通道放多少内容过去。拖滑块看两种做法怎么处理同一个值:
+    </p>
+
+    <div class="rk-row"><label>某个通道的输入值 x</label>
+      <input type="range" id="gluX" min="-3" max="3" step="0.05" value="-1.2">
+      <span class="rk-val" id="gluXV">-1.20</span></div>
+    <div class="glulab" id="gluLab"></div>
+    <div class="note" id="gluNote"></div>
+
+    <div class="sub-h"><span class="badge">算账</span>三个矩阵,为什么参数没变多?</div>
+    <div class="glucalc" id="gluCalc"></div>
+
+    <div class="codepath">↳ 代码:<b>10_llama.py</b> 的 <code>SwiGLU</code> · 开关 <code>--swiglu 1</code></div>
+
+    <details class="dig">
+      <summary>门控到底强在哪?ReLU 不也能"关掉"通道吗?</summary>
+      <div class="dig-body">
+        差别在<b>谁来决定关不关、关多少</b>。
+        ReLU 的开关是<b>它自己</b>:这个通道的值为负就关死、为正就全开,没有中间态,也没有第二个信号参与。
+        门控的开关来自<b>另一路独立的线性变换</b>:内容是一路算出来的,闸门是另一路算出来的,
+        于是模型可以学出"这个通道的内容有用,但在当前上下文里只放三成过去"。
+        多出来的那一路矩阵,买到的就是这种<b>逐通道、连续可调</b>的控制力。
+        实测上它通常带来一点点稳定收益,不是革命性的 —— 属于"便宜且不亏"那一类改动。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>SiLU、Swish、GELU 是什么关系?</summary>
+      <div class="dig-body">
+        <b>SiLU 和 Swish 是同一个函数的两个名字</b>(<code>x·sigmoid(x)</code>),分别在两篇论文里被独立提出。
+        GELU 是另一个形状很接近的平滑激活(GPT-2 用的就是它)。
+        三者共同点是:都比 ReLU 平滑,负半轴不硬归零而是缓慢趋近 0,处处可导。
+        实践里换来换去差别很小,<b>真正带来变化的是"门控"这个结构</b>,而不是选了哪个平滑激活 ——
+        所以名字里那个 GLU(Gated Linear Unit)才是重点。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:前三件都在省算力和参数。最后一件省的是另一样东西 —— 推理时的显存。</div>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="panel" id="panel4">
+    <h2>⑤ GQA:让几个 query 头拼一份 K/V</h2>
+    <p class="lead">
+      第 5 章讲过 <span class="term" data-term="KV-cache · 键值缓存" data-key="kv-cache" data-def="把过去每个 token 的 K/V 缓存下来,生成新 token 时只算新的一列,避免重算整段。">KV-cache</span>:
+      推理时把每个 token 的 K/V 存下来复用。问题是<b>它会一直变大</b> ——
+      上下文每多一个 token,就要多存一份 K/V,长对话里它能吃掉比模型权重还多的显存。
+      GQA 的办法很直接:<b>query 头保持 4 个,但 K/V 只留 2 份,每 2 个 query 头共用一份</b>。
+      拖滑块看连线和账本:
+    </p>
+
+    <div class="rk-row"><label>n_kv_head(K/V 存几份)</label>
+      <input type="range" id="gqaK" min="1" max="4" step="1" value="2">
+      <span class="rk-val" id="gqaKV">2</span></div>
+    <div class="gqalab" id="gqaLab"></div>
+    <div class="dotread">
+      <div class="dr"><div class="drv" id="gqaKV1">–</div><div class="drl">每 token 的 KV cache</div></div>
+      <div class="dr"><div class="drv" id="gqaSave" style="color:var(--good)">–</div><div class="drl">相比 MHA 省下</div></div>
+      <div class="dr"><div class="drv" id="gqaName" style="color:var(--accent)">–</div><div class="drl">这个配置叫</div></div>
+    </div>
+    <div class="note" id="gqaNote"></div>
+
+    <div class="codepath">↳ 代码:<b>10_llama.py</b> 的 <code>Attention</code>(<code>k_proj</code>/<code>v_proj</code> 只投 <code>n_kv_head</code> 份 + <code>repeat_interleave</code>)· 开关 <code>--n-kv-head 2</code></div>
+
+    <details class="dig">
+      <summary>共享了 K/V,注意力还算"多头"吗?</summary>
+      <div class="dig-body">
+        还算。<b>每个 query 头依然有自己独立的 <code>Wq</code></b>,依然算出自己的一套注意力权重、聚合出自己的一根输出向量。
+        共享的只是"被查询的那一侧"。打个比方:4 个人各自带着自己的问题(query)去查资料,
+        原本一人一套资料(K/V),现在两人合看一套 —— 问的问题还是各问各的,得到的答案也各不相同,
+        只是可查的资料副本少了。表达力确实略有损失,所以是 <b>4→2</b> 这种温和的共享,
+        而不是一步到位全共享。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>为什么不干脆压到 1 份(MQA)?</summary>
+      <div class="dig-body">
+        可以,那就是 <b>MQA(Multi-Query Attention)</b>,省得最狠(本关配置下 KV cache 只剩 1/4),
+        代码里 <code>--n-kv-head 1</code> 就能跑。代价是表达力损失更明显、训练也更容易不稳。
+        GQA 正是被当作 <b>MHA 与 MQA 之间的折中</b>提出来的:
+        大部分显存收益拿到手,质量损失又小到可以忽略。所以现在主流模型多用 GQA(比如 64 个 query 头配 8 份 K/V),
+        而不是走极端。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:四件都换完了。回到第 3 章那台 GPT 边上,把六组真实训练摆一起算总账。</div>
+  </section>
+
+  <!-- ============ STEP 6 ============ -->
+  <section class="panel" id="panel5">
+    <h2>⑥ 四件齐上:六组真实对照</h2>
+    <p class="lead">
+      同一份数据、同一套超参、同样 5000 步,只换零件,一共跑了<b>六组</b>:
+      老架构基线、四个零件各自单开、以及四件齐上。点柱子看每一组的数:
+    </p>
+
+    <div class="btn-row" id="abMetric">
+      <button class="btn primary">val loss(越低越好)</button>
+      <button class="btn">总参数</button>
+      <button class="btn">KV cache / token</button>
+    </div>
+    <div class="ablab" id="abLab"></div>
+    <div class="note" id="abNote"></div>
+
+    <details class="dig">
+      <summary>诚实交代:哪些差异是真的,哪些只是噪声</summary>
+      <div class="dig-body">
+        六组都是<b>单种子、各跑一次</b>,所以差多少要分开看:
+        <b>RMSNorm(−0.001)和 GQA(−0.005)这个量级基本就是噪声</b>,
+        换个随机种子完全可能翻过来 —— 别据此说"RMSNorm 更好"。
+        <b>SwiGLU 单开 −0.039、四件齐上 −0.054</b> 幅度大得多,更可能是真的,
+        但严格讲也该多跑几个种子才敢下结论。
+        <br><br>
+        更要紧的是:这四件在真实模型上被采用,靠的<b>本来就不主要是 loss</b>,而是
+        ① 大规模下的训练稳定性;② 长上下文的外推能力(RoPE);③ 推理显存与吞吐(GQA)。
+        这三样在 0.8M 参数、64 上下文的玩具规模上根本显不出来。
+        本关能<b>确实测到</b>、且不依赖规模的只有一条:<b>KV cache 实打实少了一半</b>。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>那我什么时候能看到这四件的真实收益?</summary>
+      <div class="dig-body">
+        把三个条件里的任意一个放大就能看到:<b>模型更大</b>(几亿参数往上,训练稳定性开始成为瓶颈)、
+        <b>上下文更长</b>(几千 token 往上,RoPE 的外推和 KV cache 的显存都成为硬约束)、
+        <b>真做推理服务</b>(并发几十上百条对话,KV cache 直接决定你一张卡能塞多少用户)。
+        本项目停在玩具规模,是因为再往上就不是"看懂机制"的问题,而是要真金白银的算力了。
+      </div>
+    </details>
+
+    <div class="sub-h"><span class="badge">达标</span>本关实测(六次训练 · 各 5000 步 · tiny shakespeare)</div>
+    <ul class="checklist" id="okList"></ul>
+
+    <div class="sub-h"><span class="badge">Q&A</span>常见疑问</div>
+    <details class="dig">
+      <summary>今天的模型只改了这四处吗?</summary>
+      <div class="dig-body">
+        这四件是<b>覆盖面最广、几乎人人都用</b>的一组,但不是全部。常见的还有:
+        <b>权重绑定</b>与词表大小的取舍、<b>QK-Norm</b>(对 q/k 再做一次归一化,稳大模型训练)、
+        <b>MoE</b>(第 11 章那关)、更长上下文的位置插值(NTK / YaRN)、
+        以及注意力实现层面的工程优化(FlashAttention、PagedAttention)。
+        再加上 MoE,你手上这套已经能拼出一个相当接近现代开源模型的骨架了。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>第 11 章的 MoE 和这一关能一起用吗?</summary>
+      <div class="dig-body">
+        能,而且真实模型就是这么干的。DeepSeek-V3、Qwen 的 MoE 版本,都是
+        <b>RoPE + RMSNorm + SwiGLU + GQA 打底,再把 FFN 换成 MoE</b>。
+        因为两边动的是不同零件:这一关换的是位置编码、归一化、FFN 内部结构和 K/V 份数,
+        第 11 章换的是"FFN 有几份、每个 token 走哪几份"。
+        本项目把它们拆成两关,就是为了让你能一件一件看清楚,而不是一上来面对一整套配方。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>学完这一关,我离读懂真实开源模型的代码还差多远?</summary>
+      <div class="dig-body">
+        结构上基本不差了。去翻一份 LLaMA 或 Qwen 的建模文件,你会看到的正是:
+        <code>RMSNorm</code>、<code>rotary_emb</code>、<code>gate_proj/up_proj/down_proj</code>、
+        <code>num_key_value_heads</code> —— 这一关这四个零件的名字。
+        剩下的差距主要在工程侧:分布式训练怎么切、推理怎么批处理和调度、量化怎么做。
+        那些是"把它跑到生产上"的问题,不再是"它是怎么算的"的问题。
+      </div>
+    </details>
+
+    <div class="codepath">↳ 跑法:<code>python 10_llama.py</code>(四件齐上)· <code>--preset gpt2</code>(老架构对照)· <code>--preset rope</code> 等单开一件</div>
+
+    <div class="congrats" id="congrats">
+      <div class="ct">🎉 把 GPT-2 升级成 LLaMA · 通关</div>
+      <div class="cs">你已经亲手把位置表换成旋转、把 LayerNorm 换成 RMSNorm、给 FFN 装上闸门、让 K/V 拼车。再加上第 11 章的 MoE,现代开源模型那套配方,你四件零件都手搓过一遍了。</div>
+    </div>
+  </section>
+
+  <div class="nav">
+    <button class="btn" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+
+</div>
+
+<canvas id="confetti"></canvas>
+
+<script>
+/* ================================================================
+   REAL-DATA:全部来自 10_llama.py 的六次真实训练
+   (mps · 各 5000 步 · seed 1337 · 同一份 tiny shakespeare)
+   python 10_llama.py --preset gpt2 / rope / rmsnorm / swiglu / gqa / llama
+   ================================================================ */
+const AB=[
+  {key:"gpt2", name:"老架构基线(第 3 章)", desc:"位置表 + LayerNorm + ReLU FFN + MHA,四件全不开", val:1.5779, params:816000, kv:1024},
+  {key:"rope", name:"只开 RoPE", desc:"位置表换成旋转位置编码,其余保持老架构", val:1.5626, params:808000, kv:1024},
+  {key:"rmsnorm", name:"只开 RMSNorm", desc:"LayerNorm 换成 RMSNorm,其余保持老架构", val:1.577, params:815000, kv:1024},
+  {key:"swiglu", name:"只开 SwiGLU", desc:"ReLU FFN 换成门控 FFN,其余保持老架构", val:1.5389, params:818000, kv:1024},
+  {key:"gqa", name:"只开 GQA", desc:"K/V 头数 4 → 2,其余保持老架构", val:1.573, params:751000, kv:512},
+  {key:"llama", name:"四件齐上(LLaMA)", desc:"RoPE + RMSNorm + SwiGLU + GQA,一次全开", val:1.5235, params:743000, kv:512},
+];
+
+/* ============ 步骤切换 ============ */
+const NSTEP=6;
+const tabs=document.querySelectorAll('.step-tab');
+const panels=[];for(let i=0;i<NSTEP;i++)panels.push(document.getElementById('panel'+i));
+let cur=0;
+function goto(i){
+  cur=Math.max(0,Math.min(NSTEP-1,i));
+  tabs.forEach(t=>t.classList.toggle('active',+t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active',idx===cur));
+  document.getElementById('prevBtn').disabled = cur===0;
+  document.getElementById('nextBtn').textContent = cur===NSTEP-1 ? '完成 🎉' : '下一步 →';
+  const hash='#step-'+(cur+1);
+  if(location.hash!==hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+document.getElementById('prevBtn').addEventListener('click',()=>goto(cur-1));
+document.getElementById('nextBtn').addEventListener('click',()=>{ if(cur===NSTEP-1) celebrate(); else goto(cur+1); });
+
+
+/* ============ STEP 1:四处别扭 ============ */
+const PAINS=[
+ {n:"别扭 ①",t:"位置靠背表",w:"外推不了",
+  old:'第 3 章:<code>position_embedding_table = nn.Embedding(block_size, n_embd)</code>,每个绝对位置一行,查表后加到 token 向量上。',
+  neu:'换成 <b>RoPE</b>:不加任何向量,而是按位置把 q/k 旋转一个角度。',
+  cost:'代价:那张表只有 block_size 行,<b>训练时没见过的位置压根没有对应的参数</b>,想把上下文拉长就得重训。而且第 900 行和第 3 行之间毫无关系,模型得自己从头学"远近"。'},
+ {n:"别扭 ②",t:"归一化做多了",w:"白花算子",
+  old:'第 3 章:<code>nn.LayerNorm(n_embd)</code>,先减均值、再除以标准差,还带一个 bias。',
+  neu:'换成 <b>RMSNorm</b>:只除以均方根,不减均值、不带 bias。',
+  cost:'代价:减均值那一步在实测里贡献很小,但它<b>每层要做两次</b>,几十上百层累起来就是白花的算力和参数。'},
+ {n:"别扭 ③",t:"ReLU 一刀切",w:"没有中间态",
+  old:'第 3 章:<code>nn.Linear → nn.ReLU → nn.Linear</code>,负数全部归零。',
+  neu:'换成 <b>SwiGLU</b>:一路当内容、一路过 SiLU 当闸门,逐元素相乘。',
+  cost:'代价:ReLU 的开关是通道自己说了算,只有"全开"和"关死"两种状态,做不到"这个通道放三成过去"。'},
+ {n:"别扭 ④",t:"每头各存 K/V",w:"推理吃显存",
+  old:'第 3 章:4 个头,每个头有自己的 <code>Wk</code>/<code>Wv</code>,推理时要缓存 4 份 K/V。',
+  neu:'换成 <b>GQA</b>:query 仍是 4 个头,K/V 只留 2 份,每 2 个 query 头合用一份。',
+  cost:'代价:KV cache 随上下文线性增长,长对话时它能吃掉比模型权重还多的显存 —— 这是推理服务最硬的瓶颈之一。'},
+];
+function renderPain(sel){
+  document.getElementById('painRow').innerHTML=PAINS.map((p,i)=>
+    `<button class="pain${i===sel?' active':''}" data-i="${i}">
+       <div class="pn">${p.n}</div><div class="pt">${p.t}</div><div class="pw">${p.w}</div></button>`).join('');
+  const p=PAINS[sel];
+  document.getElementById('painCard').innerHTML=
+    `<div class="old"><span class="badge2 b-old">2019</span><div>${p.old}</div></div>
+     <div class="new"><span class="badge2 b-new">今天</span><div>${p.neu}</div></div>
+     <div class="cost">${p.cost}</div>`;
+  document.querySelectorAll('.pain').forEach(b=>b.addEventListener('click',()=>renderPain(+b.dataset.i)));
+}
+renderPain(0);
+
+/* ============ STEP 2:RoPE ============ */
+const HS=32;                                  // head_size
+const INV=[]; for(let i=0;i<HS/2;i++) INV.push(1/Math.pow(10000, (2*i)/HS));
+/* 固定一对 q/k 向量(种子化的伪随机,页面每次打开都一样)*/
+function seeded(n,seed){const a=[];let s=seed;for(let i=0;i<n;i++){s=(s*1103515245+12345)&0x7fffffff;a.push((s/0x7fffffff)*2-1);}return a;}
+const QV=seeded(HS,7), KV=seeded(HS,23);
+function rope(vec,pos){                       // 和 10_llama.py 的 apply_rope 同一套公式
+  const out=new Array(HS);
+  for(let i=0;i<HS/2;i++){
+    const ang=pos*INV[i], c=Math.cos(ang), s=Math.sin(ang);
+    const x1=vec[2*i], x2=vec[2*i+1];
+    out[2*i]=x1*c-x2*s; out[2*i+1]=x1*s+x2*c;
+  }
+  return out;
+}
+const dot=(a,b)=>a.reduce((t,v,i)=>t+v*b[i],0);
+
+function renderDials(){
+  const pos=+document.getElementById('ropePos').value;
+  document.getElementById('ropePosV').textContent=pos;
+  const R=34, C=44;
+  document.getElementById('ropeDials').innerHTML=[0,1,2,3].map(i=>{
+    const ang=pos*INV[i];
+    const x=C+R*Math.cos(-ang), y=C+R*Math.sin(-ang);
+    const turns=(ang/(2*Math.PI));
+    const wave=(2*Math.PI/INV[i]);
+    return `<div class="dial">
+      <div class="dl">第 ${i+1} 对维度</div>
+      <svg width="88" height="88" viewBox="0 0 88 88" role="img" aria-label="第${i+1}对维度的旋转角">
+        <circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="var(--border)" stroke-width="1.5"/>
+        <line x1="${C}" y1="${C}" x2="${C+R}" y2="${C}" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 3"/>
+        <line x1="${C}" y1="${C}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="var(--accent)"/>
+      </svg>
+      <div class="dv">转了 ${turns.toFixed(2)} 圈</div>
+      <div class="dl">${wave<1000?('每 '+wave.toFixed(0)+' 个位置一圈'):'转一圈要几千位置'}</div>
+    </div>`;
+  }).join('');
+}
+function renderDot(){
+  const m=+document.getElementById('ropeM').value, n=+document.getElementById('ropeN').value;
+  document.getElementById('ropeMV').textContent=m;
+  document.getElementById('ropeNV').textContent=n;
+  const d=dot(rope(QV,m),rope(KV,n));
+  document.getElementById('ropeDist').textContent=(m-n);
+  document.getElementById('ropeDot').textContent=d.toFixed(4);
+  const same=dot(rope(QV,Math.min(63,m+7)),rope(KV,Math.min(63,n+7)));
+  document.getElementById('ropeNote').innerHTML=
+    `把 m、n 同时右移 7 个位置(变成 ${Math.min(63,m+7)} 和 ${Math.min(63,n+7)}),分数是 <b>${same.toFixed(4)}</b> ——
+     和上面那个数一样。<b>绝对位置换了,分数不变;只要距离变了,分数才变。</b>`;
+}
+['ropeM','ropeN'].forEach(id=>document.getElementById(id).addEventListener('input',renderDot));
+document.getElementById('ropePos').addEventListener('input',renderDials);
+document.getElementById('ropeShift').addEventListener('click',()=>{
+  const M=document.getElementById('ropeM'), N=document.getElementById('ropeN');
+  if(+M.value<63 && +N.value<63){ M.value=+M.value+1; N.value=+N.value+1; renderDot(); }
+});
+document.getElementById('ropeReset').addEventListener('click',()=>{
+  document.getElementById('ropeM').value=5; document.getElementById('ropeN').value=3; renderDot();
+});
+renderDials(); renderDot();
+
+/* ============ STEP 3:LayerNorm vs RMSNorm ============ */
+const NVEC=[2.4,-1.1,0.3,3.2,-0.8,1.6];
+function renderNorm(isRMS){
+  const mean=NVEC.reduce((a,b)=>a+b,0)/NVEC.length;
+  const centered=NVEC.map(v=>v-mean);
+  const std=Math.sqrt(centered.reduce((a,b)=>a+b*b,0)/NVEC.length);
+  const rms=Math.sqrt(NVEC.reduce((a,b)=>a+b*b,0)/NVEC.length);
+  const out=isRMS? NVEC.map(v=>v/rms) : centered.map(v=>v/std);
+  const cells=a=>`<div class="vecrow">${a.map(v=>`<span class="vcell">${v.toFixed(2)}</span>`).join('')}</div>`;
+  document.getElementById('normLab').innerHTML=`
+    <div class="hp-note" style="margin-bottom:8px">一根 6 维的向量(真实是 n_embd=128 维):</div>
+    ${cells(NVEC)}
+    <div class="nsteps" style="margin-top:12px">
+      <div class="nstep${isRMS?' skip':''}">
+        <div class="nh">① 减均值</div>
+        <div class="nb">${isRMS?'RMSNorm 跳过这一步':'均值 = '+mean.toFixed(3)+',每个数都减掉它'}</div>
+      </div>
+      <div class="nstep">
+        <div class="nh">② 除以${isRMS?'均方根':'标准差'}</div>
+        <div class="nb">${isRMS?'RMS = '+rms.toFixed(3):'标准差 = '+std.toFixed(3)}</div>
+      </div>
+      <div class="nstep">
+        <div class="nh">③ 乘可学习缩放</div>
+        <div class="nb">${isRMS?'只有 weight(128 个)':'weight + bias(256 个)'}</div>
+      </div>
+    </div>
+    <div class="hp-note" style="margin:10px 0 4px">输出:</div>
+    ${cells(out)}`;
+  document.getElementById('normNote').innerHTML= isRMS
+    ? `RMSNorm 少了"减均值",所以输出<b>不再以 0 为中心</b>(上面的数正负分布和输入一致),但尺度同样被拉回了 1 附近 —— 归一化真正要的是后者。每层还省下 128 个 bias 参数。`
+    : `LayerNorm 先把向量挪到 0 附近,再压尺度。<b>两步都做</b>,并且带 weight 和 bias 两组参数。`;
+  document.querySelectorAll('#normToggle .btn').forEach((b,i)=>b.classList.toggle('primary',i===(isRMS?1:0)));
+}
+document.querySelectorAll('#normToggle .btn').forEach((b,i)=>b.addEventListener('click',()=>renderNorm(i===1)));
+renderNorm(false);
+
+/* ============ STEP 4:SwiGLU ============ */
+const silu=x=>x/(1+Math.exp(-x));
+function renderGLU(){
+  const x=parseFloat(document.getElementById('gluX').value);
+  document.getElementById('gluXV').textContent=x.toFixed(2);
+  const relu=Math.max(0,x);
+  const gate=silu(x*1.0), up=x*0.9+0.4;     // 两路各自的线性变换(示意系数)
+  const glu=gate*up;
+  const bar=(v,color)=>{
+    const w=Math.min(Math.abs(v)/4*50,50);
+    return `<div class="gbar"><div class="gz"></div><div class="gf" style="background:${color};
+      ${v>=0?`left:50%;width:${w}%`:`left:${50-w}%;width:${w}%`}"></div></div>`;
+  };
+  document.getElementById('gluLab').innerHTML=`
+    <div class="gcard">
+      <h4>ReLU 版(第 3 章)</h4>
+      <div class="glabel"><span>输入 x</span><b>${x.toFixed(2)}</b></div>
+      ${bar(x,'#8C8A83')}
+      <div class="glabel"><span>ReLU(x) = max(0, x)</span><b>${relu.toFixed(2)}</b></div>
+      ${bar(relu,'var(--bad)')}
+      <div class="hp-note" style="margin-top:8px">${x<0?'负数 → <b>直接归零,信息全丢</b>':'正数 → 原样通过,不做任何调节'}</div>
+    </div>
+    <div class="gcard">
+      <h4>SwiGLU 版(LLaMA)</h4>
+      <div class="glabel"><span>闸门 SiLU(gate)</span><b>${gate.toFixed(2)}</b></div>
+      ${bar(gate,'var(--e1)')}
+      <div class="glabel"><span>内容 up</span><b>${up.toFixed(2)}</b></div>
+      ${bar(up,'var(--e2)')}
+      <div class="glabel"><span>输出 = 闸门 × 内容</span><b>${glu.toFixed(2)}</b></div>
+      ${bar(glu,'var(--accent)')}
+      <div class="hp-note" style="margin-top:8px">闸门值 <b>${gate.toFixed(2)}</b> 由另一路独立算出,所以能做到"放一部分过去"</div>
+    </div>`;
+  document.getElementById('gluNote').innerHTML= x<0
+    ? `x 是负的:ReLU 把它<b>压成 0</b>,这个通道到此为止;SwiGLU 的闸门值是 <b>${gate.toFixed(2)}</b> —— 注意它是<b>负的</b>,
+       SiLU 在负半轴会探到约 −0.28 再回升。所以闸门不只能"关小",还能<b>把内容反号</b>,这是 ReLU 做不到的;
+       而且整条曲线处处可导,不像 ReLU 在 0 处有个折角。`
+    : `x 是正的:ReLU 原样放行,<b>不做任何调节</b>;SwiGLU 仍按闸门值 ${gate.toFixed(2)} 缩放内容 —— 开关是连续的。`;
+}
+document.getElementById('gluX').addEventListener('input',renderGLU);
+renderGLU();
+(function(){
+  const d=128, relu=2*d*4*d, h=Math.ceil(8*d/3/8)*8, swi=3*d*h;
+  document.getElementById('gluCalc').innerHTML=
+    `ReLU 版 FFN:两个矩阵,隐层 4·n_embd = <span class="hl">512</span><br>
+     &nbsp;&nbsp;参数 ≈ 2 × 128 × 512 = <span class="hl">${relu.toLocaleString()}</span><br><br>
+     SwiGLU:三个矩阵(gate / up / down),所以隐层要收窄<br>
+     &nbsp;&nbsp;隐层 = 8/3 · n_embd ≈ <span class="hl">${h}</span>(凑成 8 的倍数)<br>
+     &nbsp;&nbsp;参数 ≈ 3 × 128 × ${h} = <span class="hl">${swi.toLocaleString()}</span><br><br>
+     两者相差不到 ${Math.abs(100*(swi-relu)/relu).toFixed(0)}% —— <b>这就是 8/3 这个奇怪系数的来历:让门控版和原版参数量对齐,比较才公平。</b>`;
+})();
+
+/* ============ STEP 5:GQA ============ */
+const QCOL=['var(--e0)','var(--e1)','var(--e2)','var(--e3)'];
+function renderGQA(){
+  const nkv=+document.getElementById('gqaK').value;
+  document.getElementById('gqaKV').textContent=nkv;
+  const nh=4, rep=nh/nkv, W=430, H=150;
+  let svg=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="query 头与 K/V 头的共享关系">`;
+  svg+=`<text x="8" y="18" font-size="11" font-family="ui-monospace" fill="#6B6B68">query 头(4 个,各问各的)</text>`;
+  svg+=`<text x="8" y="${H-8}" font-size="11" font-family="ui-monospace" fill="#6B6B68">K/V 头(${nkv} 份,被共用)</text>`;
+  for(let q=0;q<nh;q++){
+    const qx=45+q*100, kvi=Math.floor(q/rep), kx=45+(kvi*rep+ (rep-1)/2)*100;
+    svg+=`<line x1="${qx}" y1="46" x2="${kx}" y2="${H-40}" stroke="${QCOL[q]}" stroke-width="2" opacity=".55"/>`;
+  }
+  for(let q=0;q<nh;q++){
+    const qx=45+q*100;
+    svg+=`<circle cx="${qx}" cy="38" r="15" fill="${QCOL[q]}"/><text x="${qx}" y="42" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">q${q}</text>`;
+  }
+  for(let i=0;i<nkv;i++){
+    const kx=45+(i*rep+(rep-1)/2)*100;
+    svg+=`<rect x="${kx-26}" y="${H-48}" width="52" height="26" rx="8" fill="#fff" stroke="${QCOL[i*rep]}" stroke-width="2"/>`;
+    svg+=`<text x="${kx}" y="${H-30}" text-anchor="middle" font-size="11" font-weight="700" font-family="ui-monospace" fill="${QCOL[i*rep]}">K/V ${i}</text>`;
+  }
+  svg+=`</svg>`;
+  document.getElementById('gqaLab').innerHTML=svg;
+  const per=2*4*nkv*32, mha=2*4*4*32;   // 2(K和V) × n_layer × n_kv_head × head_size
+  document.getElementById('gqaKV1').textContent=per+' 个数';
+  document.getElementById('gqaSave').textContent=(100*(1-per/mha)).toFixed(0)+'%';
+  const name=nkv===4?'MHA(第 3 章)':(nkv===1?'MQA(最省)':'GQA');
+  document.getElementById('gqaName').textContent=name;
+  document.getElementById('gqaNote').innerHTML= nkv===4
+    ? `每个 query 头独占一份 K/V,就是第 3 章那套 <b>MHA</b>,一点没省。`
+    : (nkv===1
+      ? `4 个 query 头全部合用<b>同一份</b> K/V,这叫 <b>MQA</b>,省得最狠(${(100*(1-per/mha)).toFixed(0)}%),但表达力损失也最明显。`
+      : `每 <b>${rep}</b> 个 query 头合用一份 K/V,这就是 <b>GQA</b>。本关默认配置,KV cache 直接砍掉 ${(100*(1-per/mha)).toFixed(0)}%,而 query 头依然各问各的。`);
+}
+document.getElementById('gqaK').addEventListener('input',renderGQA);
+renderGQA();
+
+/* ============ STEP 6:六组对照 ============ */
+const AB_COLORS={gpt2:'#8C8A83',rope:'var(--e1)',rmsnorm:'var(--e2)',swiglu:'var(--e3)',gqa:'var(--e0)',llama:'var(--accent)'};
+let abMetric=0, abSel=5;
+function renderAB(){
+  const keys=['val','params','kv'];
+  const k=keys[abMetric];
+  const vals=AB.map(r=>r[k]);
+  const max=Math.max(...vals), min=Math.min(...vals);
+  const fmt=v=> k==='val'? v.toFixed(4) : (k==='params'? (v/1e6).toFixed(3)+' M' : v+' 个数');
+  // val loss 用"相对最好值"的方式画,否则四位小数的差别在柱子上看不出来
+  const width=v=> k==='val' ? 22+78*(max-v)/Math.max(max-min,1e-9) : 12+88*(v/max);
+  document.getElementById('abLab').innerHTML=AB.map((r,i)=>
+    `<div class="abrow${i===abSel?' sel':''}" data-i="${i}">
+       <div class="an">${r.name}</div>
+       <div class="at"><div class="af" style="width:${width(r[k]).toFixed(1)}%;background:${AB_COLORS[r.key]}"></div></div>
+       <div class="av">${fmt(r[k])}</div>
+     </div>`).join('');
+  document.querySelectorAll('.abrow').forEach(el=>el.addEventListener('click',()=>{abSel=+el.dataset.i;renderAB();}));
+  const r=AB[abSel], base=AB[0];
+  const dv=(r.val-base.val);
+  document.getElementById('abNote').innerHTML=
+    `<b>${r.name}</b> · ${r.desc}<br>
+     val loss <b>${r.val.toFixed(4)}</b>(基线 ${base.val.toFixed(4)},${dv<=0?'低了 '+Math.abs(dv).toFixed(4):'高了 '+dv.toFixed(4)})
+     · 参数 <b>${(r.params/1e6).toFixed(3)} M</b>
+     · 每 token KV cache <b>${r.kv} 个数</b>${r.kv<base.kv?`(省 ${(100*(1-r.kv/base.kv)).toFixed(0)}%)`:''}`;
+  document.querySelectorAll('#abMetric .btn').forEach((b,i)=>b.classList.toggle('primary',i===abMetric));
+}
+document.querySelectorAll('#abMetric .btn').forEach((b,i)=>b.addEventListener('click',()=>{abMetric=i;renderAB();}));
+renderAB();
+(function(){
+  const base=AB[0], ll=AB[5];
+  document.getElementById('okList').innerHTML=[
+    `四件齐上 val loss <b>${ll.val.toFixed(4)}</b>,老架构基线 <b>${base.val.toFixed(4)}</b>,低了 <b>${(base.val-ll.val).toFixed(4)}</b> —— 而且是在参数更少、KV cache 减半的前提下拿到的。`,
+    `每 token 的 KV cache 从 <b>${base.kv}</b> 降到 <b>${ll.kv}</b> 个数,<b>省 ${(100*(1-ll.kv/base.kv)).toFixed(0)}%</b> —— 这是本关唯一能在玩具规模上实打实测到的收益。`,
+    `参数从 <b>${(base.params/1e6).toFixed(3)} M</b> 变成 <b>${(ll.params/1e6).toFixed(3)} M</b>(位置表没了、bias 少了、FFN 按 8/3 对齐),结构变了但规模可比。`,
+    `RoPE 的相对性可验证:同一对 q/k 一起平移,注意力分数不变(见 STEP 2,实测偏差 &lt; 1e-5)。`,
+  ].map(t=>`<li><span class="ck">✓</span><div>${t}</div></li>`).join('');
+})();
+
+
+/* ============ 名词气泡 ============ */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent, def=el.dataset.def||'', key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def+(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8; if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw; if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el)); el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* ============ 通关庆祝 ============ */
+function celebrate(){
+  document.getElementById('congrats').classList.add('show');
+  const cv=document.getElementById('confetti'); cv.style.display='block';
+  const ctx=cv.getContext('2d'); cv.width=innerWidth; cv.height=innerHeight;
+  const COL=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const ps=[];for(let i=0;i<150;i++)ps.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    vx:(Math.random()-0.5)*3,vy:2+Math.random()*4,s:5+Math.random()*7,c:COL[i%COL.length],a:Math.random()*6.28,va:(Math.random()-0.5)*0.3});
+  let t0=null;
+  function frame(ts){ if(!t0)t0=ts; const el=ts-t0;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.04;p.a+=p.va;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.a);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.6);ctx.restore();});
+    if(el<3400) requestAnimationFrame(frame); else { ctx.clearRect(0,0,cv.width,cv.height); cv.style.display='none'; }
+  }
+  requestAnimationFrame(frame);
+  document.getElementById('congrats').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ============ 初始化:深链 ============ */
+const m=/^#step-(\d+)$/.exec(location.hash);
+goto(m?parseInt(m[1],10)-1:0);
+window.addEventListener('hashchange',()=>{const mm=/^#step-(\d+)$/.exec(location.hash);goto(mm?parseInt(mm[1],10)-1:0);});
+
+</script>
+<!--site-copyright-->
+<footer style="max-width:960px;margin:56px auto 0;padding:18px 24px 44px;border-top:1px solid var(--border);text-align:center;font-size:12px;color:var(--ink2);line-height:1.7">
+  © 2026 <a href="https://fim.ai" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">FIM Labs</a> · 从零手写大语言模型 · MIT License
+</footer>
+</body>
+</html>

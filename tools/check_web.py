@@ -81,6 +81,31 @@ for p in pages:
         if re.search(r"\.(js|css|woff2?|ttf|png|jpe?g|svg|gif)(\?|$)", url):
             bad(f"{p}: 引了外部资源，破坏离线可开：{url}")
 
+    # 标签成对：拼页面时最容易出的事故是 <style> 套 <style>，
+    # 后半段 CSS 会被当成正文渲染出来(第 12 章真踩过)。
+    for tag in ("style", "script"):
+        o, c = s.count(f"<{tag}>"), s.count(f"</{tag}>")
+        if o != c:
+            bad(f"{p}: <{tag}> {o} 个但 </{tag}> {c} 个，标签没配对")
+    if s.count("<style>") > 1:
+        bad(f"{p}: 有 {s.count('<style>')} 个 <style>，多半是拼接时套娃了，CSS 会漏成正文")
+
+    # 正文里不该出现裸 CSS 规则(同上，漏出来的样子就是这样)
+    body_only = re.sub(r"<style>.*?</style>", "", s, flags=re.S)
+    body_only = re.sub(r"<script>.*?</script>", "", body_only, flags=re.S)
+    if re.search(r"^\s*\.[a-zA-Z][\w-]*\{", body_only, re.M):
+        bad(f"{p}: 正文里出现了裸 CSS 规则，样式块可能没闭合")
+
+    # JS 里 getElementById 的 id，HTML 里必须真的存在。
+    # 这能抓住"照抄别的页面骨架、把它专有的初始化也抄了过来"这类错误：
+    # 那些 id 在本页不存在，运行时 ReferenceError/null 会打断后面的初始化。
+    ids = set(re.findall(r'id="([^"]+)"', s))
+    ids |= set(re.findall(r"\.id\s*=\s*'([^']+)'", s))      # JS 动态创建的元素也算数
+    ids |= set(re.findall(r"\.id\s*=\s*\"([^\"]+)\"", s))
+    for m in re.finditer(r"getElementById\(\s*'([A-Za-z][\w-]*)'\s*\)", s):
+        if m.group(1) not in ids:
+            bad(f"{p}: JS 找 #{m.group(1)}，但页面里没有这个 id（脚本会在这里断掉）")
+
 # ---------------------------------------------------- 2. step 数 / panel 数自洽
 step_count = {}
 for p in chapters:

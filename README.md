@@ -1,6 +1,7 @@
 # LLM from scratch ｜ 从 0 到 1 手搓大模型
 
-> 用最少的代码、最白的中文，把一个语言模型从「预测下一个字符」一路搭到「复现 GPT-2 124M」。
+> 用最少的代码、最白的中文，把一个语言模型从「预测下一个字符」一路搭到「复现 GPT-2 124M」，
+> 再往后走到后训练(SFT / LoRA / DPO)与现代架构(MoE、LLaMA 四件套)。
 > 不调包、不填 YAML，每一行都看得懂为什么。
 >
 > **English version → [jump to bottom](#-english).**
@@ -29,6 +30,7 @@
 - [`web/09_lora_viz.html`](web/09_lora_viz.html) — 第 9 章 · 手搓 LoRA(对应 `07_lora.py`):冻结底座只训低秩旁路 B·A(~0.94% 参数 / 4.7MB adapter)——拨 r 算账 + B=0 平滑出发 + 真实 loss 曲线与采样
 - [`web/10_dpo_viz.html`](web/10_dpo_viz.html) — 第 10 章 · 手搓 DPO(对应 `08_dpo.py`):偏好对齐,不训奖励模型/不走 RL——policy+冻结 ref + 隐式奖励 + DPO loss 滑块 + 真实曲线(loss↓/margin↑/准确率 0→100%)
 - [`web/11_moe_viz.html`](web/11_moe_viz.html) — 第 11 章 · 手搓 MoE(对应 `09_moe.py`):把 FFN 拆成 4 专家 + 路由器 top-2 派单,分工涌现热力图、负载均衡对照(top-1 关 aux 实测偏载滚雪球)、"参数翻倍算力不变"账本。1.35M 参数,大概是**全球最小的 MoE 之一**,机制却和 671B 的 DeepSeek 同款
+- [`web/12_llama_viz.html`](web/12_llama_viz.html) — 第 12 章 · 把 GPT-2 升级成 LLaMA(对应 `10_llama.py`):RoPE 把位置变成旋转角、RMSNorm 少做一半、SwiGLU 给 FFN 装闸门、GQA 让 K/V 拼车 —— 四个零件各能单独开关,附六组真实对照训练
 - [`web/glossary.html`](web/glossary.html) — 名词表(术语字典,正文术语 hover 即弹气泡)
 - [`web/notes.html`](web/notes.html) — 学习札记 / 彩蛋:正课之外的小故事(如 Transformer 前世今生:8 作者、翻译起源、家谱)
 
@@ -39,8 +41,9 @@
 ## 为什么要手搓
 
 - 只会用框架(LLaMA-Factory / TRL),你永远是「填配置的操作员」,模型一出问题就抓瞎。
-- 全程手搓又是浪费时间重造生产基建。
-- 正确顺序:**先手搓核心机制把原理吃透(Phase 1),再用生产工具做后训练(Phase 2)。**
+- 本仓库只回答一个问题:**这些轮子到底是怎么造出来的。**
+  从 bigram 到 GPT-2 124M、从 SFT/LoRA/DPO 到 MoE 与 LLaMA 四件套,全部手搓,不调框架。
+- 把原理吃透之后再回头用生产工具,你填的每个配置项才知道它在动什么。
 
 ---
 
@@ -66,8 +69,10 @@ phase2-sft-lora/     后训练：SFT + LoRA + DPO（逐步上线中）
                        `--load_lora ckpt_lora/lora.pt` 不训练、只把 adapter 叠回原始 base 做推理
   08_dpo.py            DPO 偏好对齐：policy + 冻结 ref + 隐式奖励，不训奖励模型/不走 RL（--lora 切换手段，已上线）
 
-phase3-moe/          现代架构：MoE 专家混合
+phase3-moe/          现代架构：MoE + LLaMA 四件套
   09_moe.py            手搓 MoE：FFN 换成 4 专家 + top-2 路由 + 负载均衡 aux loss（--top-k 1 --aux 0 观察偏载雪球）
+  10_llama.py          把 GPT-2 升级成 LLaMA：RoPE / RMSNorm / SwiGLU / GQA 四个零件，每个都能单独开关
+                       （--preset gpt2 是老架构基线，--preset llama 四件齐上）
 ```
 
 ---
@@ -87,10 +92,14 @@ phase3-moe/          现代架构：MoE 专家混合
 - [x] **手搓 LoRA**(`07_lora.py`):冻结底座,只训低秩旁路 B·A(~0.94% 参数)
 - [x] **手搓 DPO**(`08_dpo.py`):偏好对齐,不训奖励模型、不走 RL
 
-### Phase 3 — 现代架构 🚧 进行中
+### Phase 3 — 现代架构 ✅
 
 - [x] **手搓 MoE**(`09_moe.py`):FFN 拆成 4 专家 + top-2 路由,负载均衡与专家塌缩对照
-- [ ] 生产工具链(PEFT + TRL / LLaMA-Factory)等后续方向,视学习节奏排期
+- [x] **手搓 LLaMA 四件套**(`10_llama.py`):RoPE / RMSNorm / SwiGLU / GQA,逐件开关 + 六组对照
+
+> 到这里,这条学习线要手搓的东西就齐了:预训练 → 后训练 → 现代架构。
+> **生产工具链(LLaMA-Factory / TRL / PEFT)不在本仓库范围内** —— 那是"怎么用现成轮子"的问题,
+> 而本仓库从头到尾只回答"轮子是怎么造出来的"。
 
 ---
 

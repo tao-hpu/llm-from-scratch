@@ -106,6 +106,7 @@
     <a href="#bpe">BPE</a><a href="#fineweb">FineWeb-Edu</a><a href="#shard">shard</a><a href="#adamw">AdamW</a><a href="#bf16">bf16</a><a href="#flash-attention">Flash-Attention</a>
     <a href="#moe">MoE / 专家</a><a href="#router">路由器</a><a href="#load-balancing">负载均衡</a>
     <a href="#expert-collapse">专家塌缩</a><a href="#active-params">激活参数</a>
+    <a href="#rope">RoPE</a><a href="#rmsnorm">RMSNorm</a><a href="#swiglu">SwiGLU</a><a href="#gqa">GQA</a>
     <a href="#attention-paper">Attention Is All You Need</a>
   </div>
 
@@ -511,6 +512,47 @@
     <p>处理<b>一个 token</b> 实际参与计算的参数量。dense 模型里激活参数 = 总参数;
     MoE 里每 token 只走 top-k 个专家,激活参数远小于总参数 —— 所以模型简介里会写两个数字
     (如"总 671B / 激活 37B")。注意 <b>MoE 省的是算力(FLOPs),不是显存</b>:没被激活的专家参数也得放在显存里待命。</p>
+  </div>
+
+  <!-- ============ 现代架构零件 ============ -->
+  <div class="sec-h"><span class="sh-num">I</span>现代架构零件(Phase 3)</div>
+
+  <div class="gentry" id="rope">
+    <h3>RoPE <span class="en">Rotary Position Embedding · 旋转位置编码</span></h3>
+    <p>把"第几个位置"编码成<b>旋转角度</b>,直接转进 q 和 k 里,而不是像
+    <a href="#positional-embedding" style="color:var(--accent)">位置嵌入</a>那样查一张表再相加。
+    向量按两两一对当成平面上的点,位置越靠后转得越多;每对配一个不同的转速,快的管近处、慢的管远处。</p>
+    <p>它最重要的性质是:转完之后 <code>q·k</code> <b>只依赖两个 token 的相对距离</b>,与它们的绝对位置无关 ——
+    这正是语言里真正要紧的信息。而且没有"表只有 block_size 行"的限制,所以后来把上下文从 4K 拉到 128K 的做法
+    (NTK / YaRN 等)动的都是 RoPE 的频率。<b>只作用在 q、k 上,v 不转</b>(位置只该影响"谁看谁",不影响搬运的内容)。
+    本项目在<b>第 12 章 / <code>10_llama.py</code></b> 手搓了一遍。</p>
+  </div>
+
+  <div class="gentry" id="rmsnorm">
+    <h3>RMSNorm <span class="en">Root Mean Square Normalization</span></h3>
+    <p><a href="#layernorm" style="color:var(--accent)">LayerNorm</a> 的简化版。LayerNorm 做两件事:①减均值 ②除以标准差;
+    RMSNorm <b>只做第 ②</b>,直接除以均方根,而且不带 bias。</p>
+    <p>省掉的那一步在实测里贡献很小,但归一化<b>每层要做两次</b>,几十上百层累起来就是实打实的算力与参数。
+    效果基本持平,所以 LLaMA 之后的模型基本都换成了它。代价是输出不再以 0 为中心 —— 归一化真正要的是把<b>尺度</b>拉回来,这一点它照做。</p>
+  </div>
+
+  <div class="gentry" id="swiglu">
+    <h3>SwiGLU <span class="en">Swish-Gated Linear Unit · 门控前馈网络</span></h3>
+    <p><a href="#feedforward" style="color:var(--accent)">FFN</a> 的门控版本。输入走<b>两路</b>:一路过
+    <b>SiLU</b>(<code>x·sigmoid(x)</code>,也叫 Swish)当<b>闸门</b>,一路当<b>内容</b>,两路逐元素相乘,再压回主干。</p>
+    <p>和 <a href="#relu" style="color:var(--accent)">ReLU</a> 的差别在于<b>谁来决定关不关</b>:ReLU 由通道自己说了算,只有"全开"和"关死";
+    门控的开度来自另一路独立的线性变换,可以做到"这个通道只放三成过去"。
+    因为多了一个矩阵(gate / up / down 三个),隐层要收窄到 <b>8/3·n_embd</b> 才与 ReLU 版参数量相当 —— 这就是那个奇怪系数的来历。</p>
+  </div>
+
+  <div class="gentry" id="gqa">
+    <h3>GQA <span class="en">Grouped-Query Attention · 分组查询注意力</span></h3>
+    <p>让<b>多个 query 头共享一份 K/V</b>。query 头数不变(各问各的),但 K/V 只存 <code>n_kv_head</code> 份,
+    每组内的 query 头合用一份。因为 <a href="#kv-cache" style="color:var(--accent)">KV-cache</a> 是按 K/V 头数算的,
+    显存直接按比例省:4 个 query 头配 2 份 K/V,cache 就少一半。</p>
+    <p>两个极端:<code>n_kv_head = n_head</code> 就是普通<a href="#multi-head" style="color:var(--accent)">多头注意力</a>(MHA);
+    <code>n_kv_head = 1</code> 是 <b>MQA</b>,省得最狠但表达力损失明显。
+    GQA 正是被当作两者之间的折中提出来的,现在主流模型多用它(比如 64 个 query 头配 8 份 K/V)。</p>
   </div>
 
   <!-- ============ 里程碑 ============ -->
