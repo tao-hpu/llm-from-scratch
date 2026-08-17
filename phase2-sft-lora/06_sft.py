@@ -62,7 +62,7 @@ torch.manual_seed(args.seed)
 # 模型定义：与 04 / 05 完全一致，这样 base 的 state_dict 键才对得上
 # （训练版 forward：给 targets 就用 cross_entropy 算 loss，默认 ignore_index=-100）
 # ---------------------------------------------------------------------------
-# GPT-2 真实词表 50257;模型 vocab 取 50304 是为效率对齐到 64 的倍数(多出的 47 行从没训过)
+# GPT-2 真实词表 50257;模型 vocab 取 50304 是为效率对齐到 128 的倍数(多出的 47 行从没训过)
 GPT2_REAL_VOCAB = 50257
 
 @dataclass
@@ -247,7 +247,8 @@ def show_samples(model, title):
 def main():
     os.makedirs(args.out_dir, exist_ok=True)
     print(f"device={device} | 加载 base: {args.ckpt}")
-    ckpt = torch.load(args.ckpt, map_location=device)
+    # weights_only=True:只反序列化张量/基础类型,不执行文件里的 pickle 代码(下载来的权重更要这样)
+    ckpt = torch.load(args.ckpt, map_location=device, weights_only=True)
     cfg = GPTConfig(**ckpt["config"])
     model = GPT(cfg).to(device)
     model.load_state_dict(ckpt["model"])

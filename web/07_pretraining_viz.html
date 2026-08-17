@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>真训练 · 把玩具 GPT 喂真实数据(预训练 GPT-2 124M)· 04_gpt2_124m</title>
+<meta name="description" content="真数据真规模:12/12/768 配置跃迁、BPE + shards、梯度累积攒满 524288 token、warmup + 余弦退火、10B token 的收敛对照。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 6 章 · 预训练 GPT-2 124M · 从零手写大语言模型">
+<meta property="og:description" content="真数据真规模:12/12/768 配置跃迁、BPE + shards、梯度累积攒满 524288 token、warmup + 余弦退火、10B token 的收敛对照。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/07_pretraining_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 6 章 · 预训练 GPT-2 124M · 从零手写大语言模型">
+<meta name="twitter:description" content="真数据真规模:12/12/768 配置跃迁、BPE + shards、梯度累积攒满 524288 token、warmup + 余弦退火、10B token 的收敛对照。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
 <style>
   /* ============ 全局基础样式(与全站共用暖色变量)============ */
   :root{
@@ -344,7 +359,7 @@
     <details class="dig">
       <summary>上面这串 token 切法是真的吗?</summary>
       <div class="dig-body">
-        <b>不是</b>,上面只是<b>示意</b>。真实 GPT-2 BPE 词表有 50304 行,切分规则复杂(按字节对频率合并),
+        <b>不是</b>,上面只是<b>示意</b>。真实 GPT-2 BPE 词表有 50257 个 token,切分规则复杂(按字节对频率合并),
         一个空格、一个词尾都可能单独成 token。这里只为让你直观看到"一句话 → 若干 token"这件事,
         别把具体切法当真。真实分词在 <code>prepare_fineweb.py</code> 里用 GPT-2 的 tokenizer 完成。
       </div>

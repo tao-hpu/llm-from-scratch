@@ -16,6 +16,8 @@
 预期：val loss 从 2.41 掉到 ~1.57，采样开始有"词"和对话结构（不再是纯字母汤）。
 """
 
+import os
+
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -45,7 +47,9 @@ torch.manual_seed(1337)
 print(f"device = {device}")
 
 # ---- 数据（和前两份一样）----
-with open("data/tinyshakespeare.txt", "r", encoding="utf-8") as f:
+# 路径按脚本所在目录算，从任何工作目录敲命令都能跑通。
+DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "tinyshakespeare.txt")
+with open(DATA, "r", encoding="utf-8") as f:
     text = f.read()
 chars = sorted(list(set(text)))
 vocab_size = len(chars)

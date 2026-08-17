@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>自注意力 图解 · 02_attention</title>
+<meta name="description" content="让每个位置学会往回看:从「对过去做平均」一步步升级成 Q/K/V 由内容算权重,打破 bigram 的 2.49 天花板。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 2 章 · 自注意力 · 从零手写大语言模型">
+<meta property="og:description" content="让每个位置学会往回看:从「对过去做平均」一步步升级成 Q/K/V 由内容算权重,打破 bigram 的 2.49 天花板。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/02_attention_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 2 章 · 自注意力 · 从零手写大语言模型">
+<meta name="twitter:description" content="让每个位置学会往回看:从「对过去做平均」一步步升级成 Q/K/V 由内容算权重,打破 bigram 的 2.49 天花板。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
 <style>
   /* ============ 全局基础样式(与全站共用暖色变量)============ */
   :root{
@@ -700,7 +715,7 @@
 
   <!-- ============ STEP 5 ============ -->
   <section class="panel" id="panel3">
-    <h2>Step 5 · 算注意力权重:打分 → 缩放 → 掩码 → softmax</h2>
+    <h2>Step 5 · 算注意力权重:打分 → <span class="term" data-term="缩放 · scaling (÷√d)" data-key="scaling" data-def="把 q·k 的分数除以 √head_size。点积方差随维度增大,不缩放会让 softmax 过于尖锐、权重几乎全压给一个位置。">缩放</span> → 掩码 → softmax</h2>
     <p class="lead">
       用 8 个位置演示注意力分数表 <code>wei</code>(8×8)。
       第 <code>i</code> 行第 <code>j</code> 列 = "位置 i 对位置 j 的关注度"。逐步点四个按钮看它怎么成形。
@@ -884,9 +899,9 @@
               <code>token_embedding</code> <span class="d d-vocab">65<i>vocab</i></span>×<span class="d d-emb">32<i>n_embd</i></span><br>
               <code>position_embedding</code> <span class="d d-block">8<i>block</i></span>×<span class="d d-emb">32<i>n_embd</i></span><br>
               <code>Wq</code>/<code>Wk</code>/<code>Wv</code> 各 <span class="d d-emb">32<i>n_embd</i></span>×<span class="d d-head">32<i>head</i></span><br>
-              <code>lm_head</code> <span class="d d-head">32<i>head</i></span>×<span class="d d-vocab">65<i>vocab</i></span>
+              <code>lm_head</code> <span class="d d-head">32<i>head</i></span>×<span class="d d-vocab">65<i>vocab</i></span>(+65 bias)
             </td>
-            <td class="sum">2080+256<br>+1024×3<br>+2080<br>≈ 9,488</td>
+            <td class="sum">2080+256<br>+1024×3<br>+2145<br>= 7,553</td>
           </tr>
         </table>
       </div>

@@ -63,6 +63,7 @@ phase1-124m/         复现阶段：真实数据 + 真实 BPE，复现 GPT-2 124
 phase2-sft-lora/     后训练：SFT + LoRA + DPO（逐步上线中）
   06_sft.py            全量 SFT：复用 124M base，对话模板 + EOS + loss mask，训练前后采样对比（已上线）
   07_lora.py           手搓 LoRA：冻结底座，只训低秩旁路 B·A（~0.94% 参数 / 4.7MB adapter，已上线）
+                       `--load_lora ckpt_lora/lora.pt` 不训练、只把 adapter 叠回原始 base 做推理
   08_dpo.py            DPO 偏好对齐：policy + 冻结 ref + 隐式奖励，不训奖励模型/不走 RL（--lora 切换手段，已上线）
 
 phase3-moe/          现代架构：MoE 专家混合
@@ -103,8 +104,8 @@ phase3-moe/          现代架构：MoE 专家混合
 | 训练数据 | FineWeb-Edu，10B token（GPT-2 BPE，vocab 50257） |
 | 硬件 / 耗时 | 单卡 RTX 4090，约 24 小时 |
 | 训练步数 | 19073 步（cosine 退火，warmup 715） |
-| 验证集 loss | 从随机初始化的 **≈10.9**（即 `ln(50257)` 的随机基线）降到 **3.02**（step 19072，val_loss=3.0211） |
-| 推理 | CUDA / Apple MPS / CPU 通用；`05_sample.py` 内置 KV-cache,Mac MPS 上实测 **~2.5–2.8× 提速** |
+| 验证集 loss | 从随机初始化的 **≈10.82**（即 `ln(50257)` 的随机基线）降到 **3.02**（step 19072，val_loss=3.0211） |
+| 推理 | CUDA / Apple MPS / CPU 通用；`05_sample.py` 内置 KV-cache,Mac MPS 上实测 **~2.5–3.1× 提速** |
 
 ### 数据量对照:300M → 10B(同架构、同代码,只变数据量）
 
@@ -192,7 +193,7 @@ python 05_sample.py --ckpt ckpt/latest.pt --prompt "The history of Rome" --n 3
 
 ## 预训练权重下载
 
-> 💡 **能自己训,就自己训。** 这是个**教学仓库**,真正的收获在「亲手把 val loss 从 ≈10.9 跑到 3.0」的过程里,不在这个 `.pt` 文件里——它只是副产品。如果你有一张 N 卡(4090 级即可),强烈建议跑一遍 `04_gpt2_124m.py` 自己训出来,那才是这个项目想给你的东西。
+> 💡 **能自己训,就自己训。** 这是个**教学仓库**,真正的收获在「亲手把 val loss 从 ≈10.82 跑到 3.0」的过程里,不在这个 `.pt` 文件里——它只是副产品。如果你有一张 N 卡(4090 级即可),强烈建议跑一遍 `04_gpt2_124m.py` 自己训出来,那才是这个项目想给你的东西。
 >
 > 下面的权重是给两类人的**捷径**:① 没有 N 卡、只想在 Mac/CPU 上玩玩推理(`05_sample.py`)的;② 自己训完了,想拿我的结果**对照验证**复现是否到位的。**下载是捷径,自训才是正道。**
 
@@ -241,7 +242,7 @@ pip install -r requirements.txt
 # Phase 1 — runs anywhere (CUDA → Apple MPS → CPU)
 cd phase1-nanogpt && python 01_bigram.py && python 02_attention.py && python 03_transformer.py
 
-# Phase 2 — reproduce GPT-2 124M (full pretraining needs an NVIDIA GPU)
+# Phase 1 (124M) — reproduce GPT-2 124M (full pretraining needs an NVIDIA GPU)
 cd ../phase1-124m
 python prepare_fineweb.py --parquet "data/000_00000.parquet" --shards 3
 python 04_gpt2_124m.py --data_dir data10b --out_dir ckpt --compile 1 --max_steps 19073 --warmup_steps 715

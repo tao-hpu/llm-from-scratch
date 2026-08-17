@@ -1,6 +1,6 @@
 """
-里程碑 5：手搓 MoE —— 把 FFN 换成"多个专家 + 路由器"
-====================================================
+里程碑 9(第 11 章)：手搓 MoE —— 把 FFN 换成"多个专家 + 路由器"
+==============================================================
 
 03 的 GPT 里,FFN 是"每个 token 都要过的同一个小 MLP":参数全员上岗,一个都不能少。
 MoE(Mixture of Experts,专家混合)把这一块拆开:
@@ -30,6 +30,8 @@ MoE(Mixture of Experts,专家混合)把这一块拆开:
 """
 
 import argparse
+import os
+
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -68,7 +70,10 @@ torch.manual_seed(1337)
 print(f"device = {device} | n_expert = {n_expert} | top_k = {top_k} | aux_coef = {aux_coef}")
 
 # ---- 数据(还是 tiny shakespeare,复用 phase1 的文件)----
-with open("../phase1-nanogpt/data/tinyshakespeare.txt", "r", encoding="utf-8") as f:
+# 路径按脚本所在目录算,不看你从哪儿敲的命令。
+DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                    "..", "phase1-nanogpt", "data", "tinyshakespeare.txt")
+with open(DATA, "r", encoding="utf-8") as f:
     text = f.read()
 chars = sorted(list(set(text)))
 vocab_size = len(chars)
@@ -151,7 +156,12 @@ class MoELayer(nn.Module):
         logits = self.router(flat)                    # (B*T, n_expert) 每个 token 给每个专家打分
         probs = F.softmax(logits, dim=-1)             # 变成"该派给谁"的概率
         topv, topi = probs.topk(top_k, dim=-1)        # 只留分数最高的 top_k 个专家
-        topv = topv / topv.sum(dim=-1, keepdim=True)  # 在选中的 k 个里重新归一化,权重和=1
+        if top_k > 1:
+            # 在选中的 k 个里重新归一化,权重和=1(Mixtral 的做法)。
+            # ⚠️ 只在 k>1 时做:k=1 归一化后权重恒等于 1,门控值被抹平,
+            #    loss 对路由器的梯度也一起没了(路由器等于被冻住)。
+            #    Switch Transformer 的 top-1 就是直接拿未归一化的概率当权重,梯度才有路可走。
+            topv = topv / topv.sum(dim=-1, keepdim=True)
 
         out = torch.zeros_like(flat)
         for e in range(n_expert):                     # 教学版:按专家循环,清晰优先
@@ -231,7 +241,7 @@ n_param = sum(p.numel() for p in model.parameters())
 n_ffn_total = sum(p.numel() for b in model.blocks for p in b.ffwd.experts.parameters())
 n_active = n_param - n_ffn_total + n_ffn_total // n_expert * top_k
 print(f"总参数 = {n_param/1e6:.2f} M | 每 token 激活 ≈ {n_active/1e6:.2f} M"
-      f"(dense 对照 03 约 0.81 M 全激活)")
+      f"(dense 对照 03 约 0.82 M 全激活)")
 
 # ---- 训练(和 03 同一个循环,loss 多加一项 aux)----
 optimizer = torch.optim.AdamW(model.parameters(), lr=lr)

@@ -34,6 +34,8 @@ LoRA 是"换了套要更新的参数"，不是"换了套学习目标"。
 用法（本地 MPS / CPU 都能跑，几分钟）：
   python 07_lora.py --ckpt ../phase1-124m/ckpt10b/latest.pt --epochs 60
   python 07_lora.py --ckpt ../phase1-124m/ckpt10b/latest.pt --rank 4 --alpha 8
+  # 训完只推理：原始 base + 4.7MB adapter 叠起来，不训练，直接看它会不会答题
+  python 07_lora.py --ckpt ../phase1-124m/ckpt10b/latest.pt --load_lora ckpt_lora/lora.pt
 """
 import os
 import argparse
@@ -60,6 +62,9 @@ ap.add_argument("--max_new_tokens", type=int, default=64)
 ap.add_argument("--temperature", type=float, default=0.7)
 ap.add_argument("--top_k", type=int, default=40)
 ap.add_argument("--seed", type=int, default=1337)
+ap.add_argument("--load_lora", type=str, default=None,
+                help="不训练，只加载 base + 叠上已存的 adapter(如 ckpt_lora/lora.pt)直接采样 —— "
+                     "验证'一份底座 + 一个几 MB 小文件'真的能换出另一套行为")
 args = ap.parse_args()
 
 device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
@@ -157,7 +162,10 @@ class LoRALinear(nn.Module):
         # 【LoRA-2】旁路两块小矩阵（用 Linear 表示，无 bias）
         self.lora_A = nn.Linear(in_f, rank, bias=False)
         self.lora_B = nn.Linear(rank, out_f, bias=False)
-        nn.init.normal_(self.lora_A.weight, std=1.0 / rank)  # A：小随机
+        # A：小随机。标准差按【输入宽度】定(1/√in_features)，这是 Kaiming 那一套的思路，
+        # 也是 LoRA 官方实现的做法。注意别把它绑到 rank 上：秩是"旁路多宽"，
+        # 和"每个输入维度该分到多大初始值"无关；绑了会变成 r 越大初始越小，拨 r 时行为不一致。
+        nn.init.normal_(self.lora_A.weight, std=in_f ** -0.5)
         nn.init.zeros_(self.lora_B.weight)                   # B：置零 → 初始 ΔW=0
         self.drop = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
@@ -279,10 +287,42 @@ def show_samples(model, title):
 # ---------------------------------------------------------------------------
 # 主流程：加载 base → 冻结 → 注入 LoRA → 采样(前) → 只训 A/B → 采样(后) → 只存 adapter
 # ---------------------------------------------------------------------------
+def load_and_sample(adapter_path):
+    """【LoRA-3 的另一半】只推理:原始 base + adapter 叠起来,不训练。
+       这就是"一份底座挂多个 adapter"在代码里的样子 —— 底座是同一个文件,
+       换 adapter 就换一套行为。"""
+    print(f"device={device} | 加载 base: {args.ckpt}")
+    # weights_only=True:只反序列化张量/基础类型,不执行文件里的 pickle 代码
+    ckpt = torch.load(args.ckpt, map_location=device, weights_only=True)
+    cfg = GPTConfig(**ckpt["config"])
+    model = GPT(cfg).to(device)
+    model.load_state_dict(ckpt["model"])
+
+    ad = torch.load(adapter_path, map_location=device, weights_only=True)
+    rank, alpha = ad["rank"], ad["alpha"]
+    print(f"叠加 adapter: {adapter_path}(r={rank} alpha={alpha},"
+          f" {os.path.getsize(adapter_path)/1e6:.1f} MB,训了 {ad.get('epochs','?')} epoch)")
+    inject_lora(model, rank, alpha)          # 结构必须先长出来,key 才对得上
+    model.to(device)
+    # strict=False:adapter 里只有 lora_A / lora_B,底座那些 key 本来就不在里面
+    missing, unexpected = model.load_state_dict(ad["lora"], strict=False)
+    assert not unexpected, f"adapter 里有认不出的 key:{unexpected[:3]}"
+    n_loaded = len(ad["lora"])
+    print(f"载入 {n_loaded} 个旁路张量(底座权重一个都没动)")
+    show_samples(model, f"base + adapter({os.path.basename(adapter_path)})")
+    print("\n对照:去掉 --load_lora 里的 adapter 就是纯 base(跑题、停不下来)。"
+          "\n同一份 base,挂不同 adapter 就是不同行为 —— 这就是 LoRA 可插拔的意义。")
+
+
 def main():
+    if args.load_lora:                       # 只推理,不训练
+        load_and_sample(args.load_lora)
+        return
+
     os.makedirs(args.out_dir, exist_ok=True)
     print(f"device={device} | 加载 base: {args.ckpt}")
-    ckpt = torch.load(args.ckpt, map_location=device)
+    # weights_only=True:只反序列化张量/基础类型,不执行文件里的 pickle 代码
+    ckpt = torch.load(args.ckpt, map_location=device, weights_only=True)
     cfg = GPTConfig(**ckpt["config"])
     model = GPT(cfg).to(device)
     model.load_state_dict(ckpt["model"])     # 先按原结构加载,key 才对得上

@@ -117,7 +117,9 @@ class GPT(nn.Module):
 
 # ---- 加载 checkpoint ----
 print(f"device={device}  加载 {args.ckpt} …")
-ckpt = torch.load(args.ckpt, map_location=device)
+# weights_only=True:只反序列化张量和基础类型。checkpoint 常常是从网上下的,
+# 而 torch.load 默认会执行文件里的 pickle 代码 —— 加这一个参数就堵掉这条路。
+ckpt = torch.load(args.ckpt, map_location=device, weights_only=True)
 cfg = GPTConfig(**ckpt["config"])
 model = GPT(cfg).to(device)
 model.load_state_dict(ckpt["model"])

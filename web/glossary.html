@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>名词表 · LLM from Scratch</title>
+<meta name="description" content="从 logits、softmax、Q/K/V 到 LoRA、DPO、MoE:全站术语一页查清,每条都对应到具体代码。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="名词表 · 从零手写大语言模型">
+<meta property="og:description" content="从 logits、softmax、Q/K/V 到 LoRA、DPO、MoE:全站术语一页查清,每条都对应到具体代码。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/glossary.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="名词表 · 从零手写大语言模型">
+<meta name="twitter:description" content="从 logits、softmax、Q/K/V 到 LoRA、DPO、MoE:全站术语一页查清,每条都对应到具体代码。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
 <style>
   :root{
     --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
@@ -178,8 +193,11 @@
 
   <div class="gentry" id="vanishing">
     <h3>梯度消失 <span class="en">vanishing gradient</span></h3>
-    <p>梯度在传播中变得<b>极小</b>,参数几乎不更新、模型学不动。
-    softmax 过于"尖锐"(某一项概率接近 1)时就会发生 —— 这正是注意力要对分数做<a href="#scaling" style="color:var(--accent)">缩放</a>的原因。</p>
+    <p>梯度在传播中变得<b>极小</b>,参数几乎不更新、模型学不动。本项目会在两处碰到它:</p>
+    <p>① <b>层一深就连乘衰减</b>:梯度从顶层一路乘回底层,层数越多越小 ——
+    这是它最经典的成因,靠<a href="#residual" style="color:var(--accent)">残差连接</a>开一条直通车来治。<br>
+    ② <b>softmax 被推到极端</b>:某一项概率接近 1 时,它对输入的导数趋近 0,梯度也就传不回去 ——
+    这正是注意力要对分数做<a href="#scaling" style="color:var(--accent)">缩放</a>的原因。</p>
   </div>
 
   <div class="gentry" id="zero-grad">
@@ -260,7 +278,8 @@
     <p>预训练之后的一步:用<b>「问 → 答」成对数据</b>继续训练<b>同一批参数</b>(包括 <a href="#qkv" style="color:var(--accent)">Wq/Wk/Wv</a>),
     把模型调成"以助手口吻回答"的姿态。要点:<b>"抓相关上下文"的能力是预训练就建好的,SFT 只是在上面拧风格</b> ——
     它<b>不会</b>"激活" QKV 里某个为问答预留的用途(QKV 2017 年为翻译而生,SFT 2022 年才出现,不存在"提前挖坑")。
-    属于<b>对齐阶段</b>,本项目 Phase 2 才正式动手;这里先建立概念。</p>
+    它属于<b>后训练</b>的第一段(注意:后训练 = SFT + <a href="#preference-alignment" style="color:var(--accent)">偏好对齐</a>,
+    SFT 本身还不是"对齐")。本项目在<b>第 8 章 / <code>06_sft.py</code></b> 手搓了一遍。</p>
   </div>
 
   <!-- ============ Transformer 组件(第 3 关)============ -->
@@ -416,7 +435,7 @@
     <h3>LoRA <span class="en">Low-Rank Adaptation · 低秩适配</span></h3>
     <p>一种 <a href="#peft" style="color:var(--accent)">PEFT</a> 手段:<b>冻结原模型</b>,在某些 <a href="#default" style="color:var(--accent)">Linear</a> 旁边挂两个<b>低秩小矩阵 A、B</b>,只训练它俩。
     可训练参数常只占 ~1%,却能逼近全量微调的效果;一个底座还能挂多个适配器随时切换。它是"怎么省钱地微调"的手段,
-    可叠加在 <a href="#sft" style="color:var(--accent)">SFT</a> 或 <a href="#dpo" style="color:var(--accent)">DPO</a> 上。本项目 <code>07_lora.py</code> 会手搓一遍。</p>
+    可叠加在 <a href="#sft" style="color:var(--accent)">SFT</a> 或 <a href="#dpo" style="color:var(--accent)">DPO</a> 上。本项目在<b>第 9 章 / <code>07_lora.py</code></b> 手搓了一遍。</p>
   </div>
 
   <div class="gentry" id="loss-mask">
@@ -463,9 +482,11 @@
   <div class="gentry" id="router">
     <h3>路由器 / top-k 门控 <span class="en">router · top-k gating</span></h3>
     <p>MoE 的派单员:一个 <code>n_embd → n_expert</code> 的<b>线性层</b>,给每个 token 对每个专家打分,
-    softmax 后<b>只保留分数最高的 top_k 个</b>,权重重新归一化,输出 = 选中专家的加权和。
+    softmax 后<b>只保留分数最高的 top_k 个</b>,输出 = 选中专家的加权和(k&gt;1 时权重在选中的几个里重新归一化)。
     派单单位是 <b>token</b>(同一句话里相邻字符可以走不同专家)。top-k 挑选本身不可导,
     但选中专家的权重来自 softmax、可导 —— 梯度顺着权重传回路由器,它就学会了"该派给谁"。</p>
+    <p>⚠️ 所以那个权重是路由器<b>唯一</b>的学习通道,<b>top-1 时千万别归一化</b>:只剩一个专家,归一化后权重恒等于 1,
+    梯度随之归零、路由器等于被冻住。Switch Transformer 的 top-1 就是直接拿<b>未归一化</b>的概率当权重。</p>
   </div>
 
   <div class="gentry" id="load-balancing">

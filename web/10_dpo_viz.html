@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>手搓 DPO · 从会答到答得合人意</title>
+<meta name="description" content="从会答到答得合人意:policy + 冻结 ref、隐式奖励、一个 sigmoid loss 做偏好对齐,不训奖励模型也不走 RL。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 10 章 · 手搓 DPO · 从零手写大语言模型">
+<meta property="og:description" content="从会答到答得合人意:policy + 冻结 ref、隐式奖励、一个 sigmoid loss 做偏好对齐,不训奖励模型也不走 RL。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/10_dpo_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 10 章 · 手搓 DPO · 从零手写大语言模型">
+<meta name="twitter:description" content="从会答到答得合人意:policy + 冻结 ref、隐式奖励、一个 sigmoid loss 做偏好对齐,不训奖励模型也不走 RL。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
 <style>
   :root{
     --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
@@ -305,7 +320,8 @@
 
     <div class="calc">
       <div class="rk-row"><label class="c">Δ chosen(往右=抬高)</label><input type="range" id="dcS" min="-1" max="4" step="0.1" value="0.1"><span class="rk-val" id="dcV">0.1</span></div>
-      <div class="rk-row"><label class="r">Δ rejected(往左=压低)</label><input type="range" id="drS" min="-6" max="2" step="0.1" value="0"><span class="rk-val" id="drV">0.0</span></div>
+      <!-- 量程要够到下一步实测的终点(Δr ≈ -19),否则滑块最多把 loss 拨到 ~0.31,和 STEP 4 的 0.171 接不上 -->
+      <div class="rk-row"><label class="r">Δ rejected(往左=压低)</label><input type="range" id="drS" min="-20" max="2" step="0.1" value="0"><span class="rk-val" id="drV">0.0</span></div>
       <div class="formula" id="dpoFormula"></div>
       <div class="stat-grid">
         <div class="stat hi"><div class="sv" id="stMargin">+0.1</div><div class="sl">margin = Δc − Δr</div></div>

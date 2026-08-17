@@ -13,6 +13,8 @@ bigram 的墙是 2.49，因为它只能看前 1 个字符。
       变的只有中间那个 class。这就是我上一步埋伏笔的兑现。
 """
 
+import os
+
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -54,7 +56,9 @@ print("""
 # ============================================================================
 
 # ---- 数据（和 01_bigram.py 完全一样，原样搬过来）----
-with open("data/tinyshakespeare.txt", "r", encoding="utf-8") as f:
+# 路径按脚本所在目录算，从任何工作目录敲命令都能跑通。
+DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "tinyshakespeare.txt")
+with open(DATA, "r", encoding="utf-8") as f:
     text = f.read()
 chars = sorted(list(set(text)))
 vocab_size = len(chars)

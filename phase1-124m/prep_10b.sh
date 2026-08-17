@@ -1,13 +1,15 @@
 #!/bin/bash
-# 准备完整 10B token 数据集（下载剩余 parquet + 分词到 data10b/）
-# 只用 CPU/网络/硬盘，不占 GPU，可与正在跑的 300M 训练并行。
-# 分词输出到独立目录 data10b/，避免干扰 300M 训练正在读的 data/ 里的 .npy。
+# 准备完整 10B token 数据集（下载 14 个 parquet + 分词到 data10b/）
+# 只用 CPU/网络/硬盘，不占 GPU，可与正在跑的训练并行。
+# 分词输出到独立目录 data10b/，避免干扰别的训练正在读的 data/ 里的 .npy。
 set -e
-cd ~/llm-from-scratch/phase1-124m
+# 切到脚本自己所在的目录，仓库克隆到哪儿都能跑（别写死 ~/llm-from-scratch）。
+cd "$(dirname "$0")"
+mkdir -p data
 BASE=https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu/resolve/main/sample/10BT
 
-echo "=== 1) 下载剩余 parquet（001~013，约 28GB）==="
-for i in $(seq 1 13); do
+echo "=== 1) 下载 14 个 parquet（000~013，约 30GB；wget -c 断点续传，已下过的会跳过）==="
+for i in $(seq 0 13); do
   n=$(printf "%03d" $i)
   f="data/${n}_00000.parquet"
   echo "--- ${n} ---"

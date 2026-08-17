@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bigram 的 cross_entropy 可视化</title>
+<meta name="description" content="最朴素的语言模型:一个 batch 的 x/y 错位、logits 摊平、cross_entropy 拆到 -ln(p),再合成训练闭环。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 1 章 · Bigram 与交叉熵 · 从零手写大语言模型">
+<meta property="og:description" content="最朴素的语言模型:一个 batch 的 x/y 错位、logits 摊平、cross_entropy 拆到 -ln(p),再合成训练闭环。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/01_bigram_crossentropy_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 1 章 · Bigram 与交叉熵 · 从零手写大语言模型">
+<meta name="twitter:description" content="最朴素的语言模型:一个 batch 的 x/y 错位、logits 摊平、cross_entropy 拆到 -ln(p),再合成训练闭环。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
 <style>
   /* ============ 全局基础样式 ============ */
   :root{
@@ -731,7 +746,7 @@
 
     <!-- (D) zero_grad 提示 -->
     <details class="dig">
-      <summary>为什么每轮要先 <code>optimizer.zero_grad()</code>?</summary>
+      <summary>为什么每轮要先 <span class="term" data-term="梯度清零 · zero_grad" data-key="zero-grad" data-def="PyTorch 的梯度默认累加,所以每轮开头必须先清零,否则会带着上一轮的陈旧方向。顺序:zero_grad → backward → step。"><code>optimizer.zero_grad()</code></span>?</summary>
       <div class="dig-body">
       PyTorch 的<span class="term" data-term="梯度 · gradient" data-key="gradient" data-def="loss 对每个参数的偏导数,指出参数往哪个方向调、loss 下降最快。backward() 负责算它。">梯度</span>是<b>累加</b>的:<code>loss.backward()</code> 会把新梯度<b>加到</b>旧梯度上,而不是覆盖。
       若不清零,这一轮就会带着上一轮的"陈旧方向",越走越偏。所以每圈开头必须先清零。

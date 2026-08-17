@@ -11,6 +11,8 @@ Bigram = 只看前一个 token。它没有注意力、没有上下文，蠢得�
 makemore 的核心教训就藏在这里：语言模型 = 一个在词表上输出概率分布的分类器。
 """
 
+import os
+
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -24,7 +26,10 @@ torch.manual_seed(1337)
 print(f"device = {device}")
 
 # ---- 1. 读数据 & 构建字符级 tokenizer --------------------------------------
-with open("data/tinyshakespeare.txt", "r", encoding="utf-8") as f:
+# 路径按"脚本自己所在的目录"算，不看你从哪儿敲的命令 —— 所以
+# `python 01_bigram.py` 和 `python phase1-nanogpt/01_bigram.py` 都能跑通。
+DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "tinyshakespeare.txt")
+with open(DATA, "r", encoding="utf-8") as f:
     text = f.read()
 
 # 词表 = 文本里出现过的所有不同字符，排序后固定下来。

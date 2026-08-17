@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Phase 2 开篇 · 后训练白皮书</title>
+<meta name="description" content="动手前先对齐全景:参数量 vs 数据量、任务 vs 手段(SFT/DPO × 全量/LoRA)、SFT 只动三处、RLHF 与 DPO 的关系。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 7 章 · 后训练地图 · 从零手写大语言模型">
+<meta property="og:description" content="动手前先对齐全景:参数量 vs 数据量、任务 vs 手段(SFT/DPO × 全量/LoRA)、SFT 只动三处、RLHF 与 DPO 的关系。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/06_posttraining_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 7 章 · 后训练地图 · 从零手写大语言模型">
+<meta name="twitter:description" content="动手前先对齐全景:参数量 vs 数据量、任务 vs 手段(SFT/DPO × 全量/LoRA)、SFT 只动三处、RLHF 与 DPO 的关系。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
 <style>
   :root{
     --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
@@ -187,6 +202,10 @@
   .scard .sd{font-size:12px;color:var(--ink2);line-height:1.5;}
   .scard .soon{display:inline-block;margin-top:8px;font-family:var(--mono);font-size:10px;font-weight:700;
     color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);border-radius:999px;padding:2px 8px;}
+  .scard .done{display:inline-block;margin-top:8px;font-family:var(--mono);font-size:10px;font-weight:700;
+    color:#fff;background:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:2px 8px;
+    text-decoration:none;}
+  .scard .done:hover{background:#c2664a;}
   .checklist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:8px;}
   .checklist li{display:flex;gap:10px;align-items:flex-start;font-size:13px;background:#fff;border:1px solid var(--border);
     border-radius:10px;padding:10px 13px;}
@@ -349,12 +368,15 @@
     </div>
 
     <details class="dig">
-      <summary>那为什么本项目先"手写 LoRA",而不是先讲 SFT?</summary>
+      <summary>三关的顺序为什么是 SFT → LoRA → DPO?</summary>
       <div class="dig-body">
-        概念顺序是 SFT 在前(它是目标),LoRA 在后(它是省钱手段)。但<b>动手</b>顺序里,
-        SFT 的训练循环几乎等于 Phase 1 的预训练循环,没有新机制;真正值得像手搓 attention 那样
-        手搓的新零件是 <b>LoRA 的低秩旁路</b>。所以白皮书按"先懂 SFT、再懂 LoRA"讲,
-        脚本则把 LoRA 当成动手重点。
+        按"每关只加一个新东西"排的:<br>
+        · <b>第 8 章 SFT</b> 换的是<b>任务</b>(教它答题),训练循环几乎等于 Phase 1 的预训练循环,
+        新机制只有模板 / EOS / loss mask —— 所以放第一关,门槛最低。<br>
+        · <b>第 9 章 LoRA</b> 任务不变(还是同一件 SFT),换的是<b>手段</b>,新零件是低秩旁路 B·A。
+        任务不变才能把"手段"这一个变量单独看清。<br>
+        · <b>第 10 章 DPO</b> 再换回<b>任务</b>(从会答到答得好),手段先用全量,加
+        <code>--lora</code> 就补上第四格。
       </div>
     </details>
 
@@ -462,19 +484,19 @@
         <div class="sf">06_sft.py</div>
         <div class="stt">全量 SFT</div>
         <div class="sd">新机制:对话模板 / EOS / loss mask。在 124M 上跑通"会答题"。</div>
-        <span class="soon">规划中</span>
+        <a class="done" href="08_sft_viz.html#step-1">已上线 · 第 8 章 →</a>
       </div>
       <div class="scard">
         <div class="sf">07_lora.py</div>
         <div class="stt">手搓 LoRA + LoRA SFT</div>
         <div class="sd">新机制:低秩 A·B 旁路、冻结主干。只训 ~1% 参数拿到同款效果。</div>
-        <span class="soon">规划中</span>
+        <a class="done" href="09_lora_viz.html#step-1">已上线 · 第 9 章 →</a>
       </div>
       <div class="scard">
         <div class="sf">08_dpo.py</div>
         <div class="stt">DPO(全量 / LoRA 开关)</div>
         <div class="sd">新机制:偏好对比损失。一个文件覆盖全量 DPO 和 LoRA DPO。</div>
-        <span class="soon">规划中</span>
+        <a class="done" href="10_dpo_viz.html#step-1">已上线 · 第 10 章 →</a>
       </div>
     </div>
 

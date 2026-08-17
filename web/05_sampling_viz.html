@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>跑起来 · 从 logits 到文字(采样与 KV-cache)· 05_sample</title>
+<meta name="description" content="从 logits 到文字:temperature 捏分布、top_k 砍长尾、自回归滚动生成,再用 KV-cache 省掉重复计算(实测 2.5–3.1×)。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 5 章 · 采样与 KV-cache · 从零手写大语言模型">
+<meta property="og:description" content="从 logits 到文字:temperature 捏分布、top_k 砍长尾、自回归滚动生成,再用 KV-cache 省掉重复计算(实测 2.5–3.1×)。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/05_sampling_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 5 章 · 采样与 KV-cache · 从零手写大语言模型">
+<meta name="twitter:description" content="从 logits 到文字:temperature 捏分布、top_k 砍长尾、自回归滚动生成,再用 KV-cache 省掉重复计算(实测 2.5–3.1×)。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
 <style>
   /* ============ 全局基础样式(与全站共用暖色变量)============ */
   :root{

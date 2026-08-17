@@ -41,7 +41,6 @@ DPO 的三个关键(代码里都标了【DPO】):
   python 08_dpo.py --ckpt ckpt_sft/sft.pt --epochs 60 --lora   # 改用 LoRA 手段做 DPO
 """
 import os
-import copy
 import argparse
 from dataclasses import dataclass
 
@@ -157,7 +156,7 @@ class LoRALinear(nn.Module):
         self.scaling = alpha / rank
         self.lora_A = nn.Linear(in_f, rank, bias=False)
         self.lora_B = nn.Linear(rank, out_f, bias=False)
-        nn.init.normal_(self.lora_A.weight, std=1.0 / rank)
+        nn.init.normal_(self.lora_A.weight, std=in_f ** -0.5)   # 与 07_lora.py 同一套初始化
         nn.init.zeros_(self.lora_B.weight)
     def forward(self, x):
         return self.base(x) + self.scaling * self.lora_B(self.lora_A(x))
@@ -309,7 +308,8 @@ def dpo_pass(policy, ref, train=True):
 def main():
     os.makedirs(args.out_dir, exist_ok=True)
     print(f"device={device} | 加载 SFT 模型作起点: {args.ckpt}")
-    ckpt = torch.load(args.ckpt, map_location=device)
+    # weights_only=True:只反序列化张量/基础类型,不执行文件里的 pickle 代码
+    ckpt = torch.load(args.ckpt, map_location=device, weights_only=True)
     cfg = GPTConfig(**ckpt["config"])
 
     # 【DPO-1】policy 与 ref:都从 SFT 权重出发;ref 整段冻结、永不更新

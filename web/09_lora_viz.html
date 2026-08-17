@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>手搓 LoRA · 冻结底座,只训 1% 参数</title>
+<meta name="description" content="冻结 124M 底座,只训旁挂的低秩 B·A:0.94% 可训练参数、4.7MB adapter,拿到和全量 SFT 同款的行为变化。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 9 章 · 手搓 LoRA · 从零手写大语言模型">
+<meta property="og:description" content="冻结 124M 底座,只训旁挂的低秩 B·A:0.94% 可训练参数、4.7MB adapter,拿到和全量 SFT 同款的行为变化。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/09_lora_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 9 章 · 手搓 LoRA · 从零手写大语言模型">
+<meta name="twitter:description" content="冻结 124M 底座,只训旁挂的低秩 B·A:0.94% 可训练参数、4.7MB adapter,拿到和全量 SFT 同款的行为变化。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
 <style>
   :root{
     --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
@@ -209,7 +224,7 @@
     <span class="filename">09_lora_viz.html</span>
     <h1>手搓 LoRA:冻结底座,只训 1% 参数</h1>
     <p class="subtitle">
-      上一关 <a href="08_sft_viz.html" style="color:var(--accent);text-decoration:none">第 8 章 · SFT</a> 是<b>全量微调</b> —— 124M 参数全更新。
+      上一关 <a href="08_sft_viz.html" style="color:var(--accent);text-decoration:none">第 8 章 · SFT</a> 是<b><span class="term" data-term="全量微调 · full fine-tuning" data-key="full-finetune" data-def="更新模型的全部参数。它是一种「手段」(怎么改权重),不是一种任务 —— 既能做 SFT 也能做 DPO。">全量微调</span></b> —— 124M 参数全更新。
       这一关换<b>手段</b>不换<b>任务</b>:还是同一件 SFT,但用
       <span class="term" data-term="LoRA · 低秩适配" data-key="lora" data-def="冻结原权重,在每层旁边并联一条低秩小矩阵 B·A,只训练它。约 1% 参数拿到接近全量微调的效果。">LoRA</span>
       —— <b>冻住底座</b>,只在每层旁边挂一条<b>低秩旁路</b> <code>B·A</code>,只训那 <b>~1%</b> 的新参数,存盘只是个几 MB 的
@@ -369,7 +384,7 @@
     <div class="btn-row">
       <button class="btn primary" id="epochBtn">▶ 跑一个 epoch</button>
       <button class="btn" id="epochReset">重置</button>
-      <span class="hp-note">实测起点 <b>2.08</b> → 几个 epoch 内收敛到 <b>~0.004</b>(ckpt10b 上,几十秒)</span>
+      <span class="hp-note">实测起点 <b>2.09</b> → 几个 epoch 内收敛到 <b>~0.003</b>(ckpt10b 上,几十秒)</span>
     </div>
     <div class="losswrap">
       <div>回答段 loss:<span class="lossval" id="lossNow">—</span> <span class="hp-note" id="epLabel"></span></div>
@@ -399,7 +414,7 @@
     <div class="sub-h"><span class="badge">达标</span>玩具级 · 看机制不刷榜</div>
     <ul class="checklist">
       <li><span class="ck">✓</span><div><b>可训练参数 ≈ 0.94%</b>(1.18M / 125.7M),adapter 仅 <b>4.7MB</b> vs 完整 base 498MB。</div></li>
-      <li><span class="ck">✓</span><div>回答段 loss 明显下降(实测 <b>2.08 → ~0.004</b>),且训练前(B=0)输出确实等于 base。</div></li>
+      <li><span class="ck">✓</span><div>回答段 loss 明显下降(实测 <b>2.09 → ~0.003</b>,再训到 60 epoch 已到 0.000),且训练前(B=0)输出确实等于 base。</div></li>
       <li><span class="ck">✓</span><div>只动 1% 参数,base 同样被调成<b>套格式、EOS 处主动停</b>;没训过的 "capital of Germany" 也答出 Berlin。</div></li>
     </ul>
 
@@ -416,6 +431,10 @@
       <div class="dig-body">
         两种都行:① <b>推理时叠加</b> —— 加载原始 base,再挂上 adapter,前向时算 <code>Wx + scaling·BAx</code>(本关代码就是这样,一份底座可挂多个 adapter 切换任务);
         ② <b>合并</b> —— 把 <code>scaling·B·A</code> 直接加进 <code>W</code> 得到新权重(<code>W' = W + scaling·BA</code>),推理零额外开销,但就回到一份完整大模型、失去"可插拔"。
+        <div class="note" style="margin-top:10px">自己试第 ① 种(不训练,只加载):<br>
+        <code>python 07_lora.py --ckpt ../phase1-124m/ckpt10b/latest.pt --load_lora ckpt_lora/lora.pt</code><br>
+        它加载 498MB 的原始 base + 4.7MB 的 adapter(96 个旁路张量),底座一个数都不改,
+        直接就会按格式答题、在 EOS 处停 —— 那套"答题姿态"确实整个装在那 4.7MB 里。</div>
       </div>
     </details>
     <details class="dig">
@@ -517,7 +536,7 @@ function setB(zero){
 }
 
 /* ============ STEP 4:训练循环 + loss 动画(端点与全程均为实测)============ */
-const LOSS_SEQ=[2.08,0.68,0.26,0.17,0.17,0.07,0.005,0.004];  // 07_lora.py 实测 per-epoch
+const LOSS_SEQ=[2.09,0.79,0.29,0.05,0.12,0.009,0.008,0.003];  // 07_lora.py 实测 per-epoch
 let epIdx=-1, loopTimer=null;
 function buildLossBars(){
   const host=document.getElementById('lossBars'); host.innerHTML='';
@@ -547,7 +566,7 @@ function runEpoch(){
     stage++;
     if(stage>3){ clearInterval(loopTimer); loopTimer=null; litFlow(-1);
       document.getElementById('epochBtn').disabled=false;
-      if(epIdx>=LOSS_SEQ.length-1) document.getElementById('epLabel').textContent='收敛 · 回答段 loss ≈ 0.004(只训了 A、B)';
+      if(epIdx>=LOSS_SEQ.length-1) document.getElementById('epLabel').textContent='收敛 · 回答段 loss ≈ 0.003(只训了 A、B)';
     }
   },360);
 }

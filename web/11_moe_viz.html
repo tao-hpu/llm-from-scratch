@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>手搓 MoE · 参数翻倍,算力不变</title>
+<meta name="description" content="把 FFN 拆成 4 专家 + 路由器 top-2 派单:分工自己涌现、专家塌缩与负载均衡,算清「参数翻倍算力不变」这笔账。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 11 章 · 手搓 MoE · 从零手写大语言模型">
+<meta property="og:description" content="把 FFN 拆成 4 专家 + 路由器 top-2 派单:分工自己涌现、专家塌缩与负载均衡,算清「参数翻倍算力不变」这笔账。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/11_moe_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 11 章 · 手搓 MoE · 从零手写大语言模型">
+<meta name="twitter:description" content="把 FFN 拆成 4 专家 + 路由器 top-2 派单:分工自己涌现、专家塌缩与负载均衡,算清「参数翻倍算力不变」这笔账。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
 <style>
   :root{
     --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
@@ -129,6 +144,14 @@
     border-radius:10px;padding:10px 12px;margin-top:12px;line-height:1.9;}
 
   /* ===== STEP 3:分工热力图 ===== */
+  /* 折叠块里的小表格(各层负载对照);窄屏时自己横向滚,不撑破页面 */
+  .tbl-scroll{overflow-x:auto;margin:8px 0 2px;}
+  .minitbl{border-collapse:collapse;font-family:var(--mono);font-size:12.5px;
+    font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .minitbl th{font-size:11.5px;font-weight:700;color:var(--ink2);text-align:left;
+    padding:4px 14px 4px 0;border-bottom:1px solid var(--border);}
+  .minitbl td{padding:3px 14px 3px 0;color:var(--ink2);}
+  .minitbl td b{color:var(--bad);font-weight:700;}
   .hm{border-collapse:collapse;margin:10px auto 4px;font-family:var(--mono);}
   .hm th{font-size:12px;font-weight:700;color:var(--ink2);padding:6px 8px;}
   .hm td{width:86px;height:44px;text-align:center;font-size:13px;font-weight:700;border:2px solid var(--card);
@@ -345,7 +368,7 @@
       正反馈不加管束,路由器会把越来越多 token 塞给少数专家 ——
       被冷落的专家拿不到梯度、逐渐报废,这叫<span class="term" data-term="专家塌缩 · expert collapse" data-key="expert-collapse" data-def="路由器把绝大多数 token 派给极少数专家,其余专家得不到训练、逐渐闲置,MoE 退化成小 dense 模型。">专家塌缩</span>。
       要看清它,得用最脆的设定:<b>top-1 路由</b>(Switch Transformer 同款,aux loss 就是它提出的)。
-      下面是<b>同一份代码、都用 top-1 跑的两次真实训练</b>,唯一区别是负载均衡开关。点 ▶ 看 layer 0 的负载怎么随训练演化:
+      下面是<b>同一份代码、都用 top-1 跑的两次真实训练</b>,唯一区别是<span class="term" data-term="负载均衡 loss · auxiliary loss" data-key="load-balancing" data-def="aux = n_expert · Σ f_e·P_e。谁接单过热就压它的路由分数,把负载推回均匀。系数一般很小,如 0.01。">负载均衡</span>开关。点 ▶ 看 layer 0 的负载怎么随训练演化:
     </p>
 
     <div class="btn-row" id="auxToggle">
@@ -360,7 +383,7 @@
         <div class="ro"><div class="rv" id="ldMax" style="color:var(--bad)">–</div><div class="rl">最忙专家的负载</div></div>
       </div>
       <div id="loadBars"></div>
-      <div class="ideal-line">完美均衡 = 每个专家 25%(虚线为参考)· 数据:layer 0,每 500 步采一次</div>
+      <div class="ideal-line">完美均衡 = 每个专家 25%(虚线为参考)· 数据:layer 0,每 500 步采一次 · 更深的层塌得更狠,见下方折叠</div>
       <div class="btn-row" style="margin-top:10px">
         <button class="btn primary" id="ldPlay">▶ 播放训练过程</button>
         <button class="btn" id="ldStepBtn">单步 +500</button>
@@ -375,9 +398,25 @@
         实测(同 5000 步):<b>top-2 + 4 专家</b>就算 <code>--aux 0</code>,最终负载也只是 20/24/27/29% 的轻微偏,
         val loss 1.549 和开 aux 打平。原因:top-2 下<b>每个 token 同时养 2 个专家</b>,4 选 2 让谁都分得到梯度,天生抗塌。
         专家越多、top_k 越小,饿死人的风险越大 —— 所以 top-1 的 Switch 最先撞上这个问题,
-        而 64 选 8 的细粒度 MoE 全都标配负载均衡。上面的 top-1 实验还有一个诚实数字:这个玩具规模下,
-        偏载对 val loss 也<b>没有</b>可测的伤害(1.597 vs 1.600)—— 塌缩真正的代价是<b>买了的容量白买</b>,
+        而 64 选 8 的细粒度 MoE 全都标配负载均衡。上面的 top-1 实验里,偏载对 val loss 的伤害也很小
+        (1.545 开 / 1.560 关,4 层玩具上差 0.015)—— 塌缩真正的代价是<b>买了的容量白买</b>,
         以及大规模多机训练时忙闲不均拖慢整批,这两笔账在大模型上才要命。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>上图只画了 layer 0,别的层呢?(深层塌得更彻底)</summary>
+      <div class="dig-body">
+        路由是每层各自独立学的,所以每层塌的程度不一样,而且<b>越深越极端</b>。
+        同一次 top-1 训练跑完 5000 步,四层的终局:
+        <div class="tbl-scroll"><table class="minitbl">
+          <tr><th>layer</th><th>关 aux(--aux 0)</th><th>开 aux(默认)</th></tr>
+          <tr><td>0</td><td>23 / <b>39</b> / 22 / 15</td><td>24 / 25 / 28 / 23</td></tr>
+          <tr><td>1</td><td>10 / 18 / 16 / <b>56</b></td><td>26 / 23 / 23 / 29</td></tr>
+          <tr><td>2</td><td><b>62</b> / 10 / <b>9</b> / 19</td><td>29 / 27 / 21 / 23</td></tr>
+          <tr><td>3</td><td>2 / <b>72</b> / 4 / 22</td><td>22 / 25 / 31 / 22</td></tr>
+        </table></div>
+        关掉 aux,layer 3 有一个专家吃掉 <b>72%</b> 的单、另一个只剩 <b>2%</b>,基本等于废掉;
+        开着 aux,四层全部稳在 21–31%。所以"塌缩"不是上图那条曲线的全部,layer 0 反而是塌得最轻的一层。
       </div>
     </details>
     <details class="dig">
@@ -406,7 +445,7 @@
   <section class="panel" id="panel4">
     <h2>⑤ 算账:用 dense 的算力,买 2 倍的容量</h2>
     <p class="lead">
-      MoE 的本质是一笔交易:<b>总参数(容量)↑,每 token 激活的计算量不变</b>。
+      MoE 的本质是一笔交易:<b>总参数(容量)↑,每 token <span class="term" data-term="激活参数 · active parameters" data-key="active-params" data-def="处理一个 token 实际参与计算的参数量。dense 里它等于总参数;MoE 里只算 top-k 个专家,所以远小于总参数。省的是算力,不是显存。">激活</span>的计算量不变</b>。
       拨动两个滑块,看这笔账怎么随 <code>n_expert</code> / <code>top_k</code> 变化(模型 = 本关的 4 层 GPT):
     </p>
 
@@ -416,7 +455,7 @@
       <div class="pbars">
         <div class="pb-row"><span class="pb-name">总参数(要存)</span><div class="pb-track"><div class="pb-fill" id="pbTotal" style="background:var(--accent)"></div></div><span class="pb-num" id="pbTotalN"></span></div>
         <div class="pb-row"><span class="pb-name">每 token 激活</span><div class="pb-track"><div class="pb-fill" id="pbActive" style="background:var(--good)"></div></div><span class="pb-num" id="pbActiveN"></span></div>
-        <div class="pb-row"><span class="pb-name">dense 对照(03)</span><div class="pb-track"><div class="pb-fill" style="background:#B9B4A5;width:18.6%"></div></div><span class="pb-num">0.81 M</span></div>
+        <div class="pb-row"><span class="pb-name">dense 对照(03)</span><div class="pb-track"><div class="pb-fill" style="background:#B9B4A5;width:18.6%"></div></div><span class="pb-num">0.82 M</span></div>
       </div>
       <div class="hp-note" id="calcNote" style="margin-top:10px"></div>
     </div>
@@ -430,7 +469,7 @@
     <div class="sub-h"><span class="badge">达标</span>本关实测(四次训练 · 各 5000 步 · tiny shakespeare)</div>
     <ul class="checklist" id="finalChecklist">
       <li><span class="ck">✓</span><div>MoE val loss <b id="fLossMoe">–</b>,dense 对照(03)<b>~1.57</b>:同等每 token 算力下,容量翻倍换来更低的 loss。</div></li>
-      <li><span class="ck">✓</span><div>负载均衡有效:top-1 关 aux 实测偏载滚雪球(单专家吸到 45%+、也有专家饿到 9.4%),开 aux 则全程钉在 25% 均衡;本关的 top-2 配置天生抗塌(关 aux 也只轻微偏)。</div></li>
+      <li><span class="ck">✓</span><div>负载均衡有效:top-1 关 aux 实测偏载滚雪球(最深一层单专家吃掉 <b>72%</b> 的单,同层另一个只剩 <b>2%</b>;layer 2 也有专家被饿到 9.4%),开 aux 则四层全部稳在 21–31%;本关的 top-2 配置天生抗塌(关 aux 也只轻微偏)。</div></li>
       <li><span class="ck">✓</span><div>专家分工涌现且清晰:空白 70.5% 涌向 E1、大写 50.8% 归 E0、元音偏 E2、辅音偏 E3(见 STEP 3 热力图,val 集实测)。</div></li>
     </ul>
 
@@ -490,10 +529,10 @@ const EVAL_STEPS = [0,500,1000,1500,2000,2500,3000,3500,4000,4500,4999];
 /* 真实数据:09_moe.py 四次完整训练(mps · 5000 步 · seed 1337)。
    STEP 3 热力图/专家卡 = 本关配置(top-2 · aux 0.01);
    STEP 4 负载演化 = Switch 同款 top-1 的两次对照(aux 0.01 vs 0)。 */
-const VAL_ON   = [4.33,1.99,1.83,1.76,1.72,1.68,1.66,1.63,1.62,1.61,1.60];  // top-1 · aux=0.01
-const VAL_OFF  = [4.33,1.99,1.82,1.75,1.71,1.67,1.65,1.64,1.62,1.60,1.60];  // top-1 · aux=0
-const USAGE_ON  = [[17,38,21,24],[24,26,24,26],[27,24,24,25],[27,24,24,25],[24,25,27,24],[26,22,27,25],[25,25,25,25],[26,24,25,25],[25,26,24,26],[24,24,26,26],[24,25,25,25]];
-const USAGE_OFF = [[17,38,21,24],[24,33,19,24],[20,38,16,25],[19,41,16,24],[17,44,17,22],[18,44,17,22],[16,45,17,21],[18,44,16,21],[17,44,17,22],[16,45,18,21],[16,45,18,21]];
+const VAL_ON   = [4.32,1.95,1.76,1.69,1.64,1.60,1.59,1.57,1.56,1.55,1.54];  // top-1 · aux=0.01
+const VAL_OFF  = [4.32,1.96,1.77,1.70,1.65,1.61,1.60,1.59,1.58,1.57,1.56];  // top-1 · aux=0
+const USAGE_ON  = [[17,38,21,24],[28,31,22,18],[26,28,25,20],[26,28,24,22],[24,28,25,23],[26,26,25,23],[26,27,25,23],[25,27,25,23],[26,27,24,24],[23,26,28,22],[25,26,26,23]];
+const USAGE_OFF = [[17,38,21,24],[29,43,17,11],[28,40,20,13],[27,41,19,13],[26,41,19,14],[26,39,21,14],[28,38,21,13],[27,39,21,13],[26,39,20,14],[25,39,21,14],[26,39,21,14]];
 const CAT_MATRIX = {  /* 行=字符类别,列=E0..E3,占比 %(run A,layer 0,val 集) */
   "空白":[20.3,70.5,0.1,9.1], "元音":[22.7,13.2,33.7,30.3], "辅音":[29.4,12.9,18.6,39.1],
   "大写":[50.8,1.7,28.6,19.0], "标点":[16.9,37.5,36.0,9.6] };
@@ -654,7 +693,9 @@ function renderAuxNote(){
 }
 
 /* ============ STEP 5:参数账本 ============ */
-const NONFFN=0.30, PER_EXPERT=0.0655, NLAYER=4, DENSE=0.81;
+/* 三个常数都取自实测参数量:非专家部分 291,905 → 0.292M;单个专家 65,920 → 0.0659M;
+   dense 对照 03_transformer.py 打印 0.82 M(816,705)。 */
+const NONFFN=0.292, PER_EXPERT=0.0659, NLAYER=4, DENSE=0.82;
 function renderCalc(){
   let E=+document.getElementById('neS').value, K=+document.getElementById('tkS').value;
   if(K>E){K=E;document.getElementById('tkS').value=E;}
@@ -667,7 +708,7 @@ function renderCalc(){
   document.getElementById('pbTotalN').textContent=total.toFixed(2)+' M';
   document.getElementById('pbActiveN').textContent=active.toFixed(2)+' M';
   const note=(E===4&&K===2)
-    ? '← 本关配置:总参数 ≈ dense 的 1.7 倍,每 token 激活 ≈ dense 持平(0.82 M vs 0.81 M)。'
+    ? '← 本关配置:总参数 ≈ dense 的 1.6 倍,每 token 激活和 dense 持平(0.82 M vs 0.82 M)。'
     : '容量 ×'+(total/DENSE).toFixed(1)+',每 token 算力 ×'+(active/DENSE).toFixed(1)+'(相对 dense)。top_k 不变就"白拿"容量;top_k 加大,算力跟着涨。';
   document.getElementById('calcNote').textContent=note;
 }

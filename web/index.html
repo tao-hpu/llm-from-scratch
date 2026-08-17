@@ -151,7 +151,8 @@
     <h1>LLM from Scratch <span class="dot">·</span> 从零手写大语言模型</h1>
     <p class="subtitle">
       一条完整的学习之旅:从最朴素的 <code>bigram</code> 基线起步,经自注意力搭出最小可训练的
-      nanoGPT,再扩展到 124M 规模与 <code>SFT + LoRA</code> 微调。
+      nanoGPT,扩展到 124M 规模的预训练与推理,再做后训练三关(<code>SFT / LoRA / DPO</code>),
+      最后手搓 <code>MoE</code> 摸到现代架构。
       每一章都配交互式可视化 —— 先看懂直觉,再读代码。
     </p>
     <div style="margin-top:16px;display:flex;flex-wrap:wrap;align-items:stretch;gap:10px">
@@ -300,10 +301,10 @@
     </div>
   </section>
 
-  <!-- ============ PHASE 2 · SFT + LoRA ============ -->
+  <!-- ============ PHASE 2 · SFT / LoRA / DPO ============ -->
   <section class="phase-sec">
     <div class="phase-title">
-      <span class="pt-num">PHASE 2 · SFT + LoRA</span>
+      <span class="pt-num">PHASE 2 · SFT / LoRA / DPO</span>
       <h2>第二阶段 · 后训练</h2>
     </div>
     <div class="chapters">
