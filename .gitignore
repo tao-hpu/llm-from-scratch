@@ -6,7 +6,11 @@ ckpt/
 ckpt*/
 
 # ===== 训练数据 / 分词后的 shards（自己跑 prepare_fineweb.py 生成）=====
-data/
+# 只忽略 124m 阶段那些几十 GB 的下载/分词产物。
+# phase1-nanogpt/data/tinyshakespeare.txt 只有 1MB，随仓提供，01/02/03/09 直接能跑
+# ——所以这里不能写成通配的 `data/`，否则它会被一起排除掉。
+phase1-124m/data/
+phase1-124m/data10b/
 data10b/
 *.npy
 *.parquet
