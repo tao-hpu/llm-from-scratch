@@ -4,11 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>学习札记 · 彩蛋</title>
-<meta name="description" content="正课之外的边角料:Transformer 的前世今生 —— 一篇翻译论文、8 位作者、以及它怎么变成全 AI 的地基。">
+<meta name="description" content="正课之外的边角料:Transformer 的前世今生;12.75T token 的真实训练日志里出过什么岔子。">
 <meta name="theme-color" content="#D97757">
 <!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
 <meta property="og:title" content="学习札记 · 从零手写大语言模型">
-<meta property="og:description" content="正课之外的边角料:Transformer 的前世今生 —— 一篇翻译论文、8 位作者、以及它怎么变成全 AI 的地基。">
+<meta property="og:description" content="正课之外的边角料:Transformer 的前世今生;12.75T token 的真实训练日志里出过什么岔子。">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://learn-llm.fim.ai/notes.html">
 <meta property="og:image" content="https://learn-llm.fim.ai/og.png">
@@ -17,7 +17,7 @@
 <!-- Twitter / X -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="学习札记 · 从零手写大语言模型">
-<meta name="twitter:description" content="正课之外的边角料:Transformer 的前世今生 —— 一篇翻译论文、8 位作者、以及它怎么变成全 AI 的地基。">
+<meta name="twitter:description" content="正课之外的边角料:Transformer 的前世今生;12.75T token 的真实训练日志里出过什么岔子。">
 <meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
 <style>
   /* ============ 全局基础样式(与全站共用暖色变量)============ */
@@ -95,6 +95,11 @@
   .house.g h4{color:#3f7d63;}
   .house small{color:var(--ink2);font-size:12.5px;display:block;line-height:1.6;}
   @media(max-width:600px){.houses{grid-template-columns:1fr;}}
+
+.note-card a{color:var(--accent);text-decoration:none;font-weight:600;
+    border-bottom:1px solid var(--accent-soft);}
+  .note-card a:hover{border-bottom-color:var(--accent);}
+  .links{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:12px;font-family:var(--mono);font-size:12.5px;}
 
   footer{margin-top:42px;padding-top:20px;border-top:1px solid var(--border);
     font-size:13px;color:var(--ink2);}
@@ -220,6 +225,79 @@
       🧩 <b>连 Diffusion 都来借它:</b>扩散是"怎么生成"的配方,Transformer 是"用什么网络干活"的骨架,
       两者本是正交的两层。早期 Diffusion 配卷积(U-Net),如今主流配 Transformer(DiT)——
       <b>强到别的范式都来拿它当钢筋</b>,这就是它为什么是这个时代的地基。
+    </div>
+  </article>
+
+  <!-- ================= 彩蛋 02 ================= -->
+  <article class="note-card" id="egg-real-run">
+    <span class="egg-tag">彩蛋 02 · 真实训练日志</span>
+    <h2>别人的训练日志:12.75T token 那一年,到底出过什么岔子</h2>
+    <p class="deck">—— 你在第 6 章看到的 loss 曲线是一条平滑的余弦。真实的大规模训练不长这样。</p>
+
+    <h3>先对一下量级</h3>
+    <table>
+      <tr><th></th><th>本仓库(第 6 章)</th><th>Marin 8B</th></tr>
+      <tr><td>参数量</td><td>124M</td><td>8B(约 65 倍)</td></tr>
+      <tr><td>训练数据</td><td><span class="term" data-term="FineWeb-Edu" data-key="fineweb"
+        data-def="从 Common Crawl 里筛出的教育向英文网页语料,本仓库第 6 章用的就是它的 10B token 版本。">FineWeb-Edu</span> 10B token</td><td>12.75T token(约 1275 倍)</td></tr>
+      <tr><td>硬件</td><td>单卡 RTX 4090</td><td>TPU v5e-256 ×2 起步,中途换到 v4-2048</td></tr>
+      <tr><td>训练过程</td><td>19073 步,一条余弦退火跑到底</td><td>五个阶段:中途换数据、换硬件、把学习率降下去又烧回来</td></tr>
+    </table>
+    <p>
+      数据量差着 1000 倍,零件却是同一套:你手搓过的
+      <span class="term" data-term="RoPE · 旋转位置编码" data-key="rope"
+        data-def="把位置信息变成对 q/k 向量的旋转角度,不再额外加一个位置嵌入。第 12 章那一关拨的就是它。">RoPE</span>、
+      <span class="term" data-term="AdamW" data-key="adamw"
+        data-def="带权重衰减的 Adam 优化器,本仓库第 6 章逐个超参讲过 betas / eps / weight_decay。">AdamW</span>、
+      warmup + 退火,在 8B 上一个不多一个不少。差别在于:规模一上来,
+      <span class="hl">每个零件都会以小模型上看不到的方式出问题</span>。
+    </p>
+
+    <h3>日志里才有、教程不写的三件事</h3>
+    <p>
+      <b>① 位置编码的配置默默错了很久。</b>训练跑出去一大截之后才发现,用的还是 Llama 2 那一版的旋转位置编码设置,
+      中途才换成 Llama 3 式。你在第 12 章能一键开关的那个零件,在真实项目里是个会静默错下去的配置项:
+      loss 照常下降,不会有任何报错提醒你。
+    </p>
+    <p>
+      <b>② 学习率降到很低,loss 反而开始往上爬。</b>退火阶段本该是最稳的时候,训练 loss 却慢慢抬头。
+      查下去,原因是输出层 <code>lm_head</code> 的权重范数在膨胀,加了一项系数 <code>1e-4</code> 的 z-loss 才压住。
+      "学习率越小越安全"这个直觉在这里不成立。
+    </p>
+    <p>
+      <b>③ 换硬件之后学习率怎么跟着改。</b>batch size 变大 k 倍,学习率乘 <code>√k</code>。
+      这是那种不会写进任何教程、但每次扩机器都要用一次的经验公式。
+    </p>
+
+    <h3>真实预训练是分阶段的,不是填好超参按回车</h3>
+    <p>它们给每个阶段起了动物名,一条曲线被切成五段:</p>
+    <ul class="tl">
+      <li><span class="yr">Kestrel</span>0 → 2.7T token。DCLM 数据配方,学习率 1e-3。</li>
+      <li><span class="yr">Ocelot</span>2.7T → 3.78T。换到 v4-2048,学习率提到 1.7e-3。</li>
+      <li><span class="yr">Jellyfish</span>3.78T → 4.78T。第一次冷却,学习率退到 1.7e-4。</li>
+      <li><span class="yr">Phoenix</span>4.78T → 11.1T。学习率重新烧回 1.7e-3,数据换成 Nemotron-CC。切换那一刻 loss 短暂尖峰,随后回落到比之前更低。</li>
+      <li><span class="yr">Starling</span>11.1T → 12.75T。第二次冷却到 1.7e-5,batch 提到 16Mi token/步。</li>
+    </ul>
+    <p>
+      本仓库那组"300M vs 10B、唯一变量是数据量"的对照,在这里被拉长成一年:数据配方、学习率、批大小、硬件,
+      <b>全都是跑的过程中改的</b>。看完这份日志再回头看自己那条平滑的余弦曲线,你会知道它平滑是因为规模小,
+      不是因为训练本该如此。
+    </p>
+
+    <div class="aside">
+      🔭 <b>这份日志出自哪:</b>Marin,2024 年在斯坦福发起、现由 Open Athena 主导的开放训练项目,
+      把代码、权重、数据来源和实验记录(包括没跑通的方向)全部公开,目前在训一个 535B 的
+      <span class="term" data-term="MoE · 混合专家" data-key="moe"
+        data-def="把 FFN 拆成多个专家,路由器每步只派单给其中几个,参数变多而每 token 算力不变。第 11 章手搓过一个 4 专家版。">MoE</span>
+      (<span class="term" data-term="激活参数" data-key="active-params"
+        data-def="MoE 里每个 token 实际参与计算的参数量,远小于总参数量。">激活参数</span> 23B,18T token)。
+      它用 JAX + TPU,不是本仓库的 PyTorch,所以<b>值得看的是过程,不是代码</b>。
+      <div class="links">
+        <a href="https://marin.readthedocs.io/en/latest/reports/marin-8b-retro/" target="_blank" rel="noopener">8B 训练回顾(本文素材) ↗</a>
+        <a href="https://marin.readthedocs.io/en/latest/reports/marin-32b-retro/" target="_blank" rel="noopener">32B 训练回顾 ↗</a>
+        <a href="https://marin.readthedocs.io/en/latest/reports/agent-moe-experiments/" target="_blank" rel="noopener">MoE 实验摘要 ↗</a>
+        <a href="https://github.com/marin-community/marin" target="_blank" rel="noopener">GitHub 仓库 ↗</a>
+      </div>
     </div>
   </article>
 

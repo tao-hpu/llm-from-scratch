@@ -525,7 +525,8 @@
     <p>它最重要的性质是:转完之后 <code>q·k</code> <b>只依赖两个 token 的相对距离</b>,与它们的绝对位置无关 ——
     这正是语言里真正要紧的信息。而且没有"表只有 block_size 行"的限制,所以后来把上下文从 4K 拉到 128K 的做法
     (NTK / YaRN 等)动的都是 RoPE 的频率。<b>只作用在 q、k 上,v 不转</b>(位置只该影响"谁看谁",不影响搬运的内容)。
-    本项目在<b>第 12 章 / <code>10_llama.py</code></b> 手搓了一遍。</p>
+    本项目在<b>第 12 章 / <code>10_llama.py</code></b> 手搓了一遍。
+    🥚 它在真实训练里错过一次(整段跑了几万亿 token 才发现用的是上一代设置)→ <a href="notes.html#egg-real-run" style="color:var(--accent);font-weight:600">学习札记</a>。</p>
   </div>
 
   <div class="gentry" id="rmsnorm">
