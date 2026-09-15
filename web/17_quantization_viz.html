@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>量化 · 把 124M 从 32 位压到 4 位</title>
+<meta name="description" content="把第 6 章训出来的 GPT-2 124M 量化到 8 / 4 / 3 / 2 位:scale 管多少权重、离群值为什么让整矩阵 int4 崩掉、Q4_K / NVFP4 / MXFP4 三种 4 位格式怎么存 scale,附 15 组真实评测。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 17 章 · 量化 · 从零手写大语言模型">
+<meta property="og:description" content="把第 6 章训出来的 GPT-2 124M 量化到 8 / 4 / 3 / 2 位:scale 管多少权重、离群值为什么让整矩阵 int4 崩掉、Q4_K / NVFP4 / MXFP4 三种 4 位格式怎么存 scale,附 15 组真实评测。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/17_quantization_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 17 章 · 量化 · 从零手写大语言模型">
+<meta name="twitter:description" content="把第 6 章训出来的 GPT-2 124M 量化到 8 / 4 / 3 / 2 位:scale 管多少权重、离群值为什么让整矩阵 int4 崩掉、Q4_K / NVFP4 / MXFP4 三种 4 位格式怎么存 scale,附 15 组真实评测。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
+<style>
+
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --good:#3f7d63; --good-soft:#D7EBE0; --bad:#9a3a22; --bad-soft:#F3D9CE;
+    --e0:#b8512f; --e0s:#F7E6DE; --e1:#3a63c0; --e1s:#E5EBF9;
+    --e2:#3f7d63; --e2s:#E4EFE9; --e3:#a3548c; --e3s:#F6E6F0;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 24px 90px;}
+
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:790px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  .steps-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:26px 0 18px;}
+  .step-tab{background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 14px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13.5px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+  .hp-note code{font-family:var(--mono);font-size:11.5px;}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 20px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:10px;padding:10px 14px;}
+
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;align-items:center;}
+  .btn-row.small .btn{font-size:13px;padding:7px 13px;}
+
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:24px 0 6px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  .codepath{font-family:var(--mono);font-size:11.5px;color:var(--ink2);background:#F4F2EA;
+    border:1px solid var(--border);border-radius:8px;padding:5px 10px;display:inline-block;margin-top:10px;}
+  .codepath b{color:var(--accent);}
+
+  /* 名词气泡 */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:280px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;font-family:system-ui,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* 庆祝 */
+  .congrats{display:none;text-align:center;background:linear-gradient(135deg,#FBF1EA,#F6E6F0);
+    border:1px solid var(--accent-soft);border-radius:16px;padding:22px;margin-top:18px;}
+  .congrats.show{display:block;animation:fade .5s ease;}
+  .congrats .ct{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--accent);}
+  .congrats .cs{font-size:13.5px;color:var(--ink2);margin-top:6px;}
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;}
+
+  /* ===== 通用件(与其余章节页一致)===== */
+  .nav{display:flex;justify-content:space-between;margin-top:22px;gap:10px;}
+  .checklist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:8px;}
+  .checklist li{display:flex;gap:10px;align-items:flex-start;font-size:13px;background:#fff;border:1px solid var(--border);
+    border-radius:10px;padding:10px 13px;}
+  .checklist li .ck{color:#3f7d63;font-weight:700;flex-shrink:0;}
+  .checklist li b{color:var(--accent);}
+  .rk-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0;}
+  .rk-row label{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:172px;}
+  .rk-val{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent);min-width:64px;text-align:center;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:8px;padding:2px 6px;}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;background:var(--accent-soft);
+    flex:1;min-width:150px;max-width:340px;outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.18);}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid #fff;}
+  .dotread{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:12px 0 4px;}
+  .dr{background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 13px;text-align:center;}
+  .dr .drv{font-family:var(--mono);font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .dr .drl{font-size:11.5px;color:var(--ink2);margin-top:2px;}
+  .lab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin:10px 0;}
+  .scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .calc{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 16px;margin-top:10px;
+    font-family:var(--mono);font-size:12.5px;line-height:1.9;overflow-x:auto;}
+  .calc .hl{color:var(--accent);font-weight:700;}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin:4px 0;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;}
+
+  /* ===== STEP 3:loss 对照条 ===== */
+  .lbar{display:flex;align-items:center;gap:10px;margin:7px 0;}
+  .lbar .ln{font-family:var(--mono);font-size:12px;width:190px;flex-shrink:0;color:var(--ink2);}
+  .lbar.sel .ln{color:var(--accent);font-weight:700;}
+  .lbar .lt{flex:1;min-width:120px;height:22px;background:#F4F2EA;border:1px solid var(--border);border-radius:7px;overflow:hidden;}
+  .lbar .lf{height:100%;border-radius:6px 0 0 6px;transition:width .4s ease;}
+  .lbar .lv{font-family:var(--mono);font-size:12.5px;font-weight:700;width:64px;text-align:right;flex-shrink:0;}
+  @media (max-width:640px){
+    .lbar{flex-wrap:wrap;row-gap:3px;}
+    .lbar .ln{width:100%;}
+    .lbar .lt{min-width:0;}
+  }
+  .sample{font-family:var(--serif);font-size:14px;line-height:1.75;background:#fff;border:1px solid var(--border);
+    border-radius:10px;padding:10px 14px;margin-top:8px;color:var(--ink);word-break:break-word;}
+  .sample .pr{color:var(--ink2);}
+  .sample mark{background:var(--accent-soft);color:var(--ink);border-radius:3px;padding:0 1px;}
+  .sample .nl{color:var(--ink2);font-family:var(--mono);font-size:11px;}
+  .sample-h{font-family:var(--mono);font-size:11.5px;color:var(--ink2);margin-top:10px;}
+
+  /* ===== STEP 4:位布局 ===== */
+  .lay{display:inline-block;min-width:560px;padding:4px 0;}
+  .lay-row{display:flex;align-items:center;margin:2px 0;height:16px;}
+  .lay-row .rl{font-family:var(--mono);font-size:10px;color:var(--ink2);width:58px;flex-shrink:0;}
+  .cell{width:12px;height:14px;border-right:1px solid #fff;flex-shrink:0;}
+  .chip{height:14px;border-right:1px solid #fff;flex-shrink:0;font-family:var(--mono);font-size:8.5px;line-height:14px;
+    color:#fff;text-align:center;overflow:hidden;font-weight:700;}
+  .fmt-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:10px 0 4px;}
+  .fmt-meta .fm{background:#fff;border:1px solid var(--border);border-radius:11px;padding:10px 13px;font-size:12.5px;color:var(--ink2);}
+  .fmt-meta .fm b{color:var(--ink);font-weight:600;}
+  .fmt-meta .fm .fh{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);margin-bottom:3px;}
+
+  /* ===== STEP 5:账本 ===== */
+  table.ledger{border-collapse:collapse;width:100%;min-width:640px;font-size:12.5px;}
+  table.ledger th{font-family:var(--mono);font-size:11px;color:var(--ink2);text-align:left;font-weight:700;
+    padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap;}
+  table.ledger td{padding:6px 8px;border-bottom:1px solid #EFECE3;vertical-align:middle;}
+  table.ledger td.num{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  table.ledger tr{cursor:pointer;transition:background .15s ease;}
+  table.ledger tbody tr:hover{background:#F7F5EE;}
+  table.ledger tr.sel{background:#FBF1EA;}
+  table.ledger tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--accent);}
+  .dbar{display:flex;align-items:center;gap:6px;min-width:150px;}
+  .dbar .dt{flex:1;height:12px;background:#F4F2EA;border:1px solid var(--border);border-radius:4px;overflow:hidden;}
+  .dbar .df{height:100%;}
+  .dbar .dn{font-family:var(--mono);font-size:12px;width:62px;text-align:right;font-variant-numeric:tabular-nums;}
+  .stack{display:flex;height:26px;border-radius:7px;overflow:hidden;border:1px solid var(--border);background:#F4F2EA;margin:8px 0 4px;}
+  .stack div{height:100%;transition:width .4s ease;}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <header>
+    <span class="filename">17_quantization_viz.html</span>
+    <h1>量化:把 124M 从 32 位压到 4 位</h1>
+    <p class="subtitle">
+      第 6 章用 10B token 训出来的那个 GPT-2 124M,每个权重是 32 位浮点,整个模型 <b>497.9 MB</b>。
+      <span class="term" data-term="量化 · quantization" data-key="quantization" data-def="用更少的位数存权重:定一个 scale,权重除以 scale 后四舍五入成整数(或小浮点)格点,只存格点编号;用时乘回 scale。">量化</span>
+      把每个权重换成几位的格点编号:先定一个
+      <span class="term" data-term="scale · 缩放系数" data-key="quant-scale" data-def="把一段权重映射到格点上的系数。一个 scale 管多少个权重(整矩阵 / 每行 / 每 32 个)决定了格子有多细,scale 本身也要占位数。">scale</span>,
+      权重除以它、四舍五入,用的时候再乘回来。本关用配套代码 <code>phase4-efficiency/15_quant.py</code> 把 15 种做法挨个跑一遍,
+      在同一份 <span class="term" data-term="FineWeb-Edu" data-key="fineweb" data-def="HuggingFace 发布的教育类网页语料,第 6 章训练 124M 用的就是它。">FineWeb-Edu</span> val 上看 loss 涨多少。
+      Phase 4 讲效率,这是最后一章。
+    </p>
+  </header>
+
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">一个权重要几位</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">一个 scale 管多少个</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">离群值撑大格子</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">三种 4 位格式</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">124M 的真实账本</div></div>
+  </div>
+
+  <div class="hp-bar">
+    <span class="hp-label">这一关</span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">模型 <b>124M</b> <i>第 6 章 · step 19072</i></span>
+    <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">被量化 <b>84.9M</b> <i>12 层 48 个 Linear 权重</i></span>
+    <span class="hp-chip" style="color:#6B6B68;background:#ECEAE2">不量化 <b>39.5M</b> <i>嵌入 / LayerNorm / bias,按 16 位</i></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">评测 <b>131,072</b> <i>val token</i></span>
+    <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">group <b>32</b> <i>每 32 个权重一个 scale</i></span>
+    <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">bits <b>8/4/3/2</b> <i>格点编号几位</i></span>
+    <span class="hp-note">group 的 32 是"管几个权重",fp32 的 32 是"每个数几位",含义不同</span>
+  </div>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>① 一个权重要几位</h2>
+    <p class="lead">
+      最朴素的做法是整个矩阵共用一个 scale:<code>scale = 最大绝对值 / qmax</code>,qmax = 2<sup>bits−1</sup> − 1。
+      权重除以 scale、四舍五入,落到 −qmax … qmax 这些整数格点上。
+      下图是第 6 层 <code>mlp.c_fc</code> 全部 <b>2,359,296</b> 个权重的真实分布,<b style="color:var(--accent)">橙色竖线</b>是这个 scale 下能表示的值。拖滑块改位数:
+    </p>
+
+    <div class="lab">
+      <div class="rk-row"><label>每个格点编号几位 bits</label>
+        <input type="range" id="bitsR" min="0" max="3" step="1" value="2">
+        <span class="rk-val" id="bitsV">4 位</span></div>
+      <div class="btn-row small" id="histScale">
+        <button class="btn primary">线性纵轴</button>
+        <button class="btn">对数纵轴(看两端的尾巴)</button>
+      </div>
+      <div class="scroll-x"><div id="histSvg" style="min-width:560px"></div></div>
+      <div class="legend">
+        <span><i style="background:#8FA7D9"></i>权重个数(80 格直方图,±8σ 以外并进两端)</span>
+        <span><i style="background:var(--good-soft);border:1px solid var(--good)"></i>±3σ</span>
+        <span><i style="background:var(--accent)"></i>能表示的值</span>
+        <span><i style="background:var(--bad)"></i>最大绝对值</span>
+      </div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s1Levels">–</div><div class="drl">能表示几个值</div></div>
+        <div class="dr"><div class="drv" id="s1Step">–</div><div class="drl">格距 scale</div></div>
+        <div class="dr"><div class="drv" id="s1In3">–</div><div class="drl">±3σ 里分到几个格点</div></div>
+        <div class="dr"><div class="drv" id="s1Zero" style="color:var(--bad)">–</div><div class="drl">被舍成 0 的权重(按直方图估)</div></div>
+        <div class="dr"><div class="drv" id="s1MB" style="color:var(--good)">–</div><div class="drl">这个矩阵占多大</div></div>
+      </div>
+    </div>
+    <div class="note" id="s1Note"></div>
+
+    <div class="codepath">↳ 代码:<b>15_quant.py</b> 的 <code>int_absmax(w, bits)</code>(group=None,整矩阵一个 scale)</div>
+
+    <details class="dig">
+      <summary>为什么只用 −qmax … qmax,不把 int4 的 −8 … 7 用满?</summary>
+      <div class="dig-body">
+        对称取值让 <b>0 精确落在格点 0 上</b>,正负两侧格距相同,一个 scale 就够,不必再存偏移量。代价是少用一个编码(int4 用 15 个,空着 −8)。
+        LLM.int8() 论文里的 absmax 量化也是这样定 scale 的,原文:
+        "Absmax quantization scales inputs into the 8-bit range [−127, 127] by multiplying with s_xf16 which is 127 divided by the absolute maximum of the entire tensor"
+        (Dettmers et al., <b>arXiv 2208.07339</b>,§2)。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>这里量化完,显存真的省下来了吗?</summary>
+      <div class="dig-body">
+        没有。<code>15_quant.py</code> 做的是
+        <span class="term" data-term="假量化 · fake quantization" data-key="fake-quant" data-def="量化后立刻反量化回浮点,放回模型里算 loss。数值与真 4 位存储解码出来的一样,但内存里仍是浮点,不省显存也不提速。">假量化</span>:
+        每个矩阵量化成格点后<b>立刻乘回 scale</b>,得到浮点数放回模型,再算 loss 和续写。
+        这组浮点数和真 4 位存储在计算时解码出来的值相同,所以 loss 与真 kernel 的结果一致,可以拿来比较格式好坏。
+        但权重在内存里仍是浮点,不会省显存,也不会变快;要真的省,得把格点编号按位打包存储,再配专门的反量化 / 矩阵乘算子。
+        本页里的 MB 都是按位数算出来的存储大小。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>fp16 为什么一点没掉?</summary>
+      <div class="dig-body">
+        fp16 仍然是浮点:1 位符号、5 位指数、10 位尾数,每个数自带自己的"scale"(指数),相对精度约 2<sup>−10</sup> ≈ 千分之一。
+        实测 fp16 的 val loss 是 <b>3.0213</b>,和 fp32 在 4 位小数上相同,贪心续写逐字一样。
+        第 6 章训练时前向本来就跑在 <span class="term" data-term="bf16 · 混合精度" data-key="bf16" data-def="bfloat16,16 位浮点。前向用它算更快、省一半显存,数值范围和 fp32 一样大。">bf16</span> 混合精度下,模型对 16 位的舍入早就适应了。
+        整数量化不同:所有权重共用少数几个 scale,舍入误差由 scale 管的那一片里最大的数决定。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:一个 10σ 的最大值把 4 位的格子撑开,一半权重被舍成 0。让一个 scale 只管一小段权重,会怎样?</div>
+  </section>
+
+  <!-- ============ STEP 2 ============ -->
+  <section class="panel" id="panel1">
+    <h2>② 一个 scale 管多少个权重</h2>
+    <p class="lead">
+      scale 管的范围越小,它只需要照顾这一小段里的最大值,格子就贴得越紧。
+      下面是同一个矩阵(第 6 层 <code>mlp.c_fc</code>)<b>第 123 行的前 32 个权重</b>:空心圈是原值,实心点是 4 位量化再乘回来的值,竖线是误差。切换 scale 的管法:
+    </p>
+
+    <div class="btn-row" id="scopeBtns">
+      <button class="btn primary">整矩阵 1 个 scale</button>
+      <button class="btn">每行 1 个</button>
+      <button class="btn">每 32 个 1 个</button>
+      <button class="btn">NVFP4 · 每 16 个 1 个</button>
+    </div>
+    <div class="lab">
+      <div class="scroll-x"><div id="rowSvg" style="min-width:560px"></div></div>
+      <div class="legend">
+        <span><i style="background:#fff;border:1.5px solid var(--ink2);border-radius:50%"></i>原值</span>
+        <span><i style="background:var(--accent);border-radius:50%"></i>量化后</span>
+        <span><i style="background:var(--bad);border-radius:50%"></i>被舍成 0</span>
+        <span><i style="background:#E9E5DA"></i>用到的格点值</span>
+      </div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s2Per">–</div><div class="drl">一个 scale 管几个权重</div></div>
+        <div class="dr"><div class="drv" id="s2Bpw">–</div><div class="drl"><span class="term" data-term="bpw · bits per weight" data-key="bpw" data-def="每个权重平均占几位 = 格点位数 + scale 的位数摊到它管的权重上。int4 每 32 个一个 16 位 scale:4 + 16/32 = 4.5。">每权重平均几位</span></div></div>
+        <div class="dr"><div class="drv" id="s2Rmse">–</div><div class="drl">这 32 个的均方根误差</div></div>
+        <div class="dr"><div class="drv" id="s2Zero" style="color:var(--bad)">–</div><div class="drl">被舍成 0 的(共 32 个)</div></div>
+        <div class="dr"><div class="drv" id="s2Loss" style="color:var(--accent)">–</div><div class="drl">整模型 val loss(fp32 3.0213)</div></div>
+      </div>
+      <div class="calc" id="s2Calc"></div>
+    </div>
+    <div class="note" id="s2Note"></div>
+
+    <div class="codepath">↳ 代码:<b>15_quant.py</b> 的 <code>int_absmax(w, 4, group)</code>(group = None / 'row' / 32)· <code>nvfp4</code></div>
+
+    <details class="dig">
+      <summary>管得越细越好,为什么不每 4 个权重配一个 scale?</summary>
+      <div class="dig-body">
+        scale 也要存。16 位的 scale 摊到 4 个权重上是每个 +4 位,4 位量化的存储就变成了 8 位。实测三档:
+        <b>每行 1 个</b> 4.016 位、Δ +0.2243;<b>每 128 个 1 个</b> 4.125 位、Δ +0.1147;<b>每 32 个 1 个</b> 4.5 位、Δ +0.0736。
+        位数与误差要取折中,第 4 步的三种工业格式把块大小定在 16 和 32。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>NVFP4 那一档的点为什么更密?</summary>
+      <div class="dig-body">
+        它的元素是 4 位浮点 E2M1,8 个非负值是 0、0.5、1、1.5、2、3、4、6,<b>靠近 0 的地方更密</b>,正好对上权重扎堆在 0 附近的分布。
+        这 32 个权重在 NVFP4 下用到 12 种绝对值(含 0),int4 每 32 个一个 scale 只用到 7 种。
+        说明:生成这组示例时,<code>15_quant.py</code> 只把这一行传进 <code>nvfp4</code>,所以示例里的张量级 scale 取自这一行本身;块级 scale 照常每 16 个一个。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:管细了就不崩。整矩阵一个 scale 为什么会崩到 9.93?看看每个矩阵的最大值离正常权重有多远。</div>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="panel" id="panel2">
+    <h2>③ 离群值:一个大数撑大所有格子</h2>
+    <p class="lead">
+      给 12 层里全部 48 个被量化的矩阵各算一个数:<b>最大绝对值是标准差的几倍</b>(记作 r)。
+      int4 整矩阵一个 scale 时,格距 = r/7 个标准差,r 越大,正常大小的权重分到的格点越少。
+      这些远离主体的少数权重叫
+      <span class="term" data-term="离群值 · outlier" data-key="outlier" data-def="比同一矩阵里绝大多数数值大很多倍的少数权重或激活。整矩阵共用一个 scale 时,它们决定格距,让其余数值的舍入误差变大。">离群值</span>。点柱子看某个矩阵:
+    </p>
+
+    <div class="btn-row small" id="kindBtns">
+      <button class="btn primary">全部 48 个</button>
+      <button class="btn">attn.c_attn</button>
+      <button class="btn">attn.c_proj</button>
+      <button class="btn">mlp.c_fc</button>
+      <button class="btn">mlp.c_proj</button>
+    </div>
+    <div class="lab">
+      <div class="scroll-x"><div id="layerSvg" style="min-width:620px"></div></div>
+      <div class="legend">
+        <span><i style="background:var(--e1)"></i>attn.c_attn</span>
+        <span><i style="background:var(--e3)"></i>attn.c_proj</span>
+        <span><i style="background:var(--e2)"></i>mlp.c_fc</span>
+        <span><i style="background:var(--e0)"></i>mlp.c_proj</span>
+      </div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s3Key" style="font-size:14px">–</div><div class="drl">选中的矩阵</div></div>
+        <div class="dr"><div class="drv" id="s3R" style="color:var(--accent)">–</div><div class="drl">最大绝对值 / 标准差</div></div>
+        <div class="dr"><div class="drv" id="s3Step">–</div><div class="drl">int4 整矩阵的格距</div></div>
+        <div class="dr"><div class="drv" id="s3Zero" style="color:var(--bad)">–</div><div class="drl">这个范围内全部舍成 0</div></div>
+        <div class="dr"><div class="drv" id="s3In3">–</div><div class="drl">±3σ 里的格点(共 15 个)</div></div>
+      </div>
+    </div>
+    <div class="note" id="s3Note"></div>
+
+    <div class="sub-h"><span class="badge">对照</span>只把 0.1% 的离群值挪出去</div>
+    <p class="lead" style="margin-bottom:10px">
+      <code>int4_keep_outliers</code>:每个矩阵里绝对值最大的 <b>0.1%</b> 权重原样留 16 位(另存 32 位位置),剩下 99.9% 照旧用整矩阵一个 scale 量化,
+      平均每个权重多 0.001 × (16 + 32) = <b>0.048 位</b>。点按钮看 val loss 和续写:
+    </p>
+    <div class="btn-row small" id="outBtns">
+      <button class="btn">fp32 原始</button>
+      <button class="btn primary">int4 整矩阵 1 个 scale</button>
+      <button class="btn">+ 留 0.1% 离群值</button>
+      <button class="btn">int4 每行 1 个</button>
+    </div>
+    <div class="lab">
+      <div id="outBars"></div>
+      <div class="sample-h" id="outSampleH"></div>
+      <div class="sample" id="outSample"></div>
+    </div>
+    <div class="note">整矩阵 int4 的 val loss 是 <b>9.9342</b>;只挪走 0.1% 的权重,回到 <b>3.2633</b>,续写重新成句。</div>
+
+    <div class="codepath">↳ 代码:<b>15_quant.py</b> 的 <code>int4_keep_outliers</code> · 每个矩阵的倍数在脚本末尾 <code>per_layer_outlier</code></div>
+
+    <details class="dig">
+      <summary>LLM.int8() 是怎么处理离群值的?</summary>
+      <div class="dig-body">
+        Dettmers et al.,<b>LLM.int8(): 8-bit Matrix Multiplication for Transformers at Scale</b>(<b>arXiv 2208.07339</b>,NeurIPS 2022)。
+        §3 的做法分两部分:按行 / 列分别定 scale 的 vector-wise 量化,加上 mixed-precision decomposition,把含离群值的特征维单独拆出来用 FP16 算,其余走 int8。
+        §4 报告离群特征在约 6.7B 参数处集中出现,原文 "at the 6.7B scale, 150,000 outliers occur"。
+        <br><br>
+        论文处理的是<b>激活</b>里的离群特征维。本页把同一个思路搬到<b>权重</b>上,按单个权重挑出最大的 0.1%。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>0.1% 这个比例是怎么定的?</summary>
+      <div class="dig-body">
+        代码里固定取 <code>frac=0.001</code>,没有扫这个参数。拿第 6 层 <code>mlp.c_fc</code> 对照:超过 6σ 的权重占 <b>0.0002%</b>,超过 3σ 的占 <b>0.369%</b>,0.1% 落在两者之间。
+        比例取大,离群值的存储开销(每个 48 位)跟着涨;取小,剩下的最大值仍然偏大。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>留离群值和"每行一个 scale"效果差不多,选哪个?</summary>
+      <div class="dig-body">
+        实测留离群值 <b>4.048 位、3.2633</b>,每行一个 scale <b>4.016 位、3.2456</b>,相差 0.018,只评测了一次,不宜据此排先后。
+        工程上每行一个 scale 更规整:存储是定长的,反量化是一次乘法;留离群值要额外存稀疏位置,算的时候再按位置填回去。
+        两者都比每 32 个一个 scale(Δ +0.0736)差得多,这就是主流 4 位格式都用分组的原因。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:分组 scale 是几种工业 4 位格式共同的出发点。Q4_K、NVFP4、MXFP4 的差别在 scale 怎么存。</div>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="panel" id="panel3">
+    <h2>④ 三种 4 位格式:scale 怎么存</h2>
+    <p class="lead">
+      三种格式的每个权重都是 4 位,差在<b>块多大、scale 用几位、元素是整数还是浮点</b>。
+      下面画的是同样 256 个权重的存储布局:一格 = 4 位,色块宽度按位数画。选一种格式:
+    </p>
+
+    <div class="btn-row" id="fmtBtns">
+      <button class="btn primary">Q4_K(llama.cpp)</button>
+      <button class="btn">NVFP4</button>
+      <button class="btn">MXFP4</button>
+    </div>
+    <div class="lab">
+      <div class="scroll-x"><div class="lay" id="layGrid"></div></div>
+      <div class="legend" id="layLegend"></div>
+      <div class="calc" id="layTally"></div>
+      <div class="fmt-meta" id="fmtMeta"></div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s4Bpw">–</div><div class="drl">每权重平均几位</div></div>
+        <div class="dr"><div class="drv" id="s4Loss" style="color:var(--accent)">–</div><div class="drl">124M 实测 val loss</div></div>
+        <div class="dr"><div class="drv" id="s4Delta">–</div><div class="drl">比 fp32 多</div></div>
+        <div class="dr"><div class="drv" id="s4G32">3.0949</div><div class="drl">对照:int4 每 32 个(4.5 位)</div></div>
+      </div>
+    </div>
+    <div class="note" id="s4Note"></div>
+
+    <div class="sub-h"><span class="badge">E2M1</span>4 位浮点只有 8 个非负值</div>
+    <p class="lead" style="margin-bottom:10px">
+      NVFP4 和 MXFP4 的元素都是
+      <span class="term" data-term="FP4 · E2M1" data-key="fp4" data-def="4 位浮点:1 位符号、2 位指数、1 位尾数。非负值只有 0, 0.5, 1, 1.5, 2, 3, 4, 6 八个,靠近 0 更密,最大 6。">E2M1</span>
+      (1 位符号、2 位指数、1 位尾数)。把块内的值除以块 scale 后,四舍五入到最近的 E2M1 值。
+      上排是 E2M1,下排是同样最大到 6 的均匀 int4 格点(−7 … 7 乘 6/7)。拖滑块:
+    </p>
+    <div class="lab">
+      <div class="rk-row"><label>除以 scale 后的值 x</label>
+        <input type="range" id="e2x" min="-6" max="6" step="0.05" value="0.7">
+        <span class="rk-val" id="e2xV">0.70</span></div>
+      <div class="scroll-x"><div id="e2Svg" style="min-width:560px"></div></div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="e2Fp" style="color:var(--accent)">–</div><div class="drl">舍到 E2M1</div></div>
+        <div class="dr"><div class="drv" id="e2Int" style="color:var(--e1)">–</div><div class="drl">舍到均匀 int4</div></div>
+      </div>
+    </div>
+
+    <div class="sub-h"><span class="badge">scale</span>块 scale 能不能是任意数</div>
+    <p class="lead" style="margin-bottom:10px">
+      <span class="term" data-term="NVFP4" data-key="nvfp4" data-def="NVIDIA 的 4 位浮点格式:元素 E2M1,每 16 个值共享一个 FP8(E4M3)scale,另有整个张量一个 FP32 scale。每权重 4.5 位。">NVFP4</span>
+      的块 scale 是 8 位浮点 E4M3,可以取 amax/6 附近的小数,块内最大值差不多正好落在 6 上。
+      <span class="term" data-term="MXFP4" data-key="mxfp4" data-def="OCP Microscaling 标准里的 4 位格式:元素 E2M1,每 32 个值共享一个 E8M0 scale(只能是 2 的整数次幂)。每权重 4.25 位。">MXFP4</span>
+      的块 scale 是 E8M0,只能是 2 的整数次幂:<code>15_quant.py</code> 取 <code>2^(floor(log2 amax) − 2)</code>,于是 amax/scale 落在 [4, 8),超过 6 的部分被截断。拖块内最大绝对值:
+    </p>
+    <div class="lab">
+      <div class="rk-row"><label>块内最大绝对值 amax</label>
+        <input type="range" id="amaxR" min="0" max="100" step="1" value="57">
+        <span class="rk-val" id="amaxV">–</span></div>
+      <div class="scroll-x"><div id="scaleSvg" style="min-width:560px"></div></div>
+      <div class="note" id="scaleNote" style="margin-top:8px"></div>
+    </div>
+
+    <div class="codepath">↳ 代码:<b>15_quant.py</b> 的 <code>q4_k_like</code> · <code>nvfp4</code> · <code>mxfp4</code> · <code>E2M1</code> / <code>e4m3_grid</code></div>
+
+    <details class="dig">
+      <summary>Q4_K 为什么要多存一个 min(非对称)?</summary>
+      <div class="dig-body">
+        对称格式把 16 个格点正负各分一半。子块里的数如果偏向一侧,另一侧的格点就空着。
+        <span class="term" data-term="Q4_K · llama.cpp k-quants" data-key="q4-k" data-def="llama.cpp 的 4 位格式:每 256 个权重一个超块,切成 8 个 32 的子块;子块存 4 位非对称格点和 6 位 scale / min,超块存两个 FP16。每权重 4.5 位。">Q4_K</span>
+        按 <code>x = a·q + b</code> 反量化(llama.cpp <code>ggml-common.h</code> 里 block_q4_K 的注释),q 取 0 … 15,
+        格点覆盖 [min(子块最小值, 0), 子块最大值],15 个格距都用在这一段上。
+        每个子块的 scale 和 min 自己也被量化成 6 位,再由超块的两个 FP16(<code>d</code>、<code>dmin</code>)还原,
+        合计 4 + (6+6)/32 + (16+16)/256 = <b>4.5 位</b>,注释原文 "Effectively 4.5 bits per weight"。
+        出处:llama.cpp k-quants,PR ggml-org/llama.cpp#1684(Iwan Kawrakow,2023-06)。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>MXFP4 在这里为什么比 NVFP4 差一截?</summary>
+      <div class="dig-body">
+        两处差别叠在一起。<b>块大小</b>:NVFP4 每 16 个一个 scale,MXFP4 每 32 个,块越小,一个离群值牵连的值越少。
+        <b>scale 精度</b>:E8M0 只能表示 2 的幂,块内最大值落在 E2M1 的 4 到 8 之间,要么被截到 6,要么用不满 6 以上的格点;E4M3 能取小数,最大值基本正好落在 6 上。
+        NVIDIA 博客用一个示例比较两种 scale,MSE 分别是 0.08 和 0.72。
+        本页实测:NVFP4 Δ <b>+0.0425</b>(4.5 位),MXFP4 Δ <b>+0.0817</b>(4.25 位),MXFP4 省下的是每权重 0.25 位。
+        <br><br>
+        出处:NVIDIA 技术博客 "Introducing NVFP4 for Efficient and Accurate Low-Precision Inference"(2025-06-24);
+        MXFP4 标准见 OCP Microscaling Formats (MX) v1.0 Spec 与 Rouhani et al.,<b>arXiv 2310.10537</b>,块大小 32 与 E8M0 这两个参数以 NVIDIA 博客的对照为准。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>E2M1 的 8 个值是怎么排出来的?</summary>
+      <div class="dig-body">
+        2 位指数 e、1 位尾数 m。e = 0 时是次正规数,值为 m × 0.5,得到 <b>0、0.5</b>;
+        e ≥ 1 时值为 (1 + m/2) × 2<sup>e−1</sup>,e = 1、2、3 分别得到 <b>1、1.5</b>,<b>2、3</b>,<b>4、6</b>。
+        再加 1 位符号,一共 15 个不同的数(+0 与 −0 相同)。<code>15_quant.py</code> 里直接写成常量 <code>E2M1 = [0, 0.5, 1, 1.5, 2, 3, 4, 6]</code>。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>Q4_K 和 NVFP4 只差 0.0018,哪个更好?</summary>
+      <div class="dig-body">
+        这个量级分不出来。两者都是 4.5 位,val loss 3.0656 对 3.0638,只在固定的 131,072 个 token 上评了一次;
+        换一段评测文本,小于 0.01 的先后完全可能翻过来。能确定的是:同样 4.5 位,两者都比 int4 每 32 个一个 scale(3.0949)低 0.03 左右。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:格式都看过了。回到第 6 章那个 124M,把 15 组实测放进一张账本。</div>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="panel" id="panel4">
+    <h2>⑤ 124M 的真实账本</h2>
+    <p class="lead">
+      同一份权重(第 6 章 10B token 训练,step 19072),每种格式量化后在 <b>131,072</b> 个 FineWeb-Edu val token 上算 loss,
+      再用 <code>The history of ancient Rome</code> 做
+      <span class="term" data-term="贪心解码 · greedy" data-key="greedy" data-def="每一步都取概率最高的 token,不随机。同一个模型、同一个 prompt 每次续写都一样,方便对比。">贪心续写</span> 32 个 token。
+      切换排序,点一行看它的大小构成和续写:
+    </p>
+
+    <div class="btn-row small" id="sortBtns">
+      <button class="btn primary">脚本里的顺序</button>
+      <button class="btn">按 Δ loss 从小到大</button>
+      <button class="btn">按模型大小从小到大</button>
+    </div>
+    <div class="lab">
+      <div class="scroll-x">
+        <table class="ledger">
+          <thead><tr><th>格式</th><th style="text-align:right">位 / 权重</th><th style="text-align:right">模型 MB</th><th style="text-align:right">val loss</th><th>Δ(比 fp32,条长 0 → 0.6,超出画满)</th></tr></thead>
+          <tbody id="ledgerBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="lab">
+      <div class="sample-h" id="stackH"></div>
+      <div class="stack" id="stackBar"></div>
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>48 个 Linear 权重矩阵</span>
+        <span><i style="background:var(--e1)"></i>词嵌入(与输出头共用)</span>
+        <span><i style="background:#B9B5AA"></i>位置嵌入 / LayerNorm / bias</span>
+      </div>
+      <div class="sample-h">fp32 原始续写:</div>
+      <div class="sample" id="baseSample"></div>
+      <div class="sample-h" id="selSampleH"></div>
+      <div class="sample" id="selSample"></div>
+    </div>
+
+    <div class="note">
+      大小口径:被量化的 48 个矩阵按"位 / 权重"计,其余参数(词嵌入、位置嵌入、LayerNorm、bias)按 16 位计;fp32 那一行全部按 32 位计。最后一行把词嵌入也量化成 int4 每 32 个一个 scale。
+    </div>
+    <div class="note">
+      4.5 位的 NVFP4 / Q4_K 把 <b>497.9 MB</b> 压到 <b>126.9 MB</b>,val loss 多 0.04;连词嵌入一起压到 <b>71.3 MB</b>,多 0.09;int3 多 0.53,int2 崩到 9.24。
+    </div>
+
+    <details class="dig">
+      <summary>Δ 小于 0.01 的差异能信吗?</summary>
+      <div class="dig-body">
+        当成噪声量级看。fp16 与 fp32 在 4 位小数上相同;int8 每行一个 scale +0.0006,int8 整矩阵 +0.0087;Q4_K 与 NVFP4 相差 0.0018。
+        评测是固定的 131,072 个 token、确定性计算,重跑结果不变,但换一段评测文本,这个量级的先后可能改变。
+        能直接读出来的是大台阶:int8 与 fp32 几乎重合,4.5 位多 0.04 到 0.07,3.5 位多 0.53,整矩阵 int4 与 int2 崩掉。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>为什么 4 位的模型还有 127 MB?</summary>
+      <div class="dig-body">
+        词嵌入表有 50,304 × 768 = <b>38,633,472</b> 个参数,按 16 位存是 <b>77.3 MB</b>,占 int4 每 32 个那一行 126.9 MB 的六成。
+        124M 这个规模里嵌入占的比例高(约 31% 的参数),量化 Linear 层省下的只是剩下那部分。
+        把嵌入也量化成 int4 每 32 个一个 scale,模型降到 <b>71.3 MB</b>,Δ 从 +0.0736 变成 +0.0914。
+        词嵌入同时是输出头(权重共享),<code>15_quant.py</code> 的 <code>apply</code> 里要把 <code>lm_head.weight</code> 一起换掉。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>同样 4 位,还能把误差再压低吗?</summary>
+      <div class="dig-body">
+        能。本页所有格式都是逐个权重四舍五入到最近格点,不看数据。另有两类方法用少量校准数据改进舍入:
+        <br><br>
+        <b>GPTQ</b>(Frantar et al.,<b>arXiv 2210.17323</b>,ICLR 2023):"one-shot weight quantization method based on approximate second-order information",
+        逐步量化权重,并调整还没量化的权重去抵消已产生的误差;论文里 175B 模型约 4 GPU 小时量化到 3 到 4 位。
+        <br>
+        <b>AWQ</b>(Lin et al.,<b>arXiv 2306.00978</b>,MLSys 2024):按激活分布找出约 1% 的显著通道,做逐通道缩放加以保护,不需要反向传播或重建。
+        <br><br>
+        两者都能和分组 scale 叠加使用。本项目没有实现它们。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>只量化了权重,KV cache 和激活呢?</summary>
+      <div class="dig-body">
+        另算。本页量化的只有权重,前向时的激活和
+        <span class="term" data-term="KV-cache · 键值缓存" data-key="kv-cache" data-def="把过去每个 token 的 K/V 缓存下来,生成新 token 时只算新的一列,避免重算整段。">KV cache</span>
+        都还是浮点。KV cache 随上下文长度线性增长,长对话里可能比权重还大,它的显存账见
+        <a href="12_llama_viz.html#step-5" style="color:var(--accent)">第 12 章 STEP 5</a>(每个数从 FP16 换成 FP8,cache 减半)。
+        激活量化更难,激活里的离群特征维就是第 3 步 LLM.int8() 要处理的对象。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>llama.cpp 常见的 Q4_K_M 就是全部 Q4_K 吗?</summary>
+      <div class="dig-body">
+        不全是。引入 k-quants 的 PR(ggml-org/llama.cpp#1684)原文:Q4_K_M "uses Q6_K for half of the attention.wv and feed_forward.w2 tensors, else Q4_K",
+        一部分对误差敏感的矩阵用 6 位。之后版本的混合规则可能调整过,以当前源码为准。本页的 <code>q4_k</code> 一行是所有 48 个矩阵全用 Q4_K。
+      </div>
+    </details>
+
+    <div class="sub-h"><span class="badge">达标</span>本关实测(15 组 · 131,072 个 val token)</div>
+    <ul class="checklist" id="okList"></ul>
+
+    <div class="codepath">↳ 跑法:<code>python 15_quant.py --json runs/ch17_quant.json</code>(需要 <code>phase1-124m/ckpt10b/latest.pt</code>)· <code>--tokens 65536</code> 少评一点</div>
+
+    <div class="congrats" id="congrats">
+      <div class="ct">🎉 量化 · 通关 · Phase 4 收尾</div>
+      <div class="cs">你把第 6 章的 124M 从 497.9 MB 压到了 126.9 MB,val loss 多 0.04;也看到了一个 10σ 的离群值怎样让整矩阵 int4 崩掉,以及 Q4_K、NVFP4、MXFP4 各自怎么存 scale。Phase 4 从线性注意力、稀疏注意力、N-gram 查表、投机解码讲到量化,效率这一阶段到这里结束。</div>
+    </div>
+  </section>
+
+  <div class="nav">
+    <button class="btn" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<canvas id="confetti"></canvas>
+
+<script>
+/* ================================================================
+   REAL-DATA:全部来自 phase4-efficiency/runs/ch17_quant.json
+   命令:cd phase4-efficiency && python 15_quant.py --json runs/ch17_quant.json(默认 --tokens 131072,mps)
+   权重:第 6 章 phase1-124m/ckpt10b/latest.pt(step 19072);评测:FineWeb-Edu val shard 开头 131,072 个 token
+   模型 MB 口径:被量化矩阵按 bits_per_weight 计,其余参数按 16 位;fp32 行全部按 32 位
+   ================================================================ */
+const CKPT_STEP=19072, EVAL_TOKENS=131072;
+const N_Q=84934656, N_ALL=124475904, N_EMB=38633472;   // 被量化 / 全部(输出头与词嵌入共用不重复算)/ 词嵌入
+// rows:15 组格式的 位/权重、模型 MB、val loss、Δ(比 fp32)、贪心续写(prompt "The history of ancient Rome",32 token)
+const ROWS=[
+  {"name":"fp32","label":"32 位浮点(原始)","bits_per_weight":32.0,"model_mb":497.9,"val_loss":3.0213,"delta":0.0,"sample":" is a fascinating one. The Romans were the first to build the great city of Rome, and they were the first to build the great city of the world."},
+  {"name":"fp16","label":"16 位浮点","bits_per_weight":16.0,"model_mb":249.0,"val_loss":3.0213,"delta":0.0,"sample":" is a fascinating one. The Romans were the first to build the great city of Rome, and they were the first to build the great city of the world."},
+  {"name":"int8_tensor","label":"int8 · 整个矩阵一个 scale","bits_per_weight":8.0,"model_mb":164.0,"val_loss":3.03,"delta":0.0087,"sample":" is a fascinating one. The Romans were the first to build the great city of Rome, and they were the first to build the great city of the world."},
+  {"name":"int8_row","label":"int8 · 每行一个 scale","bits_per_weight":8.016,"model_mb":164.2,"val_loss":3.0219,"delta":0.0006,"sample":" is a fascinating one. The Romans were the first to build the great city of Rome, and they were the first to build the great city of the world."},
+  {"name":"int4_tensor","label":"int4 · 整个矩阵一个 scale","bits_per_weight":4.0,"model_mb":121.5,"val_loss":9.9342,"delta":6.913,"sample":".\n, and other for the\n, and other for the, and other, and other, and, and, and, and,,,,,"},
+  {"name":"int4_tensor_outlier","label":"int4 · 整矩阵 scale + 留 0.1% 离群值","bits_per_weight":4.048,"model_mb":122.1,"val_loss":3.2633,"delta":0.242,"sample":" is a fascinating one. The Romans were the first to conquer the world, and they were the first to rule the earth. They were the first to rule the"},
+  {"name":"int4_row","label":"int4 · 每行一个 scale","bits_per_weight":4.016,"model_mb":121.7,"val_loss":3.2456,"delta":0.2243,"sample":" is a fascinating one. It is a fascinating story of the Roman past, and the great achievements of the Roman Empire.\nThe Romans were the first people to"},
+  {"name":"int4_g128","label":"int4 · 每 128 个一个 scale","bits_per_weight":4.125,"model_mb":122.9,"val_loss":3.136,"delta":0.1147,"sample":" is a fascinating one. It is a fascinating story of the Roman Empire, the Roman Empire, and the Roman Empire.\nThe Romans were the first people to"},
+  {"name":"int4_g32","label":"int4 · 每 32 个一个 scale","bits_per_weight":4.5,"model_mb":126.9,"val_loss":3.0949,"delta":0.0736,"sample":" is a fascinating one.\nThe Romans were a very different people. They were very different from the Greeks and Romans. They were very different from the Greeks and"},
+  {"name":"q4_k","label":"Q4_K 式 · 超块 256 / 子块 32 / 非对称","bits_per_weight":4.5,"model_mb":126.9,"val_loss":3.0656,"delta":0.0443,"sample":" is a fascinating one. The Romans were the first to conquer the world, and they were the first to conquer the world. They were the first to conquer the"},
+  {"name":"nvfp4","label":"NVFP4 · E2M1 + 每 16 个一个 E4M3 scale","bits_per_weight":4.5,"model_mb":126.9,"val_loss":3.0638,"delta":0.0425,"sample":" is a fascinating one. The Romans were the first to conquer the world. They were the first to conquer the world. They were the first to conquer the world"},
+  {"name":"mxfp4","label":"MXFP4 · E2M1 + 每 32 个一个 2 的幂 scale","bits_per_weight":4.25,"model_mb":124.2,"val_loss":3.103,"delta":0.0817,"sample":" is a fascinating one. The Romans were the first to conquer the world. They were the first to conquer the world. They were the first to conquer the world"},
+  {"name":"int3_g32","label":"int3 · 每 32 个一个 scale","bits_per_weight":3.5,"model_mb":116.2,"val_loss":3.5533,"delta":0.532,"sample":" is a fascinating mix of history and mythology.\nThe Roman Empire was a great time to be a Roman citizen, and the Romans were a great time to be"},
+  {"name":"int2_g32","label":"int2 · 每 32 个一个 scale","bits_per_weight":2.5,"model_mb":105.6,"val_loss":9.2414,"delta":6.2202,"sample":"...\n.\n\n\n\n:\n\n:\n:\n\n:\n: and\n\n –\n –\n –\n – � –"},
+  {"name":"int4_g32_with_emb","label":"int4 · 每 32 个一个 scale · 连词嵌入一起","bits_per_weight":4.5,"model_mb":71.3,"val_loss":3.1126,"delta":0.0914,"sample":" is a fascinating one.\nThe Romans were a very different people. They were very different from the Greeks and Romans. They were very different from the Greeks and"}
+];
+// hist:h.6.mlp.c_fc 权重直方图,80 格,范围 ±8σ(超出的被 clamp 进两端格)
+const HIST={"range":0.27177,"counts":[2,0,0,0,1,0,0,0,0,0,1,0,0,0,3,8,12,18,48,88,191,332,623,1050,1840,3206,5171,8548,13135,20090,29582,41903,57739,77023,98984,122207,146169,166963,183158,192551,191634,183149,168399,147688,124956,101732,79442,59653,43786,30673,21344,13925,9015,5483,3292,2020,1108,638,333,176,96,53,26,11,6,3,3,2,2,0,1,0,0,1,0,0,0,0,0,0]};
+// outlier:同一个矩阵的 std、absmax、absmax/std、超过 6σ / 3σ 的比例
+const OUT={"std":0.03397,"absmax":0.33966,"absmax_over_std":10.0,"frac_over_6std":2e-06,"frac_over_3std":0.00369};
+// row_examples:h.6.mlp.c_fc 第 123 行前 32 个权重的原值与四种 4 位量化的反量化值
+//   int4_tensor 用整矩阵 scale;int4_row / int4_g32 / nvfp4 把整行(1×768)传进函数,nvfp4 的张量级 scale 因此取自这一行
+const ROW_EX={"orig":[0.01406,0.00606,0.02916,-0.00255,0.00656,-0.03001,0.0132,-0.0361,-0.01519,0.04369,-0.00056,0.00854,-0.00508,0.05606,-0.01888,0.03784,-0.02896,-0.01524,0.02392,0.01054,-0.01933,0.0251,-0.04103,-0.00159,-0.00488,-0.03542,0.03453,-0.02831,0.01775,0.01579,-0.01148,-0.01333],"int4_tensor":[0.0,0.0,0.04852,-0.0,0.0,-0.04852,0.0,-0.04852,-0.0,0.04852,-0.0,0.0,-0.0,0.04852,-0.0,0.04852,-0.04852,-0.0,0.0,0.0,-0.0,0.04852,-0.04852,-0.0,-0.0,-0.04852,0.04852,-0.04852,0.0,0.0,-0.0,-0.0],"int4_row":[0.01371,0.0,0.02741,-0.0,0.0,-0.02741,0.01371,-0.04112,-0.01371,0.04112,-0.0,0.01371,-0.0,0.05482,-0.01371,0.04112,-0.02741,-0.01371,0.02741,0.01371,-0.01371,0.02741,-0.04112,-0.0,-0.0,-0.04112,0.04112,-0.02741,0.01371,0.01371,-0.01371,-0.01371],"int4_g32":[0.01602,0.00801,0.03203,-0.0,0.00801,-0.03203,0.01602,-0.04004,-0.01602,0.04004,-0.0,0.00801,-0.00801,0.05606,-0.01602,0.04004,-0.03203,-0.01602,0.02403,0.00801,-0.01602,0.02403,-0.04004,-0.0,-0.00801,-0.03203,0.03203,-0.03203,0.01602,0.01602,-0.00801,-0.01602],"nvfp4":[0.01371,0.00457,0.02741,-0.00457,0.00457,-0.02741,0.01371,-0.03655,-0.01371,0.03655,-0.0,0.00914,-0.00457,0.05482,-0.01827,0.03655,-0.02741,-0.01371,0.02056,0.01028,-0.02056,0.02741,-0.04112,-0.0,-0.00343,-0.04112,0.04112,-0.02741,0.02056,0.01371,-0.01028,-0.01371]};
+// per_layer_outlier:48 个被量化矩阵各自的 absmax/std
+const PER_LAYER=[{"key":"h.0.attn.c_attn.weight","absmax_over_std":9.1},{"key":"h.0.attn.c_proj.weight","absmax_over_std":30.4},{"key":"h.0.mlp.c_fc.weight","absmax_over_std":11.3},{"key":"h.0.mlp.c_proj.weight","absmax_over_std":14.0},{"key":"h.1.attn.c_attn.weight","absmax_over_std":16.9},{"key":"h.1.attn.c_proj.weight","absmax_over_std":12.4},{"key":"h.1.mlp.c_fc.weight","absmax_over_std":8.2},{"key":"h.1.mlp.c_proj.weight","absmax_over_std":17.5},{"key":"h.2.attn.c_attn.weight","absmax_over_std":15.2},{"key":"h.2.attn.c_proj.weight","absmax_over_std":13.1},{"key":"h.2.mlp.c_fc.weight","absmax_over_std":7.6},{"key":"h.2.mlp.c_proj.weight","absmax_over_std":10.8},{"key":"h.3.attn.c_attn.weight","absmax_over_std":14.9},{"key":"h.3.attn.c_proj.weight","absmax_over_std":10.6},{"key":"h.3.mlp.c_fc.weight","absmax_over_std":10.7},{"key":"h.3.mlp.c_proj.weight","absmax_over_std":19.9},{"key":"h.4.attn.c_attn.weight","absmax_over_std":15.5},{"key":"h.4.attn.c_proj.weight","absmax_over_std":21.2},{"key":"h.4.mlp.c_fc.weight","absmax_over_std":9.3},{"key":"h.4.mlp.c_proj.weight","absmax_over_std":18.2},{"key":"h.5.attn.c_attn.weight","absmax_over_std":20.4},{"key":"h.5.attn.c_proj.weight","absmax_over_std":16.3},{"key":"h.5.mlp.c_fc.weight","absmax_over_std":9.7},{"key":"h.5.mlp.c_proj.weight","absmax_over_std":19.9},{"key":"h.6.attn.c_attn.weight","absmax_over_std":15.2},{"key":"h.6.attn.c_proj.weight","absmax_over_std":5.6},{"key":"h.6.mlp.c_fc.weight","absmax_over_std":10.0},{"key":"h.6.mlp.c_proj.weight","absmax_over_std":18.2},{"key":"h.7.attn.c_attn.weight","absmax_over_std":15.1},{"key":"h.7.attn.c_proj.weight","absmax_over_std":7.7},{"key":"h.7.mlp.c_fc.weight","absmax_over_std":7.0},{"key":"h.7.mlp.c_proj.weight","absmax_over_std":29.8},{"key":"h.8.attn.c_attn.weight","absmax_over_std":16.1},{"key":"h.8.attn.c_proj.weight","absmax_over_std":9.5},{"key":"h.8.mlp.c_fc.weight","absmax_over_std":6.4},{"key":"h.8.mlp.c_proj.weight","absmax_over_std":10.8},{"key":"h.9.attn.c_attn.weight","absmax_over_std":16.1},{"key":"h.9.attn.c_proj.weight","absmax_over_std":12.2},{"key":"h.9.mlp.c_fc.weight","absmax_over_std":6.6},{"key":"h.9.mlp.c_proj.weight","absmax_over_std":13.3},{"key":"h.10.attn.c_attn.weight","absmax_over_std":9.0},{"key":"h.10.attn.c_proj.weight","absmax_over_std":15.4},{"key":"h.10.mlp.c_fc.weight","absmax_over_std":9.2},{"key":"h.10.mlp.c_proj.weight","absmax_over_std":25.3},{"key":"h.11.attn.c_attn.weight","absmax_over_std":10.4},{"key":"h.11.attn.c_proj.weight","absmax_over_std":24.4},{"key":"h.11.mlp.c_fc.weight","absmax_over_std":18.6},{"key":"h.11.mlp.c_proj.weight","absmax_over_std":25.7}];
+
+const $=id=>document.getElementById(id);
+function setActiveBtn(containerId,n){
+  document.querySelectorAll('#'+containerId+' .btn').forEach((b,i)=>b.classList.toggle('primary',i===n));
+}
+const ROW=Object.fromEntries(ROWS.map(r=>[r.name,r]));
+const en=v=>v.toLocaleString('en-US');
+const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const MAT_N=3072*768;                         // h.6.mlp.c_fc 的权重个数(json hist 计数之和)
+
+/* ============ 步骤切换 ============ */
+const NSTEP=5;
+const tabs=document.querySelectorAll('.step-tab');
+const panels=[];for(let i=0;i<NSTEP;i++)panels.push(document.getElementById('panel'+i));
+let cur=0;
+function goto(i){
+  cur=Math.max(0,Math.min(NSTEP-1,i));
+  tabs.forEach(t=>t.classList.toggle('active',+t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active',idx===cur));
+  document.getElementById('prevBtn').disabled = cur===0;
+  document.getElementById('nextBtn').textContent = cur===NSTEP-1 ? '完成 🎉' : '下一步 →';
+  const hash='#step-'+(cur+1);
+  if(location.hash!==hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+document.getElementById('prevBtn').addEventListener('click',()=>goto(cur-1));
+document.getElementById('nextBtn').addEventListener('click',()=>{ if(cur===NSTEP-1) celebrate(); else goto(cur+1); });
+
+/* ============ STEP 1:直方图 + 格点 ============ */
+const BITS=[2,3,4,8];
+let s1Log=false;
+function zeroFrac(lim){                        // |w| < lim 的比例,按直方图每格线性插值估算
+  const n=HIST.counts.length, bw=2*HIST.range/n; let acc=0;
+  HIST.counts.forEach((c,i)=>{
+    const lo=-HIST.range+i*bw, hi=lo+bw;
+    const ov=Math.max(0,Math.min(hi,lim)-Math.max(lo,-lim));
+    acc+=c*ov/bw;
+  });
+  return acc/MAT_N;
+}
+function renderHist(){
+  const bits=BITS[+$('bitsR').value];
+  $('bitsV').textContent=bits+' 位';
+  const qmax=2**(bits-1)-1, s=OUT.absmax/qmax, sd=OUT.std;
+  const W=860,H=250,L=48,R=16,T=18,B=34,XR=0.36;
+  const X=v=>L+(v+XR)/(2*XR)*(W-L-R);
+  const n=HIST.counts.length, bw=2*HIST.range/n, maxC=Math.max(...HIST.counts);
+  const Y=c=> s1Log ? (H-B)-(Math.log10(c+1)/Math.log10(maxC+1))*(H-B-T) : (H-B)-c/maxC*(H-B-T);
+  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="权重直方图与量化格点">`;
+  g+=`<rect x="${X(-3*sd)}" y="${T}" width="${X(3*sd)-X(-3*sd)}" height="${H-B-T}" fill="#D7EBE0" opacity=".6"/>`;
+  HIST.counts.forEach((c,i)=>{
+    if(c===0) return;
+    const x0=X(-HIST.range+i*bw), x1=X(-HIST.range+(i+1)*bw), y=Y(c);
+    g+=`<rect x="${x0.toFixed(1)}" y="${y.toFixed(1)}" width="${(x1-x0-0.6).toFixed(1)}" height="${Math.max(0.8,H-B-y).toFixed(1)}" fill="#8FA7D9"/>`;
+  });
+  for(let k=-qmax;k<=qmax;k++){
+    const v=k*s; if(Math.abs(v)>XR) continue;
+    g+=`<line x1="${X(v).toFixed(1)}" y1="${T-4}" x2="${X(v).toFixed(1)}" y2="${H-B}" stroke="#D97757" stroke-width="${bits===8?0.7:1.8}" opacity="${bits===8?0.55:0.9}"/>`;
+  }
+  [-1,1].forEach(sg=>{
+    const x=X(sg*OUT.absmax);
+    g+=`<line x1="${x}" y1="${T}" x2="${x}" y2="${H-B}" stroke="#9a3a22" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+  });
+  g+=`<text x="${X(OUT.absmax)-4}" y="${T+10}" text-anchor="end" font-size="11" font-family="ui-monospace,monospace" fill="#9a3a22">|w| 最大 ${OUT.absmax.toFixed(4)} = ${OUT.absmax_over_std}σ</text>`;
+  g+=`<text x="${X(0)}" y="${T+10}" text-anchor="middle" font-size="11" font-family="ui-monospace,monospace" fill="#3f7d63">±3σ:${(100*(1-OUT.frac_over_3std)).toFixed(2)}% 的权重</text>`;
+  g+=`<line x1="${L}" y1="${H-B}" x2="${W-R}" y2="${H-B}" stroke="#6B6B68"/>`;
+  [-0.3,-0.2,-0.1,0,0.1,0.2,0.3].forEach(v=>{
+    g+=`<line x1="${X(v)}" y1="${H-B}" x2="${X(v)}" y2="${H-B+4}" stroke="#6B6B68"/>`;
+    g+=`<text x="${X(v)}" y="${H-B+17}" text-anchor="middle" font-size="11" font-family="ui-monospace,monospace" fill="#6B6B68">${v.toFixed(1)}</text>`;
+  });
+  g+=`<text x="${L-6}" y="${T+4}" text-anchor="end" font-size="10" font-family="ui-monospace,monospace" fill="#6B6B68">${s1Log?'对数':en(maxC)}</text>`;
+  g+=`<text x="${W-R}" y="${H-3}" text-anchor="end" font-size="10.5" fill="#6B6B68">权重值</text>`;
+  g+=`</svg>`;
+  $('histSvg').innerHTML=g;
+
+  const levels=2*qmax+1, k3=Math.min(qmax,Math.floor(3*sd/s)), in3=2*k3+1;
+  const zf=zeroFrac(s/2);
+  $('s1Levels').textContent=levels+' 个';
+  $('s1Step').textContent=s.toFixed(4);
+  $('s1In3').textContent=in3+' 个';
+  $('s1Zero').textContent=(zf>0.99?(100*zf).toFixed(2):(100*zf).toFixed(1))+'%';
+  $('s1MB').textContent=(MAT_N*bits/8/1e6).toFixed(2)+' MB';
+  const sSig=(s/sd).toFixed(bits===8?3:2);
+  $('s1Note').innerHTML=
+    `${bits} 位有 <b>${levels}</b> 个格点。最大值在 ${OUT.absmax_over_std}σ 处,格距被定成 <b>${sSig}σ</b>;装着 ${(100*(1-OUT.frac_over_3std)).toFixed(2)}% 权重的 ±3σ 分到 <b>${in3}</b> 个格点,`+
+    `约 <b>${(zf>0.99?(100*zf).toFixed(2):(100*zf).toFixed(1))}%</b> 的权重被舍成 0。这个矩阵从 32 位的 ${(MAT_N*32/8/1e6).toFixed(2)} MB 变成 ${(MAT_N*bits/8/1e6).toFixed(2)} MB(不计 scale)。`;
+}
+$('bitsR').addEventListener('input',renderHist);
+document.querySelectorAll('#histScale .btn').forEach((b,i)=>b.addEventListener('click',()=>{s1Log=i===1;setActiveBtn('histScale',i);renderHist();}));
+renderHist();
+
+/* ============ STEP 2:一行 32 个权重,四种管法 ============ */
+const SCOPES=[
+  {key:'int4_tensor', per:MAT_N, calc:'4 + 16 / 2,359,296 ≈ <span class="hl">4.000</span>(scale 按 16 位存)', bpw:'4.000'},
+  {key:'int4_row',    per:768,   calc:'4 + 16 / 768 = <span class="hl">4.021</span>(这个矩阵每行 768 个;全模型平均 4.016)', bpw:'4.021'},
+  {key:'int4_g32',    per:32,    calc:'4 + 16 / 32 = <span class="hl">4.5</span>', bpw:'4.5'},
+  {key:'nvfp4',       per:16,    calc:'4 + 8 / 16 = <span class="hl">4.5</span>(块 scale 是 8 位 E4M3;张量级 FP32 scale 摊到全矩阵可忽略)', bpw:'4.5'},
+];
+let s2Sel=0;
+function renderRow(){
+  const sc=SCOPES[s2Sel], orig=ROW_EX.orig, q=ROW_EX[sc.key];
+  const W=860,H=250,L=52,R=14,T=14,B=26,YR=0.065;
+  const X=i=>L+(i+0.5)/32*(W-L-R);
+  const Y=v=>T+(YR-v)/(2*YR)*(H-T-B);
+  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="32 个权重的原值与量化值">`;
+  const lv=[...new Set(q.map(v=>Math.abs(v)))].flatMap(v=>v===0?[0]:[v,-v]);
+  lv.forEach(v=>{ g+=`<line x1="${L}" y1="${Y(v).toFixed(1)}" x2="${W-R}" y2="${Y(v).toFixed(1)}" stroke="#E9E5DA" stroke-width="1.4"/>`; });
+  g+=`<line x1="${L}" y1="${Y(0)}" x2="${W-R}" y2="${Y(0)}" stroke="#B9B5AA"/>`;
+  [-0.06,-0.03,0,0.03,0.06].forEach(v=>{
+    g+=`<text x="${L-6}" y="${Y(v)+4}" text-anchor="end" font-size="10.5" font-family="ui-monospace,monospace" fill="#6B6B68">${v.toFixed(2)}</text>`;
+  });
+  if(sc.key==='nvfp4'){
+    const xb=(X(15)+X(16))/2;
+    g+=`<line x1="${xb}" y1="${T}" x2="${xb}" y2="${H-B}" stroke="#a3548c" stroke-dasharray="5 4"/>`;
+    g+=`<text x="${xb+5}" y="${T+10}" font-size="10.5" fill="#a3548c">块边界(每 16 个一个 scale)</text>`;
+  }
+  let sq=0, zeros=0;
+  orig.forEach((o,i)=>{
+    const v=q[i], x=X(i); sq+=(o-v)**2; if(v===0) zeros++;
+    g+=`<line x1="${x}" y1="${Y(o).toFixed(1)}" x2="${x}" y2="${Y(v).toFixed(1)}" stroke="#D97757" stroke-width="1.6" opacity=".55"/>`;
+    g+=`<circle cx="${x}" cy="${Y(o).toFixed(1)}" r="5" fill="#fff" stroke="#6B6B68" stroke-width="1.5"/>`;
+    g+=`<circle cx="${x}" cy="${Y(v).toFixed(1)}" r="3.6" fill="${v===0&&o!==0?'#9a3a22':'#D97757'}"/>`;
+  });
+  [0,8,16,24,31].forEach(i=>{ g+=`<text x="${X(i)}" y="${H-8}" text-anchor="middle" font-size="10.5" font-family="ui-monospace,monospace" fill="#6B6B68">${i}</text>`; });
+  g+=`</svg>`;
+  $('rowSvg').innerHTML=g;
+  const rmse=Math.sqrt(sq/32);
+  $('s2Per').textContent=en(sc.per);
+  $('s2Bpw').textContent=sc.bpw;
+  $('s2Rmse').textContent=rmse.toFixed(4);
+  $('s2Zero').textContent=zeros+' 个';
+  $('s2Loss').textContent=ROW[sc.key].val_loss.toFixed(4);
+  $('s2Calc').innerHTML=`每权重位数 = 格点 4 位 + scale 位数 ÷ 一个 scale 管的权重数<br>&nbsp;&nbsp;= ${sc.calc}`;
+  const notes=[
+    `整个矩阵只有一个 scale(${OUT.absmax.toFixed(4)} / 7 = ${(OUT.absmax/7).toFixed(4)}),这一行绝对值最大的 ${Math.max(...orig.map(Math.abs)).toFixed(4)} 也只比格距大一点。32 个里 <b>${zeros}</b> 个被舍成 0,其余只剩 ±${(OUT.absmax/7).toFixed(4)} 两个值。整模型 val loss <b>9.9342</b>。`,
+    `每行一个 scale,格距跟着这一行的最大值走,缩到 ${Math.abs(ROW_EX.int4_row[0]).toFixed(4)}。舍成 0 的降到 <b>${zeros}</b> 个,val loss <b>3.2456</b>。`,
+    `这 32 个共用一个 scale,最大值 ${Math.max(...orig.map(Math.abs)).toFixed(4)} 正好落在格点 7 上。误差再降一截,val loss <b>3.0949</b>,每权重多花 0.5 位存 scale。`,
+    `每 16 个一个 8 位 scale,元素换成 E2M1 浮点。格点在 0 附近更密,舍成 0 的只有 <b>${zeros}</b> 个,val loss <b>3.0638</b>,和 int4 每 32 个同样 4.5 位。`,
+  ];
+  $('s2Note').innerHTML=notes[s2Sel];
+  setActiveBtn('scopeBtns',s2Sel);
+}
+document.querySelectorAll('#scopeBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{s2Sel=i;renderRow();}));
+renderRow();
+
+/* ============ STEP 3:每个矩阵的 absmax/std ============ */
+const KINDS=['attn.c_attn','attn.c_proj','mlp.c_fc','mlp.c_proj'];
+const KCOL=['#3a63c0','#a3548c','#3f7d63','#b8512f'];
+const LAYERS=PER_LAYER.map(p=>{
+  const m=/^h\.(\d+)\.(.+)\.weight$/.exec(p.key);
+  return {key:p.key, layer:+m[1], kind:KINDS.indexOf(m[2]), r:p.absmax_over_std};
+});
+let s3Kind=0, s3Sel=LAYERS.findIndex(l=>l.key==='h.0.attn.c_proj.weight');
+function renderLayers(){
+  const W=860,H=250,L=40,R=10,T=16,B=30,YM=32;
+  const gw=(W-L-R)/12, bwid=gw/5.2;
+  const Y=v=>(H-B)-v/YM*(H-B-T);
+  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="48 个矩阵的最大绝对值与标准差之比">`;
+  [0,10,20,30].forEach(v=>{
+    g+=`<line x1="${L}" y1="${Y(v)}" x2="${W-R}" y2="${Y(v)}" stroke="${v===0?'#6B6B68':'#EAE7DE'}"/>`;
+    g+=`<text x="${L-6}" y="${Y(v)+4}" text-anchor="end" font-size="10.5" font-family="ui-monospace,monospace" fill="#6B6B68">${v}σ</text>`;
+  });
+  LAYERS.forEach((l,i)=>{
+    const x=L+l.layer*gw+gw*0.1+l.kind*bwid*1.05, y=Y(l.r);
+    const dim = s3Kind>0 && l.kind!==s3Kind-1;
+    const sel = i===s3Sel;
+    g+=`<rect data-i="${i}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bwid.toFixed(1)}" height="${(H-B-y).toFixed(1)}" rx="2"
+          fill="${KCOL[l.kind]}" opacity="${dim?0.13:(sel?1:0.78)}" stroke="${sel?'#1A1A18':'none'}" stroke-width="1.6" style="cursor:pointer"/>`;
+    if(sel) g+=`<text x="${(x+bwid/2).toFixed(1)}" y="${(y-5).toFixed(1)}" text-anchor="middle" font-size="10.5" font-weight="700" font-family="ui-monospace,monospace" fill="#1A1A18">${l.r}</text>`;
+  });
+  for(let k=0;k<12;k++) g+=`<text x="${L+k*gw+gw/2}" y="${H-10}" text-anchor="middle" font-size="10.5" font-family="ui-monospace,monospace" fill="#6B6B68">h.${k}</text>`;
+  g+=`</svg>`;
+  $('layerSvg').innerHTML=g;
+  $('layerSvg').querySelectorAll('rect[data-i]').forEach(r=>r.addEventListener('click',()=>{s3Sel=+r.dataset.i;renderLayers();}));
+  const l=LAYERS[s3Sel], k3=Math.min(7,Math.floor(3*7/l.r));
+  $('s3Key').textContent=l.key.replace('.weight','');
+  $('s3R').textContent=l.r+'×';
+  $('s3Step').textContent=(l.r/7).toFixed(2)+'σ';
+  $('s3Zero').textContent='|w| < '+(l.r/14).toFixed(2)+'σ';
+  $('s3In3').textContent=(2*k3+1)+' 个';
+  const shown=LAYERS.filter(x=>s3Kind===0||x.kind===s3Kind-1).map(x=>x.r);
+  const over=LAYERS.filter(x=>x.r>21).length;
+  $('s3Note').innerHTML= k3===0
+    ? `<b>${l.key}</b> 的最大值是标准差的 ${l.r} 倍。int4 整矩阵一个 scale 时格距是 ${(l.r/7).toFixed(2)}σ,±3σ 里只剩 0 这一个格点,|w| < ${(l.r/14).toFixed(2)}σ 的全部舍成 0。48 个矩阵里有 <b>${over}</b> 个倍数超过 21,都是这种情况。`
+    : `<b>${l.key}</b> 的倍数是 ${l.r},格距 ${(l.r/7).toFixed(2)}σ,±3σ 里有 ${2*k3+1} 个格点。当前显示的矩阵里,倍数从 ${Math.min(...shown)} 到 ${Math.max(...shown)}。一个模型里只要有几个矩阵的格点被离群值撑开,loss 就会崩。`;
+  setActiveBtn('kindBtns',s3Kind);
+}
+document.querySelectorAll('#kindBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{s3Kind=i;
+  if(i>0 && LAYERS[s3Sel].kind!==i-1){        // 过滤后自动选中这一类里倍数最大的
+    let best=-1; LAYERS.forEach((l,j)=>{ if(l.kind===i-1 && (best<0||l.r>LAYERS[best].r)) best=j; }); s3Sel=best;
+  }
+  renderLayers();}));
+renderLayers();
+
+/* 续写对比:词级别找到与 fp32 第一次分叉的位置,之后的部分标出来 */
+function sampleHTML(txt, base){
+  const a=txt.split(/(\s+)/), b=(base||'').split(/(\s+)/);
+  let k=0; if(base!==null){ while(k<a.length && k<b.length && a[k]===b[k]) k++; }
+  const fmt=s=>esc(s).replace(/\n/g,'<span class="nl">⏎</span> ');
+  const same=fmt(a.slice(0,k).join('')), diff=fmt(a.slice(k).join(''));
+  return `<span class="pr">The history of ancient Rome</span>${same}${diff?`<mark>${diff}</mark>`:''}`;
+}
+const OUTC=['fp32','int4_tensor','int4_tensor_outlier','int4_row'];
+const OUTN=['fp32 原始','int4 整矩阵 1 个 scale','+ 留 0.1% 离群值','int4 每行 1 个'];
+let s3Out=1;
+function renderOut(){
+  $('outBars').innerHTML=OUTC.map((k,i)=>{
+    const r=ROW[k], w=Math.min(100,r.val_loss/10*100);
+    const col= k==='fp32'?'#8C8A83':(r.delta>1?'#9a3a22':'#D97757');
+    return `<div class="lbar${i===s3Out?' sel':''}"><div class="ln">${OUTN[i]}</div>
+      <div class="lt"><div class="lf" style="width:${w.toFixed(1)}%;background:${col};opacity:${i===s3Out?1:.45}"></div></div>
+      <div class="lv">${r.val_loss.toFixed(4)}</div></div>`;
+  }).join('')+`<div class="hp-note">条长按 val loss 0 → 10 画</div>`;
+  const r=ROW[OUTC[s3Out]];
+  $('outSampleH').textContent=`${OUTN[s3Out]} · ${r.bits_per_weight} 位 / 权重 · 贪心续写(标出与 fp32 分叉之后的部分):`;
+  $('outSample').innerHTML=sampleHTML(r.sample, s3Out===0?null:ROW.fp32.sample);
+  setActiveBtn('outBtns',s3Out);
+}
+document.querySelectorAll('#outBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{s3Out=i;renderOut();}));
+renderOut();
+
+/* ============ STEP 4:三种 4 位格式的位布局 ============ */
+const CW=12;                                   // 一格 = 4 位 = 12px,色块宽度按位数折算
+const FMTS=[
+  {key:'q4_k', name:'Q4_K',
+   tally:[['权重码','256 × 4',1024],['子块 scale + min','8 × (6 + 6)',96],['超块 d + dmin','2 × 16',32]],
+   meta:[['元素','4 位无符号整数 q = 0 … 15,反量化 <b>x = a·q + b</b>(非对称)'],
+         ['scale','子块 32 个:6 位 scale + 6 位 min;超块 256 个:FP16 的 d、dmin 把 6 位值还原'],
+         ['出处','llama.cpp k-quants,PR ggml-org/llama.cpp#1684(2023-06);<code>ggml-common.h</code> 的 block_q4_K']],
+   legend:[['#D97757','4 位权重码'],['#3a63c0','6 位子块 scale'],['#3f7d63','6 位子块 min'],['#1A1A18','FP16 超块 d / dmin']]},
+  {key:'nvfp4', name:'NVFP4',
+   tally:[['权重码','256 × 4',1024],['块 scale(E4M3)','16 × 8',128]],
+   meta:[['元素','E2M1 4 位浮点,值域 ±6'],
+         ['scale','每 16 个值一个 8 位 FP8(E4M3)scale;另有整个张量一个 FP32 scale,摊到上千万权重上可忽略'],
+         ['出处','NVIDIA 技术博客 "Introducing NVFP4 for Efficient and Accurate Low-Precision Inference"(2025-06-24)']],
+   legend:[['#D97757','4 位权重码'],['#a3548c','8 位 E4M3 块 scale']]},
+  {key:'mxfp4', name:'MXFP4',
+   tally:[['权重码','256 × 4',1024],['块 scale(E8M0)','8 × 8',64]],
+   meta:[['元素','E2M1 4 位浮点,值域 ±6'],
+         ['scale','每 32 个值一个 8 位 E8M0 scale,只能是 2 的整数次幂'],
+         ['出处','OCP Microscaling Formats (MX) v1.0;Rouhani et al., arXiv 2310.10537;参数以 NVIDIA 博客对照为准']],
+   legend:[['#D97757','4 位权重码'],['#a87b1f','8 位 E8M0 块 scale']]},
+];
+let s4Sel=0;
+function cells(n,shade){ let h=''; for(let i=0;i<n;i++) h+=`<div class="cell" style="background:${shade}"></div>`; return h; }
+function chip(bits,col,txt){ return `<div class="chip" style="width:${bits/4*CW}px;background:${col}" title="${txt}">${txt}</div>`; }
+function renderLayout(){
+  const f=FMTS[s4Sel], SH=['#E9A184','#F2C8B6'];
+  let h='';
+  for(let r=0;r<8;r++){
+    let row=`<div class="lay-row"><div class="rl">${r*32}–${r*32+31}</div>`;
+    if(f.key==='q4_k'){
+      row+=chip(6,'#3a63c0','s')+chip(6,'#3f7d63','m')+cells(32,SH[r%2]);
+    }else if(f.key==='nvfp4'){
+      row+=chip(8,'#a3548c','E4M3')+cells(16,SH[r%2])+chip(8,'#a3548c','E4M3')+cells(16,SH[(r+1)%2]);
+    }else{
+      row+=chip(8,'#a87b1f','E8M0')+cells(32,SH[r%2]);
+    }
+    h+=row+`</div>`;
+  }
+  if(f.key==='q4_k') h=`<div class="lay-row"><div class="rl">超块</div>${chip(16,'#1A1A18','d FP16')}${chip(16,'#1A1A18','dmin FP16')}</div>`+h;
+  if(f.key==='nvfp4') h+=`<div class="lay-row"><div class="rl">张量</div>${chip(32,'#6B6B68','FP32 张量 scale')}<span class="hp-note" style="margin-left:8px">整个矩阵只有 1 个</span></div>`;
+  $('layGrid').innerHTML=h;
+  $('layLegend').innerHTML=f.legend.map(([c,t])=>`<span><i style="background:${c}"></i>${t}</span>`).join('');
+  const tot=f.tally.reduce((a,t)=>a+t[2],0);
+  $('layTally').innerHTML=f.tally.map(t=>`${t[0].padEnd(8,' ')}  ${t[1]} = <span class="hl">${t[2]}</span> 位`).join('<br>')+
+    `<br>合计 ${tot} 位 ÷ 256 个权重 = <span class="hl">${(tot/256).toFixed(tot%256?3:1).replace(/0+$/,'').replace(/\.$/,'')} 位 / 权重</span>`;
+  $('fmtMeta').innerHTML=f.meta.map(([a,b])=>`<div class="fm"><div class="fh">${a}</div>${b}</div>`).join('');
+  const r=ROW[f.key];
+  $('s4Bpw').textContent=r.bits_per_weight;
+  $('s4Loss').textContent=r.val_loss.toFixed(4);
+  $('s4Delta').textContent='+'+r.delta.toFixed(4);
+  const notes={
+    q4_k:`Q4_K 把 scale 分两级存:子块的 scale / min 只用 6 位,再靠超块的两个 FP16 还原。实测 val loss <b>3.0656</b>,同样 4.5 位,比 int4 每 32 个一个 16 位 scale(3.0949)低 0.029。`,
+    nvfp4:`NVFP4 块更小(16 个),scale 是 8 位浮点。实测 val loss <b>3.0638</b>,和 Q4_K 同为 4.5 位,两者相差 0.0018。`,
+    mxfp4:`MXFP4 块 32 个、scale 只能是 2 的幂,每权重 4.25 位,是三者里最省的。实测 val loss <b>3.1030</b>,比 NVFP4 多 0.039。`,
+  };
+  $('s4Note').innerHTML=notes[f.key];
+  setActiveBtn('fmtBtns',s4Sel);
+}
+document.querySelectorAll('#fmtBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{s4Sel=i;renderLayout();}));
+renderLayout();
+
+/* E2M1 数轴:和 15_quant.py 的 round_to_grid 一样,按绝对值找最近格点,保留符号 */
+const E2M1=[0,0.5,1,1.5,2,3,4,6];
+function roundGrid(x,grid){ let best=grid[0]; grid.forEach(g=>{ if(Math.abs(Math.abs(x)-g)<Math.abs(Math.abs(x)-best)) best=g; }); return best*Math.sign(x||1); }
+function renderE2(){
+  const x=parseFloat($('e2x').value); $('e2xV').textContent=x.toFixed(2);
+  const W=860,H=130,L=24,R=24;
+  const X=v=>L+(v+6.5)/13*(W-L-R);
+  const fp=roundGrid(x,E2M1), ik=Math.max(-7,Math.min(7,Math.round(x/(6/7)))), iv=ik*6/7;
+  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="E2M1 与均匀 int4 格点">`;
+  [[38,'E2M1','#D97757'],[92,'均匀 int4','#3a63c0']].forEach(([y,t,c])=>{
+    g+=`<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="#D9D5CA"/>`;
+    g+=`<text x="${L}" y="${y-16}" font-size="11" font-family="ui-monospace,monospace" fill="${c}">${t}</text>`;
+  });
+  E2M1.forEach(v=>[v,-v].forEach(u=>{ g+=`<circle cx="${X(u)}" cy="38" r="${Math.abs(u-fp)<1e-9?7:4.5}" fill="#D97757" opacity="${Math.abs(u-fp)<1e-9?1:.55}"/>`; }));
+  E2M1.forEach(v=>{ g+=`<text x="${X(v)}" y="60" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#6B6B68">${v}</text>`; });
+  for(let k=-7;k<=7;k++){ const u=k*6/7; g+=`<circle cx="${X(u)}" cy="92" r="${k===ik?7:4.5}" fill="#3a63c0" opacity="${k===ik?1:.55}"/>`; }
+  g+=`<line x1="${X(x)}" y1="18" x2="${X(x)}" y2="112" stroke="#1A1A18" stroke-width="1.5" stroke-dasharray="3 3"/>`;
+  g+=`<text x="${X(x)}" y="126" text-anchor="middle" font-size="11" font-weight="700" font-family="ui-monospace,monospace" fill="#1A1A18">x = ${x.toFixed(2)}</text>`;
+  g+=`</svg>`;
+  $('e2Svg').innerHTML=g;
+  $('e2Fp').textContent=`${fp}(误差 ${Math.abs(x-fp).toFixed(2)})`;
+  $('e2Int').textContent=`${iv.toFixed(2)}(误差 ${Math.abs(x-iv).toFixed(2)})`;
+}
+$('e2x').addEventListener('input',renderE2);
+renderE2();
+
+/* 块 scale 精度:照抄 15_quant.py 的 nvfp4 / mxfp4 取 scale 的方式
+   NVFP4:t = 张量 absmax / (6·448),块 scale = round_E4M3(amax/6/t)·t;张量 absmax 取 h.6.mlp.c_fc 实测值
+   MXFP4:块 scale = 2^(floor(log2 amax) − 2) */
+const E4M3=(()=>{ const v=[]; for(let m=0;m<8;m++) v.push(m/8*2**-6);
+  for(let e=1;e<16;e++) for(let m=0;m<8;m++){ if(e===15&&m===7) continue; v.push((1+m/8)*2**(e-7)); }
+  return [...new Set(v)].sort((a,b)=>a-b); })();
+const A_LO=0.005, A_HI=OUT.absmax;
+function renderScale(){
+  const a=A_LO*Math.pow(A_HI/A_LO,+$('amaxR').value/100);
+  $('amaxV').textContent=a.toFixed(4);
+  const t=OUT.absmax/(6*448);
+  const bN=roundGrid(a/6/t,E4M3)*t, rN=a/bN;
+  const sM=2**(Math.floor(Math.log2(a))-2), rM=a/sM;
+  const W=860,H=150,L=110,R=24;
+  const X=v=>L+v/8*(W-L-R);
+  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="块内最大值除以 scale 后落在 E2M1 刻度上的位置">`;
+  [[40,'NVFP4',rN,'#a3548c'],[100,'MXFP4',rM,'#a87b1f']].forEach(([y,t2,rv,c])=>{
+    g+=`<rect x="${X(6)}" y="${y-14}" width="${X(8)-X(6)}" height="28" fill="#F3D9CE" opacity=".8"/>`;
+    g+=`<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="#D9D5CA"/>`;
+    g+=`<text x="${L-12}" y="${y+4}" text-anchor="end" font-size="12" font-weight="700" font-family="ui-monospace,monospace" fill="${c}">${t2}</text>`;
+    E2M1.forEach(v=>{ g+=`<circle cx="${X(v)}" cy="${y}" r="3.5" fill="#6B6B68" opacity=".6"/>`; });
+    const clip=rv>6;
+    g+=`<circle cx="${X(Math.min(rv,8))}" cy="${y}" r="7" fill="${clip?'#9a3a22':c}"/>`;
+    g+=`<text x="${X(Math.min(rv,8))}" y="${y-12}" text-anchor="middle" font-size="11" font-weight="700" font-family="ui-monospace,monospace" fill="${clip?'#9a3a22':c}">amax/scale = ${rv.toFixed(2)}</text>`;
+  });
+  [0,1,2,3,4,6,8].forEach(v=>{ g+=`<text x="${X(v)}" y="${H-12}" text-anchor="middle" font-size="10.5" font-family="ui-monospace,monospace" fill="#6B6B68">${v}</text>`; });
+  g+=`<text x="${(X(6)+X(8))/2}" y="${H-26}" text-anchor="middle" font-size="10.5" fill="#9a3a22">&gt; 6 截断</text>`;
+  g+=`</svg>`;
+  $('scaleSvg').innerHTML=g;
+  const mxMsg = rM>6
+    ? `块内最大值落在 ${rM.toFixed(2)},超出 6,被截成 6 × scale = ${(6*sM).toFixed(4)},这个数少了 ${(100*(1-6/rM)).toFixed(1)}%`
+    : (rM<5 ? `块内最大值只到 ${rM.toFixed(2)},E2M1 最上面的 6 用不上,可用的格点少一个` : `块内最大值落在 ${rM.toFixed(2)},没有截断`);
+  $('scaleNote').innerHTML=
+    `<b>NVFP4</b>:块 scale = ${bN.toExponential(3)}(E4M3 能表示的最近值),amax/scale = <b>${rN.toFixed(2)}</b>${rN>6?',略超 6 的部分截掉':''}。 `+
+    `<b>MXFP4</b>:块 scale = 2<sup>${Math.log2(sM)}</sup> = ${sM.toExponential(3)},${mxMsg}。拖动滑块,MXFP4 的点在 4 到 8 之间来回跳,NVFP4 的点停在 6 附近。`;
+}
+$('amaxR').addEventListener('input',renderScale);
+renderScale();
+
+/* ============ STEP 5:账本 ============ */
+let s5Sort=0, s5Sel='nvfp4';
+function renderLedger(){
+  let list=ROWS.map((r,i)=>({...r,i}));
+  if(s5Sort===1) list.sort((a,b)=>a.delta-b.delta);
+  if(s5Sort===2) list.sort((a,b)=>a.model_mb-b.model_mb);
+  $('ledgerBody').innerHTML=list.map(r=>{
+    const crash=r.delta>1, w=Math.min(100,Math.max(0,r.delta)/0.6*100);
+    const col=crash?'#9a3a22':(r.delta<0.01?'#3f7d63':'#D97757');
+    return `<tr data-k="${r.name}" class="${r.name===s5Sel?'sel':''}">
+      <td>${esc(r.label)}</td>
+      <td class="num">${r.bits_per_weight}</td>
+      <td class="num">${r.model_mb.toFixed(1)}</td>
+      <td class="num">${r.val_loss.toFixed(4)}</td>
+      <td><div class="dbar"><div class="dt"><div class="df" style="width:${w.toFixed(1)}%;background:${col}"></div></div>
+        <div class="dn" style="color:${col}">${r.delta<=0?'0.0000':'+'+r.delta.toFixed(4)}${crash?' 崩':''}</div></div></td>
+    </tr>`;
+  }).join('');
+  $('ledgerBody').querySelectorAll('tr').forEach(tr=>tr.addEventListener('click',()=>{s5Sel=tr.dataset.k;renderLedger();}));
+  setActiveBtn('sortBtns',s5Sort);
+  renderDetail();
+}
+function renderDetail(){
+  const r=ROW[s5Sel];
+  const N_OTHER=N_ALL-N_Q-N_EMB;
+  let q,e,o;
+  if(r.name==='fp32'){ q=N_Q*32; e=N_EMB*32; o=N_OTHER*32; }
+  else if(r.name==='int4_g32_with_emb'){ q=N_Q*r.bits_per_weight; e=N_EMB*r.bits_per_weight; o=N_OTHER*16; }
+  else { q=N_Q*r.bits_per_weight; e=N_EMB*16; o=N_OTHER*16; }
+  const MB=b=>b/8/1e6, full=MB(N_ALL*32);
+  $('stackH').innerHTML=`<b style="color:var(--ink)">${esc(r.label)}</b> · 按口径合计 ${MB(q+e+o).toFixed(1)} MB(json 记为 ${r.model_mb.toFixed(1)} MB):`+
+    `Linear 矩阵 ${MB(q).toFixed(1)} + 词嵌入 ${MB(e).toFixed(1)} + 其余 ${MB(o).toFixed(1)}。条长以 fp32 的 ${full.toFixed(1)} MB 为满格。`;
+  $('stackBar').innerHTML=
+    `<div style="width:${(100*MB(q)/full).toFixed(2)}%;background:var(--accent)"></div>`+
+    `<div style="width:${(100*MB(e)/full).toFixed(2)}%;background:var(--e1)"></div>`+
+    `<div style="width:${(100*MB(o)/full).toFixed(2)}%;background:#B9B5AA"></div>`;
+  $('baseSample').innerHTML=sampleHTML(ROW.fp32.sample,null);
+  $('selSampleH').textContent=`${r.label} 的续写(标出与 fp32 分叉之后的部分):`;
+  $('selSample').innerHTML=sampleHTML(r.sample, r.name==='fp32'?null:ROW.fp32.sample);
+}
+document.querySelectorAll('#sortBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{s5Sort=i;renderLedger();}));
+renderLedger();
+(function(){
+  const R=ROW;
+  $('okList').innerHTML=[
+    `fp16 与 fp32 的 val loss 都是 <b>${R.fp16.val_loss.toFixed(4)}</b>,贪心续写逐字相同;模型从 ${R.fp32.model_mb} MB 到 ${R.fp16.model_mb} MB。`,
+    `int8 每行一个 scale:<b>${R.int8_row.model_mb} MB</b>,Δ +${R.int8_row.delta.toFixed(4)},续写与 fp32 相同。`,
+    `int4 整矩阵一个 scale 崩到 <b>${R.int4_tensor.val_loss.toFixed(4)}</b>;只留 0.1% 离群值回到 <b>${R.int4_tensor_outlier.val_loss.toFixed(4)}</b>。`,
+    `4.5 位的 NVFP4 / Q4_K:<b>${R.nvfp4.model_mb} MB</b>,Δ +${R.nvfp4.delta.toFixed(4)} / +${R.q4_k.delta.toFixed(4)};MXFP4 4.25 位,Δ +${R.mxfp4.delta.toFixed(4)}。`,
+    `词嵌入也量化成 int4 每 32 个一个 scale:<b>${R.int4_g32_with_emb.model_mb} MB</b>,Δ +${R.int4_g32_with_emb.delta.toFixed(4)};int3 Δ +${R.int3_g32.delta.toFixed(4)},int2 崩到 ${R.int2_g32.val_loss.toFixed(4)}。`,
+  ].map(t=>`<li><span class="ck">✓</span><div>${t}</div></li>`).join('');
+})();
+
+
+/* ============ 名词气泡 ============ */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent, def=el.dataset.def||'', key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def+(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8; if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw; if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el)); el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* ============ 通关庆祝 ============ */
+function celebrate(){
+  document.getElementById('congrats').classList.add('show');
+  const cv=document.getElementById('confetti'); cv.style.display='block';
+  const ctx=cv.getContext('2d'); cv.width=innerWidth; cv.height=innerHeight;
+  const COL=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const ps=[];for(let i=0;i<150;i++)ps.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    vx:(Math.random()-0.5)*3,vy:2+Math.random()*4,s:5+Math.random()*7,c:COL[i%COL.length],a:Math.random()*6.28,va:(Math.random()-0.5)*0.3});
+  let t0=null;
+  function frame(ts){ if(!t0)t0=ts; const el=ts-t0;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.04;p.a+=p.va;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.a);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.6);ctx.restore();});
+    if(el<3400) requestAnimationFrame(frame); else { ctx.clearRect(0,0,cv.width,cv.height); cv.style.display='none'; }
+  }
+  requestAnimationFrame(frame);
+  document.getElementById('congrats').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ============ 初始化:深链 ============ */
+const m=/^#step-(\d+)$/.exec(location.hash);
+goto(m?parseInt(m[1],10)-1:0);
+window.addEventListener('hashchange',()=>{const mm=/^#step-(\d+)$/.exec(location.hash);goto(mm?parseInt(mm[1],10)-1:0);});
+
+</script>
+<!--site-copyright-->
+<footer style="max-width:960px;margin:56px auto 0;padding:18px 24px 44px;border-top:1px solid var(--border);text-align:center;font-size:12px;color:var(--ink2);line-height:1.7">
+  © 2026 <a href="https://fim.ai" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">FIM Labs</a> · 从零手写大语言模型 · MIT License
+</footer>
+</body>
+</html>

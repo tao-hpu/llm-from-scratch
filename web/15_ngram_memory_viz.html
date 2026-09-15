@@ -1,0 +1,1232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>N-gram 查表 · 给模型挂一本短语词典</title>
+<meta name="description" content="给第 12 章的小模型挂一张哈希 n-gram 表:每个 token 按最近两三个 token 算出 8 个行号,只读 8 行 × 16 维;表涨到主干的 4.6 倍,每 token 算力不变。附 FineWeb-Edu 与 tiny shakespeare 两组真实对照和表在 GPU / CPU 的吞吐。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 15 章 · N-gram 查表 · 从零手写大语言模型">
+<meta property="og:description" content="给第 12 章的小模型挂一张哈希 n-gram 表:每个 token 按最近两三个 token 算出 8 个行号,只读 8 行 × 16 维;表涨到主干的 4.6 倍,每 token 算力不变。附 FineWeb-Edu 与 tiny shakespeare 两组真实对照和表在 GPU / CPU 的吞吐。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/15_ngram_memory_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 15 章 · N-gram 查表 · 从零手写大语言模型">
+<meta name="twitter:description" content="给第 12 章的小模型挂一张哈希 n-gram 表:每个 token 按最近两三个 token 算出 8 个行号,只读 8 行 × 16 维;表涨到主干的 4.6 倍,每 token 算力不变。附 FineWeb-Edu 与 tiny shakespeare 两组真实对照和表在 GPU / CPU 的吞吐。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
+<style>
+
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --good:#3f7d63; --good-soft:#D7EBE0; --bad:#9a3a22; --bad-soft:#F3D9CE;
+    --e0:#b8512f; --e0s:#F7E6DE; --e1:#3a63c0; --e1s:#E5EBF9;
+    --e2:#3f7d63; --e2s:#E4EFE9; --e3:#a3548c; --e3s:#F6E6F0;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 24px 90px;}
+
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:790px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  .steps-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:26px 0 18px;}
+  .step-tab{background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 14px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13.5px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+  .hp-note code{font-family:var(--mono);font-size:11.5px;}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 20px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:10px;padding:10px 14px;}
+
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;align-items:center;}
+  .btn-row.small .btn{font-size:13px;padding:7px 13px;}
+
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:24px 0 6px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  .codepath{font-family:var(--mono);font-size:11.5px;color:var(--ink2);background:#F4F2EA;
+    border:1px solid var(--border);border-radius:8px;padding:5px 10px;display:inline-block;margin-top:10px;}
+  .codepath b{color:var(--accent);}
+
+  /* 名词气泡 */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:280px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;font-family:system-ui,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* 庆祝 */
+  .congrats{display:none;text-align:center;background:linear-gradient(135deg,#FBF1EA,#F6E6F0);
+    border:1px solid var(--accent-soft);border-radius:16px;padding:22px;margin-top:18px;}
+  .congrats.show{display:block;animation:fade .5s ease;}
+  .congrats .ct{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--accent);}
+  .congrats .cs{font-size:13.5px;color:var(--ink2);margin-top:6px;}
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;}
+
+  /* ===== 通用件(与其余章节页一致)===== */
+  .nav{display:flex;justify-content:space-between;margin-top:22px;gap:10px;}
+  .checklist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:8px;}
+  .checklist li{display:flex;gap:10px;align-items:flex-start;font-size:13px;background:#fff;border:1px solid var(--border);
+    border-radius:10px;padding:10px 13px;}
+  .checklist li .ck{color:#3f7d63;font-weight:700;flex-shrink:0;}
+  .checklist li b{color:var(--accent);}
+  .rk-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0;}
+  .rk-row label{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:172px;}
+  .rk-val{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent);min-width:64px;text-align:center;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:8px;padding:2px 6px;}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;background:var(--accent-soft);
+    flex:1;min-width:150px;max-width:340px;outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.18);}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid #fff;}
+  .dotread{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:12px 0 4px;}
+  .dr{background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 13px;text-align:center;}
+  .dr .drv{font-family:var(--mono);font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .dr .drl{font-size:11.5px;color:var(--ink2);margin-top:2px;}
+  .lab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin:10px 0;}
+  .scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .calc{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 16px;margin-top:10px;
+    font-family:var(--mono);font-size:12.5px;line-height:1.9;overflow-x:auto;}
+  .calc .hl{color:var(--accent);font-weight:700;}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin:4px 0;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;}
+
+  /* ===== 横条 ===== */
+  .lbar{display:flex;align-items:center;gap:10px;margin:7px 0;}
+  .lbar .ln{font-family:var(--mono);font-size:12px;width:200px;flex-shrink:0;color:var(--ink2);}
+  .lbar.sel .ln{color:var(--accent);font-weight:700;}
+  .lbar .lt{flex:1;min-width:120px;height:22px;background:#F4F2EA;border:1px solid var(--border);border-radius:7px;overflow:hidden;}
+  .lbar .lf{height:100%;border-radius:6px 0 0 6px;transition:width .4s ease;}
+  .lbar .lv{font-family:var(--mono);font-size:12.5px;font-weight:700;width:96px;text-align:right;flex-shrink:0;}
+  @media (max-width:560px){ .lbar{gap:6px;} .lbar .ln{width:96px;font-size:11px;white-space:normal;line-height:1.3;} .lbar .lt{min-width:40px;} .lbar .lv{width:52px;font-size:11.5px;} }
+
+  /* ===== STEP 2:token 选择 + 8 个头的行号 ===== */
+  .toks{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 4px;}
+  .tok{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);border-radius:6px;
+    padding:3px 6px;cursor:pointer;white-space:pre;transition:all .15s ease;line-height:1.4;}
+  .tok:hover{border-color:#cfc9ba;}
+  .tok.g3{background:var(--e1s);border-color:#b9c7ea;}
+  .tok.g2{background:var(--e2s);border-color:#a9cdb9;}
+  .tok.cur{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700;}
+  .tok .sp{opacity:.45;}
+  table.htab{border-collapse:collapse;width:100%;min-width:720px;font-size:12px;}
+  table.htab th{font-family:var(--mono);font-size:11px;color:var(--ink2);text-align:left;font-weight:700;
+    padding:5px 8px;border-bottom:1px solid var(--border);white-space:nowrap;}
+  table.htab td{padding:5px 8px;border-bottom:1px solid #EFECE3;font-family:var(--mono);white-space:nowrap;vertical-align:middle;}
+  table.htab td.r{text-align:right;font-variant-numeric:tabular-nums;}
+  table.htab tr.o3 td:first-child{box-shadow:inset 3px 0 0 var(--e1);}
+  table.htab tr.o2 td:first-child{box-shadow:inset 3px 0 0 var(--e2);}
+  .pos{position:relative;width:150px;height:10px;background:#F4F2EA;border:1px solid var(--border);border-radius:4px;}
+  .pos i{position:absolute;top:-3px;width:3px;height:14px;background:var(--accent);border-radius:1px;}
+
+  /* ===== STEP 3:门值热力带 ===== */
+  .gstrip{display:flex;flex-wrap:wrap;gap:3px;margin:8px 0 4px;}
+  .gt{font-family:var(--mono);font-size:12.5px;border-radius:5px;padding:3px 5px;cursor:pointer;white-space:pre;
+    border:1px solid rgba(0,0,0,.06);line-height:1.4;transition:box-shadow .12s ease;}
+  .gt.sel{box-shadow:0 0 0 2px var(--ink);}
+  .grad{height:10px;border-radius:5px;background:linear-gradient(90deg,#FAF9F5,#D97757);border:1px solid var(--border);width:180px;display:inline-block;vertical-align:middle;}
+
+  /* ===== STEP 5:吞吐条 ===== */
+  .flow-cap{font-family:var(--mono);font-size:11.5px;color:var(--ink2);margin-top:6px;}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <header>
+    <span class="filename">15_ngram_memory_viz.html</span>
+    <h1>N-gram 查表:给模型挂一本短语词典</h1>
+    <p class="subtitle">
+      第 11 章的 MoE 让总参数变多、每个 token 的算力不变。这一关换一种做法:在第 12 章那台小模型旁边挂一张大表,
+      每个 token 只按<b>最近两三个 token</b> 算出 8 个行号,从表里取 8 行拼成一根向量,再由一个门决定加多少进残差流。
+      这种结构叫
+      <span class="term" data-term="N-gram 查表记忆 · n-gram memory" data-key="ngram-memory" data-def="一张按局部 n-gram 哈希寻址的参数表。每个 token 用以它结尾的 2-gram / 3-gram 算出几个行号,取出这几行拼成记忆向量,经门控后加回残差流。表多大,每 token 都只读固定几行。">N-gram 查表记忆</span>
+      (DeepSeek 的 Engram、Qwen3.8 的 N-gram Embedding)。配套代码 <code>phase4-efficiency/13_engram.py</code>,
+      在 Mac(MPS)上跑了 <span class="term" data-term="FineWeb-Edu" data-key="fineweb" data-def="HuggingFace 发布的教育类网页语料,第 6 章训练 124M 用的就是它。">FineWeb-Edu</span>
+      四组、tiny shakespeare 五组对照,外加三组吞吐测量。
+    </p>
+  </header>
+
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">容量和算力拆开</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">哈希:行号只看最近几个 token</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">门控:记忆对不对得上</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">真实对照与反例</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">表可以不进 GPU</div></div>
+  </div>
+
+  <div class="hp-bar">
+    <span class="hp-label">这一关</span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">数据 <b>FineWeb-Edu</b> <i>GPT-2 BPE token</i></span>
+    <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">表 <b>262144</b> <i>行 / 每个哈希头</i></span>
+    <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">哈希头 <b>8</b> <i>2-gram 4 + 3-gram 4</i></span>
+    <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">每行 <b>16</b> <i>维</i></span>
+    <span class="hp-chip" style="color:#6B6B68;background:#ECEAE2">注入 <b>第 2 个 Block 前</b> <i>inject_layer = 1</i></span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">n_embd <b>128</b> <i>残差流宽度</i></span>
+    <span class="hp-note">8 个头 × 每行 16 维 = 128,拼起来正好等于 n_embd;262144 是每个头的行数,8 张表合计 33.6M 参数</span>
+  </div>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>① 容量和算力可以拆开</h2>
+    <p class="lead">
+      表有 8 张(每个哈希头一张),每张 <code>行数 × 16</code> 维。一个 token 在每张表里只取 1 行,合计 8 × 16 = <b>128</b> 个数,
+      和表有多少行无关。下面左边是 8 张表(高度按行数的对数画),橙色横线是 token <code>" transit"</code> 在每张表里取的那一行;
+      右边三根条用对数刻度。拖滑块改每个头的行数:
+    </p>
+
+    <div class="lab">
+      <div class="rk-row"><label>每个哈希头的行数</label>
+        <input type="range" id="rowsR" min="0" max="8" step="1" value="6">
+        <span class="rk-val" id="rowsV">262144</span></div>
+      <div class="scroll-x"><div id="capSvg" style="min-width:600px"></div></div>
+      <div class="legend">
+        <span><i style="background:#b8512f"></i>表参数 = 8 × 行数 × 16</span>
+        <span><i style="background:#3a63c0"></i>主干参数(第 12 章四件套 · 4 层 · 含 5 万词表嵌入)</span>
+        <span><i style="background:#3f7d63"></i>每 token 从表里读的数</span>
+      </div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s1Table" style="color:#b8512f">–</div><div class="drl">表参数</div></div>
+        <div class="dr"><div class="drv" id="s1Ratio">–</div><div class="drl">表 ÷ 主干</div></div>
+        <div class="dr"><div class="drv" id="s1Read" style="color:#3f7d63">–</div><div class="drl">每 token 读的数</div></div>
+        <div class="dr"><div class="drv" id="s1Frac">–</div><div class="drl">每 token 读到表的几分之一</div></div>
+      </div>
+    </div>
+    <div class="note" id="s1Note"></div>
+
+    <div class="sub-h"><span class="badge">真实规模</span>总参数里表占多少</div>
+    <p class="lead" style="margin-bottom:10px">
+      每组两根条:上面是总参数(橙色段是 n-gram 表),下面是
+      <span class="term" data-term="激活参数 · active parameters" data-key="active-params" data-def="处理一个 token 实际参与计算的参数量。MoE 里每 token 只走 top-k 个专家,激活参数远小于总参数。">激活参数</span>,
+      四组各按自己的总参数画满格。点按钮看出处:
+    </p>
+    <div class="btn-row small" id="realBtns">
+      <button class="btn primary">本项目 · 262144 行</button>
+      <button class="btn">MoE-27B(对照)</button>
+      <button class="btn">Engram-27B</button>
+      <button class="btn">Qwen3.8-Flash-Next</button>
+    </div>
+    <div class="lab">
+      <div class="scroll-x"><div id="realSvg" style="min-width:560px"></div></div>
+      <div class="legend">
+        <span><i style="background:#8FA7D9"></i>主干 / 模型主体</span>
+        <span><i style="background:#b8512f"></i>n-gram 表</span>
+        <span><i style="background:#3f7d63"></i>激活参数</span>
+      </div>
+      <div class="calc" id="realMeta"></div>
+    </div>
+
+    <div class="codepath">↳ 代码:<b>13_engram.py</b> 的 <code>NgramMemory.__init__</code>(<code>self.tables</code> 形状 <code>N_HEADS × TABLE × ROW_DIM</code>)· <code>NgramMemory.lookup</code></div>
+
+    <details class="dig">
+      <summary>主干 7.24M 参数里,有多少是词嵌入?</summary>
+      <div class="dig-body">
+        大部分。GPT-2 词表 50,257 个 token × 128 维 = <b>6,432,896</b> 个参数的
+        <span class="term" data-term="嵌入 · embedding" data-key="embedding" data-def="把 token id 映射成可训练的稠密向量,本质是一张按 id 查的表。">嵌入</span>表(和输出头共用),
+        输出头 bias 50,257 个;4 个 Block 合计 <b>726,016</b> 个,最后一层 RMSNorm 128 个,加起来是不挂表时的 7,209,297。
+        挂表以后多出 33,536 个:门控用的 <code>w_k</code>、<code>w_v</code> 各 128 × 128,两个 RMSNorm 各 128,短卷积 128 × 4。
+        <br><br>
+        词嵌入本身就是一张按单个 token id 查的表,每个 token 读 1 行 128 维。n-gram 表把"按 1 个 token 查"扩展成"按最近 2 到 3 个 token 查"。
+        262144 行的表是 4 个 Block 参数的 46 倍,每 token 前向里真正做矩阵乘的仍是这 4 个 Block、门控和输出头。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>同样的总参数,把一部分专家换成表,划算吗?</summary>
+      <div class="dig-body">
+        Engram 论文(Cheng et al.,"Conditional Memory via Scalable Lookup: A New Axis of Sparsity for Large Language Models",<b>arXiv 2601.07372</b>)做了这组对照:
+        Engram-27B 与 MoE-27B 都是 <b>26.7B 总参、3.8B 激活</b>,Engram-27B 把路由专家从 72 个减到 55 个,腾出的参数给 Engram 表(5.7B)。
+        结果 MMLU +3.0(摘要写 +3.4)、CMMLU +4.0、BBH +5.0、ARC-C +3.7、HumanEval +3.0、MATH +2.4,Multi-Query NIAH 从 84.2 到 97.0。
+        <br><br>
+        分多少给表合适,第 5 步给了两份报告的扫描结果。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:每个 token 只读 8 行。这 8 个行号怎么来,为什么不用跑模型就能算出来?</div>
+  </section>
+
+  <!-- ============ STEP 2 ============ -->
+  <section class="panel" id="panel1">
+    <h2>② 哈希:行号只看最近几个 token</h2>
+    <p class="lead">
+      下面是 FineWeb-Edu val 里的一段 24 个 <span class="term" data-term="BPE · 字节对编码" data-key="bpe" data-def="GPT-2 用的分词法:从字节出发反复合并高频相邻对,得到约 5 万个子词 token。">BPE</span> token。点一个 token(橙色),
+      以它结尾的 2-gram 标绿、3-gram 再往前多一个标蓝。4 个 2-gram 头和 4 个 3-gram 头各有一组随机奇数乘子:
+      <b>每个 token id 乘上对应的乘子 → 异或到一起 → 对表长取模</b>,得到行号。开头不足 n 个 token 时,前面用 0 号 token 补齐。
+      这一步叫
+      <span class="term" data-term="n-gram 哈希 · multiplicative-XOR hash" data-key="ngram-hash" data-def="把以当前位置结尾的 n 个 token id 各乘一个随机奇数、异或到一起、对表长取模,得到行号。不同 n-gram 可能落到同一行(撞行),多个头用不同乘子,降低同时撞上的概率。">n-gram 哈希</span>。
+    </p>
+
+    <div class="lab">
+      <div class="toks" id="tokRow"></div>
+      <div class="btn-row small" id="hashTblBtns">
+        <span class="hp-note" style="margin-right:4px">表长:</span>
+        <button class="btn">16384 行</button>
+        <button class="btn primary">262144 行</button>
+      </div>
+      <div class="calc" id="hashCalc"></div>
+      <div class="scroll-x" style="margin-top:10px">
+        <table class="htab">
+          <thead><tr><th>头</th><th>n-gram</th><th>token id × 乘子,再异或</th><th style="text-align:right">异或结果 H</th><th style="text-align:right">行号 = H mod 表长</th><th>在表里的位置</th></tr></thead>
+          <tbody id="hashBody"></tbody>
+        </table>
+      </div>
+      <div class="hp-note" id="hashCheck" style="margin-top:6px"></div>
+    </div>
+
+    <div class="sub-h"><span class="badge">撞行</span>表太小,不同 n-gram 挤在同一行</div>
+    <p class="lead" style="margin-bottom:10px">
+      脚本在训练集前 20 万个 token 里统计:出现过 <b>111,302</b> 种 2-gram、<b>170,212</b> 种 3-gram;每个头上,有多少比例的 n-gram 和别的 n-gram 共用一行。
+      三档表长都来自真实运行(32768 行那组取自吞吐测量)。黑色短线是"把这么多 n-gram 均匀随机撒进这么多行"的理论值。点一组:
+    </p>
+    <div class="btn-row small" id="collBtns">
+      <button class="btn primary">16384 行</button>
+      <button class="btn">32768 行</button>
+      <button class="btn">262144 行</button>
+    </div>
+    <div class="lab">
+      <div class="scroll-x"><div id="collSvg" style="min-width:560px"></div></div>
+      <div class="legend">
+        <span><i style="background:var(--e2)"></i>2-gram 撞行比例(4 个头平均)</span>
+        <span><i style="background:var(--e1)"></i>3-gram 撞行比例(4 个头平均)</span>
+        <span><i style="background:#1A1A18;height:3px"></i>均匀随机撒点的理论值</span>
+      </div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s2C2" style="color:var(--e2)">–</div><div class="drl">2-gram 撞行</div></div>
+        <div class="dr"><div class="drv" id="s2C3" style="color:var(--e1)">–</div><div class="drl">3-gram 撞行</div></div>
+        <div class="dr"><div class="drv" id="s2Per">–</div><div class="drl">平均每行挤几种 2-gram</div></div>
+      </div>
+    </div>
+    <div class="note" id="s2Note"></div>
+
+    <div class="codepath">↳ 代码:<b>13_engram.py</b> 的 <code>hash_multipliers</code>(固定种子 2026)· <code>ngram_rows</code> · 脚本中段的撞行统计 <code>collision</code></div>
+
+    <details class="dig">
+      <summary>为什么每种 n-gram 要用 4 个头,不用 1 个头配 4 倍的行?</summary>
+      <div class="dig-body">
+        两个 n-gram 在某个头上撞了行,它们取回的这一段 16 维是同一个向量。4 个头用 4 组不同的乘子,在一个头上撞了,在另一个头上多半撞不上;
+        拼起来的 128 维里只有一部分被共用,模型仍能区分这两个 n-gram。只用 1 个头时,一旦撞行,整根向量都相同。
+        代码里 <code>heads_per_order = 4</code>;Engram-27B 原文 "the number of heads to 8";Qwen3.8-Flash-Next 的 config 里是 <code>heads_per_ngram: 8</code>。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>16384 行时 2-gram 撞行为什么正好是 85%?</summary>
+      <div class="dig-body">
+        撞行比例 = 1 − 用到的不同行数 ÷ 不同 n-gram 数。每个头只有 16384 行,11 万种 2-gram 最多用满 16384 行,
+        所以比例至少是 1 − 16384 / 111,302 = <b>85.3%</b>,实测 85.3%:行已经全部用满,平均每行 6.8 种 2-gram。
+        262144 行时行数多过 n-gram 种数,实测 18.4%,和均匀随机撒点的理论值 18.5% 一致,说明这个乘法加异或的哈希在这里分布均匀。
+        <br><br>
+        统计只用了训练集前 20 万个 token。整个 9500 万 token 的训练段里 n-gram 种数更多,真实撞行比例比这里高。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>Engram 和 Qwen3.8 的哈希部分还多做了什么?</summary>
+      <div class="dig-body">
+        Engram(<b>arXiv 2601.07372</b> §2.2):先做 tokenizer 压缩,用 NFKC 规范化和小写把 token 映射成规范 ID,128k 词表的有效大小减少 23%;
+        后缀 n-gram 最大 N = 3;每个阶 K 个头,哈希函数是 multiplicative-XOR,各头取回的向量拼接。
+        <br>
+        Qwen3.8-Flash-Next 的 HF config.json 里与此相关的字段:<code>ngram_size: 3</code>、<code>heads_per_ngram: 8</code>、<code>ngram_vocab_size_base: 20000000</code>。
+        技术报告没有解释 20000000 具体指什么。报告 §2.3 原句:"short n-grams ending at each token serve as keys into embedding tables"。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:撞了行,取回的向量就可能属于别的 n-gram。取出来的记忆和上下文不搭,怎么办?</div>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="panel" id="panel2">
+    <h2>③ 门控:这段记忆和上下文对不对得上</h2>
+    <p class="lead">
+      行号只看字面上的最近两三个 token,同一个 n-gram 在不同上下文里取回同一个向量,撞行时还混着别的 n-gram。
+      所以记忆向量 e 先过一道
+      <span class="term" data-term="记忆门控 · context gate" data-key="memory-gate" data-def="用当前隐状态 h 当 query、记忆向量投影后当 key,两者 RMSNorm 后做点积、除以 √d、过 sigmoid,得到 0~1 的标量门。门值乘在记忆上,决定这个位置加多少记忆进残差流。">门</span>:
+      当前隐状态 h 当 query,e 经 <code>w_k</code> 投影后当 key,两边各做
+      <span class="term" data-term="RMSNorm" data-key="rmsnorm" data-def="只除以均方根、不减均值的归一化,第 12 章四件套之一。">RMSNorm</span>,点积除以 √128,过 sigmoid 得到一个 0~1 的数。
+      门值乘上 <code>w_v · e</code>,经短卷积后加回
+      <span class="term" data-term="残差流 · residual" data-key="residual" data-def="x = x + f(x):每层的输出加回主干上,主干那条线就是残差流。">残差流</span>。
+      下面每格是一个 token,颜色越深门越开。悬停或点击看数值,切换模型:
+    </p>
+
+    <div class="calc">
+      α<sub>t</sub> = σ( RMSNorm(h<sub>t</sub>) · RMSNorm(W<sub>k</sub> e<sub>t</sub>) / √128 )<br>
+      x ← x + Conv1D<sub>k=4,因果</sub>( α<sub>t</sub> · W<sub>v</sub> e<sub>t</sub> ) &nbsp;&nbsp;<span style="color:var(--ink2)">(只在第 2 个 Block 前做一次)</span>
+    </div>
+
+    <div class="btn-row small" id="gateBtns" style="margin-top:12px">
+      <button class="btn primary">FineWeb · 262144 行</button>
+      <button class="btn">FineWeb · 16384 行</button>
+      <button class="btn">FineWeb · 262144 行只查 2-gram</button>
+      <button class="btn">字符级 shakespeare · 32768 行</button>
+    </div>
+    <div class="lab">
+      <div class="gstrip" id="gateStrip"></div>
+      <div class="legend"><span>门值 0 <span class="grad"></span> 1</span><span>黑框 = 选中的 token</span></div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s3Tok" style="font-size:15px">–</div><div class="drl">选中的 token</div></div>
+        <div class="dr"><div class="drv" id="s3Val" style="color:var(--accent)">–</div><div class="drl">门值 α</div></div>
+        <div class="dr"><div class="drv" id="s3Mean">–</div><div class="drl">这一段的平均门值</div></div>
+        <div class="dr"><div class="drv" id="s3Lo">–</div><div class="drl">门值 &lt; 0.1 的位置</div></div>
+        <div class="dr"><div class="drv" id="s3Hi">–</div><div class="drl">门值 &gt; 0.9 的位置</div></div>
+      </div>
+    </div>
+    <div class="note" id="s3Note"></div>
+
+    <div class="codepath">↳ 代码:<b>13_engram.py</b> 的 <code>NgramMemory.forward</code>(<code>gate = sigmoid(...)</code>)· <code>Model.forward</code>(<code>i == inject_layer</code> 时加一次)</div>
+
+    <details class="dig">
+      <summary>门的公式和 Engram 原文一样吗?注入在哪一层?</summary>
+      <div class="dig-body">
+        门的形式一样。Engram §2.3 原句:"we utilize the current hidden state h_t … as a dynamic Query, while the retrieved memory e_t serves as the source for both Key and Value projections",
+        式 (3)(4) 为 <code>α_t = σ(RMSNorm(h_t)ᵀ RMSNorm(k_t)/√d)</code>,α_t 是标量。之后 Engram 接 kernel 4、dilation 3 的因果 Conv1D;本项目 kernel 4、不加 dilation。
+        <br><br>
+        注入位置按各自原文写:
+        <br>· 本项目 <code>13_engram.py</code>:<code>inject_layer = 1</code>,注释"0 起数;1 = 第 2 层",即第 2 个 Block 之前。
+        <br>· Engram-27B:原文 "we instantiate the module at layers 2 and 15";单层消融中 Layer 2 最好。
+        <br>· Qwen3.8-Flash-Next:技术报告写只有一层,放在 Layer 2(Fig.1 与 §2.3.1);config.json 为 <code>ple_layer_ids: [2]</code>,<code>ple_conv_kernel_size: 4</code>。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>16384 行那组的门,为什么大多贴着 0 或 1?</summary>
+      <div class="dig-body">
+        先看数:这 64 个位置里,16384 行那组门值 &lt; 0.1 的有 25 个、&gt; 0.9 的有 15 个;262144 行那组分别是 1 个和 7 个,多数落在中间。
+        一种解释:16384 行时 2-gram 撞行 85%,取回的向量常常混着别的 n-gram,对不少位置没有用处,门就把它关到接近 0;262144 行时撞行降到 18%,取回的内容更可信,门开得更均匀。
+        这只是一段 64 个 token 的观察,没有在更多文本上统计,当作参考。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>字符级那组的门几乎全开,说明什么?</summary>
+      <div class="dig-body">
+        tiny shakespeare 32768 行那组,64 个位置里 63 个门值 ≥ 0.999。字符级数据只有 1,101 种 2-gram、7,425 种 3-gram(训练集前 20 万字符),
+        表每个头 32768 行,2-gram 撞行只有 1% 到 2%,几乎每个 n-gram 独占一行;训练 5000 步把 100 万字符的训练集看了约 20 遍,表里存的是训练集上的统计。
+        门在 val 文本上也全开,模型对表的依赖很重,而第 4 步会看到这组 val loss 比不挂表高 0.12。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:机制齐了。真训一遍,val loss 能降多少?</div>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="panel" id="panel3">
+    <h2>④ 真实对照:FineWeb 主实验与字符级反例</h2>
+    <p class="lead">
+      两套数据各训 5000 步,batch 64 × 64 = 4096 个位置一步。<b>FineWeb-Edu</b>:GPT-2 BPE,训练段约 9500 万 token,5000 步随机抽到约 2050 万 token,多数文本只见一次。
+      <b>tiny shakespeare</b>:字符级,训练集约 100 万字符,5000 步相当于把训练集看约 20 遍。
+      上图是最终 loss 随表大小的变化,下图是 val loss 曲线;点上图的点选一组:
+    </p>
+
+    <div class="btn-row" id="dsBtns">
+      <button class="btn primary">FineWeb-Edu(主实验)</button>
+      <button class="btn">tiny shakespeare(反例)</button>
+    </div>
+    <div class="lab">
+      <div class="scroll-x"><div id="finalSvg" style="min-width:560px"></div></div>
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>val loss(2+3-gram)</span>
+        <span><i style="background:#fff;border:1.5px dashed #6B6B68"></i>train loss(2+3-gram)</span>
+        <span><i style="background:var(--e1);transform:rotate(45deg)"></i>只查 2-gram(实心 val · 空心 train)</span>
+      </div>
+      <div class="scroll-x"><div id="curveSvg" style="min-width:560px"></div></div>
+      <div class="hp-note" id="curveCap"></div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s4Run" style="font-size:14px">–</div><div class="drl">选中的一组</div></div>
+        <div class="dr"><div class="drv" id="s4TableP" style="color:#b8512f">–</div><div class="drl">表参数 / 主干参数</div></div>
+        <div class="dr"><div class="drv" id="s4TV">–</div><div class="drl">最终 train / val</div></div>
+        <div class="dr"><div class="drv" id="s4Delta" style="color:var(--accent)">–</div><div class="drl">val 比不挂表</div></div>
+        <div class="dr"><div class="drv" id="s4Avg">–</div><div class="drl">后 5 个评估点 val 平均比不挂表</div></div>
+        <div class="dr"><div class="drv" id="s4Coll">–</div><div class="drl">2-gram 撞行</div></div>
+      </div>
+    </div>
+    <div class="note" id="s4Note"></div>
+    <div class="note">记忆表要配<b>数据量远大于表参数</b>、不反复看同一批文本的训练才划算;数据少到被来回看很多遍时,表会把训练集背下来。</div>
+
+    <div class="codepath">↳ 跑法:<code>python 13_engram.py --table 262144 --json runs/ch15_fw_262144.json</code> · <code>--orders 2</code> 只查 2-gram · <code>--data shakespeare</code> 换字符级</div>
+
+    <details class="dig">
+      <summary>FineWeb 上降 0.013 和 0.06,这两个数能信几分?</summary>
+      <div class="dig-body">
+        每组只训了一次(同一个随机种子 1337),评估时 train / val 各取 50 个 batch。
+        <br>· 0 → 16384 行,最终 val 降 <b>0.013</b>,接近噪声量级;看后 5 个评估点(3000 到 4999 步),每点降 0.013 到 0.038,平均 0.026,点与点之间的起伏和差值本身差不多大。
+        <br>· 0 → 262144 行,最终降 <b>0.062</b>;后 5 个评估点每点降 0.036 到 0.066,平均 0.053,方向在这 2000 步里一直保持。
+        <br>· 只查 2-gram(4.9898)和 2+3-gram(4.9945)差 <b>0.005</b>。后 5 个评估点里只查 2-gram 那组每点低 0.005 到 0.007,但这些点出自同一次训练,不是独立的重复,换个种子可能翻过来。
+        另外两组表参数一样多:只查 2-gram 时是 4 个头 × 每行 32 维,2-gram 分到的维数翻了一倍。这个规模上的结果不能用来说明 3-gram 没用。
+        <br><br>
+        要把 0.01 量级的差距说实,需要多个种子取均值和误差条。本页没有做。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>5000 步、loss 5.0,这个差距放到训练完的模型上还成立吗?</summary>
+      <div class="dig-body">
+        不知道。FineWeb 这几组在 5000 步时 loss 还在 5.0 左右往下走(第 6 章的 124M 训完是 3 左右),属于训练早期;这是一组小规模对照,只能说明在这个步数、这个规模上表带来的变化,不代表收敛后的差距。
+        表越大、每行被更新的次数越少,早期和后期的差距可能变大也可能变小,需要更长的训练才能回答。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>字符级那组为什么表越大 val 越差?</summary>
+      <div class="dig-body">
+        典型的
+        <span class="term" data-term="过拟合 · overfitting" data-key="overfitting" data-def="模型在训练集上的 loss 继续下降,在没见过的数据上的 loss 却上升:参数记住了训练集的具体内容,而没有学到能推广的规律。">过拟合</span>。
+        训练集约 100 万字符,32768 行的表有 <b>4,194,304</b> 个参数,是主干 776,385 的 5.4 倍,也比训练集的字符数多;5000 步里每个字符平均被看约 20 遍。
+        字符级 n-gram 种类少(前 20 万字符里 2-gram 1,101 种),每个 n-gram 几乎独占一行,表可以把训练集里每个短语后面接什么直接存下来。
+        <br><br>
+        看曲线:32768 行那组 val 在 2500 步到最低 1.5657,之后一路涨到 1.6536,train 同期从 1.212 降到 1.0813。不挂表那组 val 一直在降,最终 1.5334。
+        前 1000 步表是有用的:1000 步时 32768 行那组 val 1.5925,不挂表 1.654。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>FineWeb 那组看过的 token 比表参数还少,为什么没有背下来?</summary>
+      <div class="dig-body">
+        5000 步抽到约 2050 万 token,262144 行的表有 3355 万参数,单看数量,看过的 token 少于表参数。差别在重复次数:FineWeb 训练段有 9500 万 token,随机抽窗口时同一段文本很少被抽中两次,
+        表的每一行每次更新面对的多是新文本;shakespeare 的每个字符被看了约 20 遍。
+        <br><br>
+        FineWeb 这组也有一个值得盯的数:262144 行时最终 train 4.9604、val 4.9945,train 比 val 低 0.034;不挂表时 train 5.0752、val 5.0561,train 反而比 val 高 0.019。
+        单次评估有噪声,不据此下结论;训练更久、数据被反复看时,要留意 train 与 val 的差距。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:262144 行的表已经是主干的 4.6 倍,放大到几百亿参数时显存装不下。这张表放哪?</div>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="panel" id="panel4">
+    <h2>⑤ 表可以不进 GPU</h2>
+    <p class="lead">
+      行号只取决于输入的 token id,<code>get_batch</code> 取数据时就在 CPU 上算好了,forward 还没开始就知道每个 token 要读哪 8 行。
+      所以表可以留在主机内存里,只把取出来的 8 × 16 个数送进 GPU,这叫
+      <span class="term" data-term="主机内存放表 · host offload + prefetch" data-key="host-offload" data-def="把大参数表留在 CPU 内存(或更慢的存储)里,只把本步要用的行取出来送进加速器。n-gram 表的行号只依赖输入 token,可以在 forward 之前算好并提前异步取出。">把表放主机内存、提前取行</span>。
+      选一种放法,看数据怎么走,以及单卡 RTX 4090 上 400 步训练的实测吞吐(STEP 4 的 loss 对照在 Mac 上跑,吞吐单独在 4090 上测):
+    </p>
+
+    <div class="btn-row" id="devBtns">
+      <button class="btn">不挂表</button>
+      <button class="btn primary">表在 GPU(same)</button>
+      <button class="btn">表在 CPU(--table-device cpu)</button>
+    </div>
+    <div class="lab">
+      <div class="scroll-x"><div id="flowSvg" style="min-width:620px"></div></div>
+      <div class="flow-cap" id="flowCap"></div>
+      <div id="speedBars" style="margin-top:10px"></div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s5Tps" style="color:var(--accent)">–</div><div class="drl">token / 秒(400 步)</div></div>
+        <div class="dr"><div class="drv" id="s5Rel">–</div><div class="drl">比表在 GPU</div></div>
+        <div class="dr"><div class="drv" id="s5Mem">–</div><div class="drl">留在加速器上的表参数</div></div>
+      </div>
+    </div>
+    <div class="note" id="s5Note"></div>
+
+    <div class="sub-h"><span class="badge">真实</span>工业版把表放在哪</div>
+    <ul class="checklist">
+      <li><span class="ck">✓</span><div><b>Qwen3.8-Flash-Next</b>:125B 总参、6B 激活,另有 51B n-gram 表参数。技术报告摘要原句 "additional 51B parameters of n-gram embedding tables held off the accelerator";§2.3:表放主机内存,异步预取。</div></li>
+      <li><span class="ck">✓</span><div><b>Engram</b>(<b>arXiv 2601.07372</b> §3.1):固定稀疏参数预算时,原句 "reallocating roughly 20%–25% of the sparse parameter budget to Engram yields the best performance",loss 随分配比例呈 U 形。</div></li>
+      <li><span class="ck">✓</span><div><b>Qwen3.8 报告 Tab.8</b>:固定总参数,loss 在 n-gram 占 25% 参数时最低,与 Engram 的结论一致;下游指标看不出改善。</div></li>
+    </ul>
+
+    <div class="codepath">↳ 代码:<b>13_engram.py</b> 的 <code>run</code>(先在表所在设备上 <code>lookup</code>,再 <code>.to(device)</code>)· <code>get_batch</code> 里的 <code>ngram_rows(x)</code> · 吞吐:<code>--max-iters 400 --eval-iters 1 --table-device cpu</code></div>
+
+    <details class="dig">
+      <summary>表放 CPU 为什么慢了 43%?</summary>
+      <div class="dig-body">
+        RTX 4090 的显存和主机内存之间隔着 PCIe。表在 CPU 时,查表、反向时把梯度写回表的那些行、AdamW 更新 4,194,304 个表参数都改在 CPU 上算,
+        每步还要把取出的行拷进显存、把表的梯度拷回主机。实测 148,229 token/s,表在 GPU 时 262,066,慢 43.4%。
+        这里主干只有 7.24M 参数,GPU 算一步很快,CPU 上的表更新和两次拷贝占的比例就大;主干越大,这部分开销占比越小(推断,本项目没有测更大的主干)。
+        <br><br>
+        三组各测一次,每组 400 步;表在 GPU 比不挂表(276,231)低 5.1%,是查表、门控和短卷积的开销。
+        测量用的是 32768 行的表(4.19M 参数),不是主实验的 262144 行。脚本里查表和拷贝跟着 forward 同步进行;Qwen3.8 报告写的是异步预取,取行和拷贝与上一步的 GPU 计算并行。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>"提前取"具体提前在哪?</summary>
+      <div class="dig-body">
+        训练时,下一个 batch 的 token 在读数据时就定了,行号可以和数据加载一起算,取行、拷贝可以和上一步的 GPU 计算并行。
+        推理时,新 token 一采样出来,它结尾的 2-gram、3-gram 就确定了,不用等下一层的计算结果。
+        MoE 做不到这一点:选哪个专家要看路由器对当前隐状态的打分,得算到那一层才知道。
+        <code>13_engram.py</code> 只做了最简单的同步版本:<code>run</code> 里先查表,再 <code>.to(device)</code>,没有实现异步预取。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>Gemma 3n 的 PLE 也放 CPU,它是 n-gram 表吗?</summary>
+      <div class="dig-body">
+        两者的键不同。
+        <span class="term" data-term="PLE · Per-Layer Embeddings" data-key="ple" data-def="Gemma 3n 的逐层嵌入:按单个 token id 给每一层查一段向量,门控后乘入该层。表可以放在 CPU 上,加速器只放主体参数。">PLE</span>(Per-Layer Embeddings)
+        在 HF transformers 的 <code>modeling_gemma3n.py</code> 里用 <code>embed_tokens_per_layer(input_ids)</code> 按<b>单个 token id</b> 查表(vocab_size_per_layer_input 262144,每层 256 维),在每层经门控乘入。
+        官方说明:"PLE allows a significant portion of these parameters (the embeddings associated with each layer) to be loaded and computed efficiently on the CPU",E2B / E4B 总参 5B / 8B,加速器上约 2B / 4B。
+        <br><br>
+        两者都是地址确定、可以放主机内存的稀疏表,差在键:PLE 用单个 token,n-gram 表用最近几个 token。
+        Qwen3.8 报告 §2.3 把 Gemma 3n 归为 embedding-based memory,原句 "N-gram embeddings further generalize unigram lookup by conditioning memory retrieval on local context rather than token identity alone"。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>n-gram 表和 MoE 是什么关系?</summary>
+      <div class="dig-body">
+        两者都让总参数远大于每 token 的计算量,取参数的方式不同。
+        <span class="term" data-term="MoE · 混合专家" data-key="moe" data-def="把 FFN 拆成多个专家,路由器按隐状态为每个 token 选 top-k 个专家计算。总参数变多,每 token 算力不变。">MoE</span>
+        由路由器看当前隐状态打分,选出几个专家,再让 token 过这几个专家的矩阵乘,选谁要算到那一层才知道;
+        n-gram 表按输入 token 的字面地址直接取向量,取出来只做一次门控和投影。
+        <br><br>
+        DeepSeek-V4 前 3 个 MoE 层用 Hash routing,按 token 哈希选专家,token 仍然要过专家做计算,和 n-gram 查表是两回事;V4 报告全文里也没有 Engram。
+        Engram 论文把查表记忆和 MoE 并列为两种稀疏方式,在同一个总参数预算里分配(第 1 步的 Engram-27B 对 MoE-27B)。
+      </div>
+    </details>
+
+    <div class="sub-h"><span class="badge">达标</span>本关实测</div>
+    <ul class="checklist" id="okList"></ul>
+
+    <div class="congrats" id="congrats">
+      <div class="ct">🎉 N-gram 查表 · 通关</div>
+      <div class="cs">你给第 12 章的小模型挂上了一张 3355 万参数的 n-gram 表:每个 token 只读 8 行,行号在 forward 之前就能算出,表可以留在主机内存。FineWeb 上 val loss 降了约 0.06,字符级数据上也看到了表把训练集背下来的样子。下一章讲投机解码与 MTP。</div>
+    </div>
+  </section>
+
+  <div class="nav">
+    <button class="btn" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<canvas id="confetti"></canvas>
+
+<script>
+/* ================================================================
+   REAL-DATA:loss 对照来自 phase4-efficiency/runs/ 下的 json(Mac,MPS);吞吐来自 runs/cuda/(RTX 4090)
+   主实验(FineWeb-Edu token 级,runs/queue_engram_fw.sh):
+     python 13_engram.py --table 0                     --json runs/ch15_fw_0.json
+     python 13_engram.py --table 16384                 --json runs/ch15_fw_16384.json
+     python 13_engram.py --table 262144                --json runs/ch15_fw_262144.json
+     python 13_engram.py --table 262144 --orders 2     --json runs/ch15_fw_262144_2gram.json
+   反例(tiny shakespeare 字符级,runs/queue_engram.sh;当时脚本默认字符级,现版需加 --data shakespeare):
+     --table 0 / 1024 / 4096 / 32768(--orders 2,3)与 32768 --orders 2 → runs/ch15_{0_2-3,1024_2-3,4096_2-3,32768_2-3,32768_2}.json
+     这批 json 的门值文本字段叫 gate_text(字符串),fw 那批叫 gate_tokens(列表)
+   吞吐(runs/queue_timing.sh):--max-iters 400 --eval-iters 1,
+     --table 0 --table-device same / --table 32768 --table-device same / --table 32768 --table-device cpu
+     → runs/ch15_speed_{0_same,32768_same,32768_cpu}.json 的 tokens_per_sec
+   ================================================================ */
+
+// 主干参数 params_backbone(不挂表 / 挂表时多出门控、归一化、短卷积)
+const BB_FW0=7209297, BB_FW=7242833, BB_SHK0=742849, BB_SHK=776385;
+
+// curve:[step, train, val]
+const FW_RUNS=[
+  {id:'fw0',    label:'不挂表',               table:0,      two:false, tableP:0,        bb:BB_FW0, coll2:null,  col:'#6B6B68',
+   curve:[[0,10.8508,10.8521],[500,6.2833,6.2185],[1000,5.8373,5.7742],[1500,5.5517,5.5398],[2000,5.4308,5.3897],[2500,5.3515,5.305],[3000,5.2633,5.2149],[3500,5.2071,5.1546],[4000,5.1618,5.1259],[4500,5.1416,5.0953],[4999,5.0752,5.0561]]},
+  {id:'fw16k',  label:'16384 行 · 2+3-gram',  table:16384,  two:false, tableP:2097152,  bb:BB_FW,  coll2:0.8529, col:'#E8B04B',
+   curve:[[0,10.8516,10.852],[500,6.2652,6.2322],[1000,5.822,5.772],[1500,5.5899,5.5236],[2000,5.4255,5.3748],[2500,5.3435,5.2933],[3000,5.2561,5.1935],[3500,5.1918,5.1283],[4000,5.1495,5.0882],[4500,5.1024,5.0619],[4999,5.0803,5.0432]]},
+  {id:'fw262k', label:'262144 行 · 2+3-gram', table:262144, two:false, tableP:33554432, bb:BB_FW,  coll2:0.1839, col:'#D97757',
+   curve:[[0,10.8517,10.8527],[500,6.2457,6.203],[1000,5.7993,5.7301],[1500,5.5513,5.5108],[2000,5.4031,5.36],[2500,5.2726,5.2443],[3000,5.1915,5.1759],[3500,5.1324,5.1185],[4000,5.0868,5.0603],[4500,5.0341,5.0328],[4999,4.9604,4.9945]]},
+  {id:'fw262k2',label:'262144 行 · 只查 2-gram',table:262144,two:true,  tableP:33554432, bb:BB_FW,  coll2:0.1839, col:'#3a63c0',
+   curve:[[0,10.8517,10.8527],[500,6.2364,6.1952],[1000,5.7969,5.7272],[1500,5.5506,5.5109],[2000,5.4062,5.3595],[2500,5.2704,5.2378],[3000,5.1845,5.1687],[3500,5.1293,5.1125],[4000,5.0814,5.0548],[4500,5.0328,5.0262],[4999,4.9582,4.9898]]},
+];
+const SHK_RUNS=[
+  {id:'s0',    label:'不挂表',              table:0,     two:false, tableP:0,       bb:BB_SHK0, coll2:null,   col:'#6B6B68',
+   curve:[[0,4.2635,4.2665],[500,1.5894,1.7777],[1000,1.469,1.654],[1500,1.4167,1.6136],[2000,1.3762,1.595],[2500,1.3535,1.5767],[3000,1.3365,1.5593],[3500,1.319,1.5606],[4000,1.3076,1.5526],[4500,1.297,1.5526],[4999,1.2858,1.5334]]},
+  {id:'s1k',   label:'1024 行 · 2+3-gram',  table:1024,  two:false, tableP:131072,  bb:BB_SHK,  coll2:0.3719, col:'#E8B04B',
+   curve:[[0,4.2653,4.2663],[500,1.5181,1.7027],[1000,1.3893,1.6026],[1500,1.3328,1.581],[2000,1.2967,1.5688],[2500,1.2656,1.5503],[3000,1.2374,1.5567],[3500,1.2203,1.5559],[4000,1.2007,1.5558],[4500,1.1864,1.5642],[4999,1.1664,1.5638]]},
+  {id:'s4k',   label:'4096 行 · 2+3-gram',  table:4096,  two:false, tableP:524288,  bb:BB_SHK,  coll2:0.114,  col:'#6FAE8F',
+   curve:[[0,4.2625,4.2663],[500,1.4817,1.68],[1000,1.3733,1.6014],[1500,1.312,1.575],[2000,1.2721,1.5689],[2500,1.2407,1.5744],[3000,1.2108,1.5683],[3500,1.1874,1.572],[4000,1.1688,1.5793],[4500,1.1469,1.5981],[4999,1.1274,1.6093]]},
+  {id:'s32k',  label:'32768 行 · 2+3-gram', table:32768, two:false, tableP:4194304, bb:BB_SHK,  coll2:0.0143, col:'#D97757',
+   curve:[[0,4.2634,4.2675],[500,1.4581,1.6631],[1000,1.3446,1.5925],[1500,1.2866,1.5711],[2000,1.2468,1.5714],[2500,1.212,1.5657],[3000,1.1783,1.5762],[3500,1.1518,1.6024],[4000,1.1259,1.6135],[4500,1.1051,1.6288],[4999,1.0813,1.6536]]},
+  {id:'s32k2', label:'32768 行 · 只查 2-gram',table:32768,two:true,  tableP:4194304, bb:BB_SHK,  coll2:0.0143, col:'#3a63c0',
+   curve:[[0,4.2634,4.2675],[500,1.5131,1.7038],[1000,1.391,1.609],[1500,1.3366,1.5818],[2000,1.3023,1.5601],[2500,1.2736,1.5493],[3000,1.2501,1.5466],[3500,1.2312,1.5547],[4000,1.2167,1.5554],[4500,1.201,1.5488],[4999,1.1895,1.5685]]},
+];
+// coll2 = 该 json collision 里 4 个 2-gram 头的平均(2gram_h0..h3)
+
+// collision:FineWeb 训练集前 20 万 token 里的不同 n-gram 与撞行比例(4 个头平均)
+//   16384 / 262144 来自 ch15_fw_16384.json / ch15_fw_262144.json;32768 来自 ch15_speed_32768_same.json
+const DISTINCT2=111302, DISTINCT3=170212;
+const COLL=[
+  {table:16384,  c2:[0.853,0.8529,0.8529,0.8529],  c3:[0.9037,0.9037,0.9038,0.9037]},
+  {table:32768,  c2:[0.7152,0.7151,0.715,0.7149],  c3:[0.8086,0.8086,0.8086,0.8086]},
+  {table:262144, c2:[0.1838,0.1838,0.1835,0.1846], c3:[0.2645,0.2644,0.2651,0.2647]},
+];
+
+// hash_example:val_data[2000:2024],token 字符串由 Python 端 tiktoken 解码,不在 JS 里重算 BPE
+const HX_TOKENS=[" Boston"," Tunnel",","," to"," larger"," clear","ances"," to"," allow"," for"," a"," unified"," fleet"," across"," all"," three"," rapid"," transit"," lines","."," For"," all"," practical"," purposes"];
+const HX_IDS=[6182,35863,11,284,4025,1598,1817,284,1249,329,257,22706,11026,1973,477,1115,5801,11168,3951,13,1114,477,8472,4959];
+// multipliers(hash_multipliers(),种子 2026;前 4 个头 2-gram,后 4 个头 3-gram)
+const MULTS=[[923913,70551],[1463149,67125],[634845,1921387],[274197,35723],[363153,1559561,22427],[271219,1230321,530831],[815667,830649,1247097],[313999,232659,2014801]];
+const ORD8=[2,2,2,2,3,3,3,3];
+// hash_example.rows:Python 算好的行号,页面用 BigInt 复算后逐个核对
+const HX_ROWS={
+  16384:[[4202,9182,7650,16034,2306,13114,13302,6150],[6599,4333,1619,14435,955,1567,11433,2581],[15538,7820,5954,2074,10976,1680,6462,7860],[10471,14179,7371,3027,5264,2218,1882,2580],[1251,7073,639,1855,2500,3066,2172,2488],[5651,4627,12383,3207,6359,13087,15723,10817],[3217,3147,9717,2181,2756,10930,8388,932],[2917,617,9505,8761,12555,14071,15735,3301],[5707,1145,8743,10855,3566,16072,9118,978],[2534,15568,10174,8406,6406,14210,6284,12750],[1542,3104,16238,6006,2171,15909,4971,14293],[9463,2231,10427,2739,12438,5460,11280,8774],[15836,12144,3372,7260,7221,16111,3091,6027],[16225,15059,301,8253,1767,13087,249,12029],[12806,10192,5662,7462,9120,6656,6446,2508],[14184,15054,13248,15432,4953,13975,15289,12279],[8860,15682,1580,180,15437,1163,5157,11787],[6033,14549,3333,11581,15258,14744,13984,10302],[16345,14555,6981,4709,13868,3914,6012,12952],[8012,8178,4540,13076,14744,1756,10994,6144],[14947,15915,9639,7887,14292,11942,242,16332],[12657,6291,13293,8349,11704,2334,15848,7040],[10477,7137,961,14889,10167,1035,10499,8185],[15313,9107,7693,1901,14960,3022,952,10676]],
+  262144:[[200810,254942,7650,114338,231682,78650,160758,251910],[252359,135405,1619,30819,99259,230943,76969,117269],[195762,155276,120642,149530,240352,165520,22846,24244],[174311,227171,56523,52179,152720,51370,67418,18964],[181475,138145,131711,116543,248260,248826,198780,182712],[251411,70163,12383,216199,104663,193311,114027,158273],[19601,117835,75253,231557,117444,240306,106692,66468],[133989,49769,222497,57913,61707,259831,97655,117989],[218699,246905,74279,60007,85486,48840,156574,197586],[133606,130256,174014,188630,219398,14210,39052,12750],[165382,134176,114542,38774,247931,81445,152427,178133],[42231,84151,190651,232115,192662,251220,224272,8774],[81372,143216,36140,121948,252981,212719,183315,251787],[114529,129747,301,41021,181991,111391,213241,159485],[225798,26576,54814,187686,172960,186880,88366,35276],[63336,228046,78784,31816,152409,46743,31673,176119],[254620,64834,67116,196788,244813,66699,54309,110091],[251793,178389,118021,93501,80794,260504,95904,174142],[98265,112859,236357,21093,128556,134986,38780,144024],[106316,57330,4540,111380,96664,247516,207602,88064],[31331,212523,107943,89807,128980,11942,49394,16332],[94577,235667,259053,57501,191928,198942,179688,7040],[59629,7137,181185,113193,59319,82955,157955,155641],[195537,254867,253453,67437,162416,232398,66488,108980]]
+};
+
+// gate:val_data[2000:2064] 每个位置的门值(fw:gate_tokens + gate_values;shakespeare:gate_text + gate_values)
+const GATE_TOKENS=[" Boston"," Tunnel",","," to"," larger"," clear","ances"," to"," allow"," for"," a"," unified"," fleet"," across"," all"," three"," rapid"," transit"," lines","."," For"," all"," practical"," purposes",","," the"," use"," of"," three"," separate"," fleets"," of"," cars"," on"," the"," rapid"," transit"," system"," in"," Boston"," is"," set"," in"," steel",","," concrete",","," stone",","," brick",","," and"," Boston"," Harbor"," mud",".","\n","Now",","," one"," could"," convert"," the"," Blue"];
+const GATES=[
+  {name:'FineWeb · 262144 行', tokens:GATE_TOKENS, // ch15_fw_262144.json
+   v:[0.634,0.707,0.555,0.501,0.268,0.7,0.594,0.87,0.546,0.928,0.934,0.185,0.491,0.881,0.183,0.792,0.68,0.484,0.252,0.234,0.704,0.137,0.304,0.914,0.799,0.792,0.838,0.956,0.529,0.33,0.538,0.077,0.63,0.621,0.964,0.888,0.656,0.748,0.538,0.342,0.745,0.84,0.76,0.537,0.199,0.242,0.13,0.759,0.276,0.271,0.739,0.875,0.421,0.127,0.126,0.294,0.763,0.944,0.832,0.868,0.906,0.49,0.297,0.722]},
+  {name:'FineWeb · 16384 行', tokens:GATE_TOKENS, // ch15_fw_16384.json
+   v:[0.049,0.036,0.285,0.368,0.234,0.11,0.024,0.71,0.843,0.028,0.956,0.034,0.055,0.035,0.007,0.994,0.845,0.016,0.574,0.473,0.688,0.137,0.037,0.007,0.056,0.997,0.995,0.998,0.031,0.8,0.11,0.015,0.296,0.856,0.998,0.013,0.004,0.11,0.992,0.16,0.182,0.964,0.061,0.575,0.101,0.133,0.011,0.005,0.041,0.965,0.951,0.936,0.284,0.042,0.049,0.131,0.912,0.97,0.027,0.961,0.911,0.361,0.003,0.066]},
+  {name:'FineWeb · 262144 行只查 2-gram', tokens:GATE_TOKENS, // ch15_fw_262144_2gram.json
+   v:[0.766,0.872,0.304,0.749,0.772,0.216,0.916,0.869,0.725,0.853,0.499,0.149,0.443,0.611,0.702,0.913,0.389,0.872,0.751,0.197,0.721,0.263,0.913,0.884,0.425,0.653,0.824,0.861,0.591,0.625,0.761,0.708,0.279,0.155,0.848,0.945,0.872,0.157,0.083,0.548,0.301,0.671,0.929,0.707,0.197,0.154,0.243,0.186,0.476,0.297,0.458,0.897,0.318,0.281,0.722,0.384,0.89,0.945,0.772,0.878,0.73,0.592,0.763,0.685]},
+  {name:'字符级 shakespeare · 32768 行', tokens:[..."rina, this I know,\nShe is not for your turn, the more my grief.\n"], // ch15_32768_2-3.json gate_text
+   v:[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.001,1.0,0.999,0.999,1.0,1.0,1.0,1.0,1.0,0.999,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.999,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.999,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0]},
+];
+
+// 吞吐:runs/cuda/ch15_speed_{0_same,32768_same,32768_cpu}.json 的 tokens_per_sec(RTX 4090,PyTorch 2.4.1,400 步,表 32768 行 = 4,194,304 参数)
+const SPEED={none:276231, same:262066, cpu:148229};
+const SPEED_TABLE_P=4194304;
+
+// 真实规模(factcheck:Engram arXiv 2601.07372;Qwen3.8-Flash-Next 技术报告与 HF 模型卡)
+const REAL=[
+  {name:'本项目 · FineWeb 262144 行', unit:'M', total:(BB_FW+33554432)/1e6, table:33554432/1e6, active:BB_FW/1e6,
+   meta:'主干 7,242,833(第 12 章四件套 4 层 + 门控)· 表 8 × 262,144 × 16 = 33,554,432 · 表是主干的 4.63 倍<br>dense 主干每个 token 全部参与计算,激活参数按主干计;每 token 从表里另读 128 个数<br>来源:runs/ch15_fw_262144.json 的 params_backbone / params_table'},
+  {name:'MoE-27B(对照)', unit:'B', total:26.7, table:0, active:3.8,
+   meta:'26.7B 总参 · 3.8B 激活 · 72 个路由专家,没有 Engram 表<br>出处:Cheng et al.,"Conditional Memory via Scalable Lookup",arXiv 2601.07372(Engram-27B 的对照组)'},
+  {name:'Engram-27B', unit:'B', total:26.7, table:5.7, active:3.8,
+   meta:'26.7B 总参 · 3.8B 激活 · 路由专家 72 → 55,Engram 表 5.7B · 表插在 layers 2 和 15<br>MMLU +3.0、BBH +5.0、HumanEval +3.0,Multi-Query NIAH 84.2 → 97.0(均对 MoE-27B)<br>出处:arXiv 2601.07372'},
+  {name:'Qwen3.8-Flash-Next', unit:'B', total:125+51, table:51, active:6,
+   meta:'125B 总参 · 6B 激活,另有 51B n-gram 表参数,原句 "held off the accelerator"<br>config.json:hidden_size 2560 · ngram_size 3 · heads_per_ngram 8 · ple_layer_ids [2] · ngram_vocab_size_base 20000000(报告未解释含义)<br>出处:Qwen3.8-Flash-Next 技术报告 "On the Design of Qwen3.8-Next Architecture" 摘要与 §2.3;HF 模型卡与 config.json'},
+];
+
+const $=id=>document.getElementById(id);
+function setActiveBtn(containerId,n){
+  document.querySelectorAll('#'+containerId+' .btn').forEach((b,i)=>b.classList.toggle('primary',i===n));
+}
+const en=v=>v.toLocaleString('en-US');
+const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const fmtP=n=> n>=1e9?(n/1e9).toFixed(1)+'B' : n>=1e6?(n/1e6).toFixed(n>=1e7?1:2)+'M' : n>=1e3?(n/1e3).toFixed(1)+'K' : String(n);
+const tokShow=s=>esc(s).replace(/\n/g,'⏎').replace(/^ /,'<span class="sp">·</span>');
+const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
+
+/* 与 ngram_rows 相同的哈希:以 t 结尾的 order 个 token(不足补 0)各乘乘子,再异或;数会超过 2^53,用 BigInt */
+function hashH(t,k){
+  const order=ORD8[k], m=MULTS[k], parts=[]; let x=0n;
+  for(let j=0;j<order;j++){ const p=t-(order-1)+j; const id=p<0?0:HX_IDS[p]; parts.push([id,m[j]]); x^=BigInt(id)*BigInt(m[j]); }
+  return {x,parts};
+}
+const rowOf=(t,k,T)=>Number(hashH(t,k).x%BigInt(T));
+
+/* ============ 步骤切换 ============ */
+const NSTEP=5;
+const tabs=document.querySelectorAll('.step-tab');
+const panels=[];for(let i=0;i<NSTEP;i++)panels.push(document.getElementById('panel'+i));
+let cur=0;
+function goto(i){
+  cur=Math.max(0,Math.min(NSTEP-1,i));
+  tabs.forEach(t=>t.classList.toggle('active',+t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active',idx===cur));
+  document.getElementById('prevBtn').disabled = cur===0;
+  document.getElementById('nextBtn').textContent = cur===NSTEP-1 ? '完成 🎉' : '下一步 →';
+  const hash='#step-'+(cur+1);
+  if(location.hash!==hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+document.getElementById('prevBtn').addEventListener('click',()=>goto(cur-1));
+document.getElementById('nextBtn').addEventListener('click',()=>{ if(cur===NSTEP-1) celebrate(); else goto(cur+1); });
+
+/* ============ STEP 1:表参数 vs 主干 vs 每 token 读取 ============ */
+const ROW_OPTS=[0,1024,4096,16384,32768,65536,262144,1048576,4194304];
+const RAN={16384:'FineWeb 跑过',262144:'FineWeb 跑过',1024:'shakespeare 跑过',4096:'shakespeare 跑过',32768:'shakespeare 与吞吐测量跑过'};
+const DEMO_T=17;                                   // " transit"
+function renderCap(){
+  const rows=ROW_OPTS[+$('rowsR').value];
+  $('rowsV').textContent=rows===0?'0(不挂表)':en(rows);
+  const tableP=8*rows*16, bb=rows?BB_FW:BB_FW0, read=rows?128:0;
+  const W=900,H=240,T=26,B=30;
+  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="8 张表的高度与三根对数条">`;
+  // 左:8 张表
+  const SX=34, SW=30, GAP=13, HMAX=H-T-B-10;
+  g+=`<text x="${SX}" y="${T-10}" font-size="11" font-family="ui-monospace,monospace" fill="#6B6B68">8 张表(高度 ∝ log₂ 行数)· 橙线 = " transit" 读的行</text>`;
+  for(let k=0;k<8;k++){
+    const x=SX+k*(SW+GAP);
+    if(rows===0){
+      g+=`<rect x="${x}" y="${H-B-8}" width="${SW}" height="8" fill="none" stroke="#D9D5CA" stroke-dasharray="3 2"/>`;
+    }else{
+      const h=Math.max(8,HMAX*Math.log2(rows)/22), y=H-B-h;
+      g+=`<rect x="${x}" y="${y.toFixed(1)}" width="${SW}" height="${h.toFixed(1)}" rx="3" fill="${k<4?'#E4EFE9':'#E5EBF9'}" stroke="${k<4?'#3f7d63':'#3a63c0'}" stroke-width="1"/>`;
+      const r=rowOf(DEMO_T,k,rows), ry=y+(r+0.5)/rows*h;
+      g+=`<line x1="${x-3}" y1="${ry.toFixed(1)}" x2="${x+SW+3}" y2="${ry.toFixed(1)}" stroke="#D97757" stroke-width="3"/>`;
+    }
+    g+=`<text x="${x+SW/2}" y="${H-B+14}" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="${k<4?'#3f7d63':'#3a63c0'}">${k<4?'2g':'3g'}${k}</text>`;
+  }
+  if(rows===0) g+=`<text x="${SX+170}" y="${H-B-40}" text-anchor="middle" font-size="12" fill="#6B6B68">不挂表</text>`;
+  // 右:对数条
+  const BX=440, BW=W-BX-20, lg=v=>v<=0?0:Math.max(0,(Math.log10(v)-1)/8)*BW;
+  [[1,'10'],[3,'1K'],[5,'100K'],[7,'10M'],[9,'1B']].forEach(([e,t])=>{
+    const x=BX+(e-1)/8*BW;
+    g+=`<line x1="${x}" y1="${T+6}" x2="${x}" y2="${H-B}" stroke="#EAE7DE"/>`;
+    g+=`<text x="${x}" y="${H-B+14}" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#6B6B68">${t}</text>`;
+  });
+  [[tableP,'表参数','#b8512f'],[bb,'主干参数','#3a63c0'],[read,'每 token 读的数','#3f7d63']].forEach(([v,t,c],i)=>{
+    const y=T+14+i*58;
+    g+=`<text x="${BX}" y="${y}" font-size="11.5" fill="${c}" font-weight="700">${t}</text>`;
+    g+=`<rect x="${BX}" y="${y+6}" width="${lg(v).toFixed(1)}" height="22" rx="4" fill="${c}" opacity=".85"/>`;
+    g+=`<text x="${BX+lg(v)+6}" y="${y+22}" font-size="11.5" font-family="ui-monospace,monospace" fill="#1A1A18">${v?en(v):'0'}</text>`;
+  });
+  g+=`</svg>`;
+  $('capSvg').innerHTML=g;
+  $('s1Table').textContent=rows?fmtP(tableP):'0';
+  $('s1Ratio').textContent=rows?(tableP/bb).toFixed(tableP/bb<1?3:2)+'×':'–';
+  $('s1Read').textContent=read+' 个';
+  $('s1Frac').textContent=rows?'1 / '+en(rows):'–';
+  $('s1Note').innerHTML= rows===0
+    ? `不挂表时就是第 12 章的四件套小模型,主干 <b>${en(BB_FW0)}</b> 个参数。`
+    : `每个头 ${en(rows)} 行时,表有 <b>${en(tableP)}</b> 个参数,是主干的 <b>${(tableP/bb).toFixed(2)}</b> 倍;每个 token 仍然只读 8 行 × 16 维 = <b>128</b> 个数。`+
+      (RAN[rows]?` 这一档在 ${RAN[rows]}。`:' 这一档没有实际训练过,只是按公式算的参数量。');
+}
+$('rowsR').addEventListener('input',renderCap);
+renderCap();
+
+let realSel=0;
+function renderReal(){
+  const W=860, RH=52, T=8, L=190, R=70, H=T+REAL.length*RH+4;
+  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="四个模型的总参数、表参数与激活参数">`;
+  REAL.forEach((m,i)=>{
+    const y=T+i*RH, bw=W-L-R, sel=i===realSel, op=sel?1:.38;
+    const tw=m.table/m.total*bw, aw=m.active/m.total*bw;
+    g+=`<g opacity="${op}" style="cursor:pointer" data-i="${i}">`;
+    g+=`<rect x="0" y="${y}" width="${W}" height="${RH-4}" fill="transparent"/>`;
+    g+=`<text x="${L-10}" y="${y+20}" text-anchor="end" font-size="12" font-weight="${sel?700:500}" fill="${sel?'#D97757':'#1A1A18'}">${m.name}</text>`;
+    g+=`<rect x="${L}" y="${y+6}" width="${(bw-tw).toFixed(1)}" height="16" fill="#8FA7D9"/>`;
+    if(tw>0) g+=`<rect x="${(L+bw-tw).toFixed(1)}" y="${y+6}" width="${tw.toFixed(1)}" height="16" fill="#b8512f"/>`;
+    g+=`<text x="${L+bw+6}" y="${y+19}" font-size="11" font-family="ui-monospace,monospace" fill="#1A1A18">${m.total.toFixed(m.unit==='M'?1:1)}${m.unit}</text>`;
+    g+=`<rect x="${L}" y="${y+26}" width="${Math.max(2,aw).toFixed(1)}" height="12" fill="#3f7d63"/>`;
+    g+=`<text x="${L+Math.max(2,aw)+6}" y="${y+36}" font-size="10.5" font-family="ui-monospace,monospace" fill="#3f7d63">激活 ${m.active.toFixed(m.unit==='M'?2:1)}${m.unit}${tw>0?` · 表 ${m.table.toFixed(1)}${m.unit}(占 ${(100*m.table/m.total).toFixed(0)}%)`:''}</text>`;
+    g+=`</g>`;
+  });
+  g+=`</svg>`;
+  $('realSvg').innerHTML=g;
+  $('realSvg').querySelectorAll('g[data-i]').forEach(el=>el.addEventListener('click',()=>{realSel=+el.dataset.i;renderReal();}));
+  $('realMeta').innerHTML=`<span class="hl">${REAL[realSel].name}</span><br>`+REAL[realSel].meta;
+  setActiveBtn('realBtns',realSel);
+}
+document.querySelectorAll('#realBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{realSel=i;renderReal();}));
+renderReal();
+
+/* ============ STEP 2:逐 token 看 8 个头的行号 ============ */
+let hxT=DEMO_T, hxTable=262144;
+function renderHash(){
+  $('tokRow').innerHTML=HX_TOKENS.map((s,i)=>{
+    const cls= i===hxT?'cur':(i===hxT-1?'g2':(i===hxT-2?'g3':''));
+    return `<span class="tok ${cls}" data-i="${i}" title="id ${HX_IDS[i]}">${tokShow(s)}</span>`;
+  }).join('');
+  $('tokRow').querySelectorAll('.tok').forEach(el=>el.addEventListener('click',()=>{hxT=+el.dataset.i;renderHash();}));
+  const tk=i=>i<0?'⟨0 号补位⟩':`"${esc(HX_TOKENS[i]).replace(/\n/g,'⏎')}"`;
+  $('hashCalc').innerHTML=
+    `位置 ${hxT}:2-gram = ${tk(hxT-1)} ${tk(hxT)} &nbsp;·&nbsp; 3-gram = ${tk(hxT-2)} ${tk(hxT-1)} ${tk(hxT)}<br>`+
+    `token id:${hxT>=2?HX_IDS[hxT-2]:0}, ${hxT>=1?HX_IDS[hxT-1]:0}, <span class="hl">${HX_IDS[hxT]}</span> &nbsp;·&nbsp; 表长 <span class="hl">${en(hxTable)}</span> 行 / 头`;
+  let ok=0, body='';
+  for(let k=0;k<8;k++){
+    const {x,parts}=hashH(hxT,k), r=Number(x%BigInt(hxTable)), jr=HX_ROWS[hxTable][hxT][k];
+    if(r===jr) ok++;
+    const expr=parts.map(([id,m])=>`${id} × ${en(m)}`).join(' ⊕ ');
+    body+=`<tr class="o${ORD8[k]}"><td>h${k}</td><td>${ORD8[k]}-gram</td><td>${expr}</td>`+
+      `<td class="r">${en(Number(x))}</td><td class="r" style="color:var(--accent);font-weight:700">${en(jr)}</td>`+
+      `<td><div class="pos"><i style="left:calc(${(100*jr/hxTable).toFixed(2)}% - 1px)"></i></div></td></tr>`;
+  }
+  $('hashBody').innerHTML=body;
+  $('hashCheck').textContent= ok===8
+    ? `行号取自 json 的 hash_example.rows(Python 算);页面按同一公式复算,8 个头全部一致。`
+    : `注意:页面复算与 json 有 ${8-ok} 个头不一致,表中显示的是 json 里的值。`;
+  setActiveBtn('hashTblBtns',hxTable===16384?0:1);
+}
+document.querySelectorAll('#hashTblBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{hxTable=i===0?16384:262144;renderHash();}));
+renderHash();
+
+/* 撞行柱状图 + 均匀随机撒点的理论值:n 种 n-gram 撒进 m 行,期望用到 m(1−(1−1/m)^n) 行 */
+const randColl=(n,m)=>1-m*(1-Math.pow(1-1/m,n))/n;
+let collSel=0;
+function renderColl(){
+  const W=860,H=230,L=46,R=16,T=18,B=34;
+  const gw=(W-L-R)/3, bw=gw*0.26;
+  const Y=v=>(H-B)-v*(H-B-T);
+  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="三档表长的撞行比例">`;
+  [0,0.25,0.5,0.75,1].forEach(v=>{
+    g+=`<line x1="${L}" y1="${Y(v)}" x2="${W-R}" y2="${Y(v)}" stroke="${v===0?'#6B6B68':'#EAE7DE'}"/>`;
+    g+=`<text x="${L-6}" y="${Y(v)+4}" text-anchor="end" font-size="10.5" font-family="ui-monospace,monospace" fill="#6B6B68">${v*100}%</text>`;
+  });
+  COLL.forEach((c,i)=>{
+    const cx=L+i*gw+gw/2, sel=i===collSel;
+    [[avg(c.c2),DISTINCT2,'#3f7d63',-1],[avg(c.c3),DISTINCT3,'#3a63c0',1]].forEach(([v,n,col,side])=>{
+      const x=cx+(side<0?-bw-4:4), y=Y(v), th=randColl(n,c.table);
+      g+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${(H-B-y).toFixed(1)}" rx="3" fill="${col}" opacity="${sel?.95:.35}" style="cursor:pointer" data-i="${i}"/>`;
+      g+=`<text x="${(x+bw/2).toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" font-family="ui-monospace,monospace" fill="${col}" opacity="${sel?1:.6}">${(100*v).toFixed(1)}%</text>`;
+      g+=`<line x1="${(x-3).toFixed(1)}" y1="${Y(th).toFixed(1)}" x2="${(x+bw+3).toFixed(1)}" y2="${Y(th).toFixed(1)}" stroke="#1A1A18" stroke-width="2.2" opacity="${sel?1:.5}"/>`;
+    });
+    g+=`<text x="${cx}" y="${H-12}" text-anchor="middle" font-size="12" font-weight="${sel?700:500}" font-family="ui-monospace,monospace" fill="${sel?'#D97757':'#6B6B68'}">${en(c.table)} 行</text>`;
+  });
+  g+=`</svg>`;
+  $('collSvg').innerHTML=g;
+  $('collSvg').querySelectorAll('rect[data-i]').forEach(r=>r.addEventListener('click',()=>{collSel=+r.dataset.i;renderColl();}));
+  const c=COLL[collSel], c2=avg(c.c2), c3=avg(c.c3);
+  $('s2C2').textContent=(100*c2).toFixed(1)+'%';
+  $('s2C3').textContent=(100*c3).toFixed(1)+'%';
+  const used=DISTINCT2*(1-c2);
+  $('s2Per').textContent=(DISTINCT2/used).toFixed(2)+' 种';
+  const notes=[
+    `16384 行:2-gram 撞行 <b>${(100*c2).toFixed(1)}%</b>,每一行都被用上,平均每行挤 ${(DISTINCT2/used).toFixed(1)} 种 2-gram。取回的向量是好几个 n-gram 共用的,表太小,记不住。`,
+    `32768 行:行数翻倍,2-gram 撞行降到 <b>${(100*c2).toFixed(1)}%</b>,仍接近"行被用满"的下限 ${(100*(1-c.table/DISTINCT2)).toFixed(1)}%。`,
+    `262144 行:行数超过 n-gram 种数,2-gram 撞行降到 <b>${(100*c2).toFixed(1)}%</b>,3-gram <b>${(100*c3).toFixed(1)}%</b>,和均匀随机撒点的理论值基本重合。`,
+  ];
+  $('s2Note').innerHTML=notes[collSel];
+  setActiveBtn('collBtns',collSel);
+}
+document.querySelectorAll('#collBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{collSel=i;renderColl();}));
+renderColl();
+
+/* ============ STEP 3:门值热力带 ============ */
+let gSel=0, gTok=17;
+const mix=v=>{ const a=[250,249,245], b=[217,119,87]; return `rgb(${a.map((x,i)=>Math.round(x+(b[i]-x)*v)).join(',')})`; };
+function renderGate(){
+  const G=GATES[gSel];
+  if(gTok>=G.tokens.length) gTok=0;
+  $('gateStrip').innerHTML=G.tokens.map((s,i)=>{
+    const v=G.v[i];
+    return `<span class="gt${i===gTok?' sel':''}" data-i="${i}" title="门值 ${v.toFixed(3)}" style="background:${mix(v)};color:${v>0.62?'#fff':'#1A1A18'}">${tokShow(s)}</span>`;
+  }).join('');
+  $('gateStrip').querySelectorAll('.gt').forEach(el=>{
+    const pick=()=>{gTok=+el.dataset.i;updGate();};
+    el.addEventListener('mouseenter',pick); el.addEventListener('click',pick);
+  });
+  updGate();
+  setActiveBtn('gateBtns',gSel);
+}
+function updGate(){
+  const G=GATES[gSel], v=G.v;
+  $('gateStrip').querySelectorAll('.gt').forEach((el,i)=>el.classList.toggle('sel',i===gTok));
+  $('s3Tok').innerHTML=tokShow(G.tokens[gTok]);
+  $('s3Val').textContent=v[gTok].toFixed(3);
+  $('s3Mean').textContent=avg(v).toFixed(3);
+  const lo=v.filter(x=>x<0.1).length, hi=v.filter(x=>x>0.9).length;
+  $('s3Lo').textContent=lo+' / '+v.length;
+  $('s3Hi').textContent=hi+' / '+v.length;
+  const notes=[
+    `262144 行:门值多数落在中间,平均 <b>${avg(v).toFixed(2)}</b>;同一个 token 在不同位置开合不同,比如两处 " rapid transit" 里的 " transit" 分别是 ${v[17].toFixed(2)} 和 ${v[36].toFixed(2)}。`,
+    `16384 行:门值两极分化,<b>${lo}</b> 个位置 &lt; 0.1、<b>${hi}</b> 个 &gt; 0.9。这组表的 2-gram 撞行 85%。`,
+    `只查 2-gram:表参数和 262144 行那组一样多,4 个头每行 32 维,平均门值 <b>${avg(v).toFixed(2)}</b>。`,
+    `字符级 32768 行:64 个位置里 <b>${v.filter(x=>x>=0.999).length}</b> 个门值 ≥ 0.999,只有一个位置接近 0。模型几乎在每个位置都全量使用表里的内容。`,
+  ];
+  $('s3Note').innerHTML=notes[gSel];
+}
+document.querySelectorAll('#gateBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{gSel=i;renderGate();}));
+renderGate();
+
+/* ============ STEP 4:最终 loss vs 表大小 + val 曲线 ============ */
+let ds=0, runSel='fw262k';
+const DS=[
+  {runs:FW_RUNS, cats:[0,16384,262144], from:1000, ylo:4.9, yhi:5.85, def:'fw262k'},
+  {runs:SHK_RUNS, cats:[0,1024,4096,32768], from:500, ylo:1.0, yhi:1.8, def:'s32k'},
+];
+const fin=r=>r.curve[r.curve.length-1];
+function renderFinal(){
+  const D=DS[ds], runs=D.runs;
+  const W=860,H=250,L=56,R=120,T=26,B=36;
+  const vals=runs.flatMap(r=>[fin(r)[1],fin(r)[2]]);
+  let lo=Math.min(...vals), hi=Math.max(...vals); const pad=(hi-lo)*0.12; lo-=pad; hi+=pad;
+  const X=i=>L+(i+0.5)/D.cats.length*(W-L-R), Y=v=>T+(hi-v)/(hi-lo)*(H-T-B);
+  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="最终 train / val loss 随表大小">`;
+  const nT=4; for(let k=0;k<=nT;k++){ const v=lo+(hi-lo)*k/nT;
+    g+=`<line x1="${L}" y1="${Y(v).toFixed(1)}" x2="${W-R}" y2="${Y(v).toFixed(1)}" stroke="#EAE7DE"/>`;
+    g+=`<text x="${L-6}" y="${(Y(v)+4).toFixed(1)}" text-anchor="end" font-size="10.5" font-family="ui-monospace,monospace" fill="#6B6B68">${v.toFixed(ds===0?3:2)}</text>`; }
+  D.cats.forEach((c,i)=>{ g+=`<text x="${X(i)}" y="${H-12}" text-anchor="middle" font-size="11.5" font-family="ui-monospace,monospace" fill="#6B6B68">${c===0?'不挂表':en(c)+' 行'}</text>`; });
+  const main=runs.filter(r=>!r.two).sort((a,b)=>a.table-b.table);
+  const path=idx=>main.map((r,i)=>`${i?'L':'M'}${X(D.cats.indexOf(r.table)).toFixed(1)},${Y(fin(r)[idx]).toFixed(1)}`).join(' ');
+  g+=`<path d="${path(1)}" fill="none" stroke="#6B6B68" stroke-width="1.6" stroke-dasharray="5 4"/>`;
+  g+=`<path d="${path(2)}" fill="none" stroke="#D97757" stroke-width="2.4"/>`;
+  runs.forEach(r=>{
+    const i=D.cats.indexOf(r.table), sel=r.id===runSel;
+    if(!r.two){
+      const x=X(i);
+      g+=`<circle cx="${x}" cy="${Y(fin(r)[1]).toFixed(1)}" r="${sel?6:4.5}" fill="#fff" stroke="#6B6B68" stroke-width="1.6" data-r="${r.id}" style="cursor:pointer"/>`;
+      g+=`<circle cx="${x}" cy="${Y(fin(r)[2]).toFixed(1)}" r="${sel?8:6}" fill="#D97757" stroke="${sel?'#1A1A18':'#fff'}" stroke-width="2" data-r="${r.id}" style="cursor:pointer"/>`;
+      g+=`<text x="${x}" y="${(Y(fin(r)[2])-13).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" font-family="ui-monospace,monospace" fill="#D97757">${fin(r)[2].toFixed(4)}</text>`;
+    }else{
+      const x=X(i)+30, d=(cx,cy,s)=>`M${cx},${cy-s} L${cx+s},${cy} L${cx},${cy+s} L${cx-s},${cy} Z`;
+      g+=`<path d="${d(x,Y(fin(r)[1]),sel?7:5.5)}" fill="#fff" stroke="#3a63c0" stroke-width="1.6" data-r="${r.id}" style="cursor:pointer"/>`;
+      g+=`<path d="${d(x,Y(fin(r)[2]),sel?9:7)}" fill="#3a63c0" stroke="${sel?'#1A1A18':'#fff'}" stroke-width="2" data-r="${r.id}" style="cursor:pointer"/>`;
+      g+=`<text x="${x+12}" y="${(Y(fin(r)[2])+4).toFixed(1)}" font-size="11" font-weight="700" font-family="ui-monospace,monospace" fill="#3a63c0">${fin(r)[2].toFixed(4)} 只 2-gram</text>`;
+    }
+  });
+  g+=`<text x="${L}" y="${T-12}" font-size="10.5" fill="#6B6B68">最终 loss(第 4999 步)</text>`;
+  g+=`</svg>`;
+  $('finalSvg').innerHTML=g;
+  $('finalSvg').querySelectorAll('[data-r]').forEach(el=>el.addEventListener('click',()=>{runSel=el.dataset.r;renderFinal();}));
+  renderCurves();
+  renderRun();
+  setActiveBtn('dsBtns',ds);
+}
+function renderCurves(){
+  const D=DS[ds];
+  const W=860,H=230,L=56,R=20,T=14,B=30;
+  const X=s=>L+(s-D.from)/(5000-D.from)*(W-L-R), Y=v=>T+(D.yhi-Math.min(D.yhi,v))/(D.yhi-D.ylo)*(H-T-B);
+  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="val loss 训练曲线">`;
+  for(let k=0;k<=4;k++){ const v=D.ylo+(D.yhi-D.ylo)*k/4;
+    g+=`<line x1="${L}" y1="${Y(v).toFixed(1)}" x2="${W-R}" y2="${Y(v).toFixed(1)}" stroke="#EAE7DE"/>`;
+    g+=`<text x="${L-6}" y="${(Y(v)+4).toFixed(1)}" text-anchor="end" font-size="10.5" font-family="ui-monospace,monospace" fill="#6B6B68">${v.toFixed(2)}</text>`; }
+  [D.from,2000,3000,4000,5000].forEach(s=>{ g+=`<text x="${X(s)}" y="${H-10}" text-anchor="middle" font-size="10.5" font-family="ui-monospace,monospace" fill="#6B6B68">${s}</text>`; });
+  const line=(r,idx)=>r.curve.filter(p=>p[0]>=D.from).map((p,i)=>`${i?'L':'M'}${X(p[0]).toFixed(1)},${Y(p[idx]).toFixed(1)}`).join(' ');
+  const order=[...D.runs].sort((a,b)=>(a.id===runSel)-(b.id===runSel));
+  order.forEach(r=>{
+    const sel=r.id===runSel;
+    if(sel) g+=`<path d="${line(r,1)}" fill="none" stroke="${r.col}" stroke-width="1.6" stroke-dasharray="5 4" opacity=".9"/>`;
+    g+=`<path d="${line(r,2)}" fill="none" stroke="${r.col}" stroke-width="${sel?3:1.6}" opacity="${sel?1:.55}" data-r="${r.id}" style="cursor:pointer"/>`;
+    const lp=fin(r);
+    if(sel) g+=`<circle cx="${X(lp[0])}" cy="${Y(lp[2])}" r="4.5" fill="${r.col}"/>`;
+  });
+  g+=`</svg>`;
+  $('curveSvg').innerHTML=g;
+  $('curveSvg').querySelectorAll('path[data-r]').forEach(el=>el.addEventListener('click',()=>{runSel=el.dataset.r;renderFinal();}));
+  $('curveCap').innerHTML='下图:val loss 训练曲线(从第 '+D.from+' 步起),每 500 步评估一次;粗线 = 选中的一组,虚线 = 它的 train loss。颜色:'+
+    D.runs.map(r=>`<span style="color:${r.col};font-weight:700">${r.label}</span>`).join(' · ');
+}
+function renderRun(){
+  const D=DS[ds], r=D.runs.find(x=>x.id===runSel), base=D.runs[0];
+  const f=fin(r), fb=fin(base);
+  $('s4Run').textContent=r.label;
+  $('s4TableP').textContent=r.table?`${fmtP(r.tableP)} / ${fmtP(r.bb)}(${(r.tableP/r.bb).toFixed(2)}×)`:`0 / ${fmtP(r.bb)}`;
+  $('s4TV').textContent=`${f[1].toFixed(4)} / ${f[2].toFixed(4)}`;
+  const d=f[2]-fb[2];
+  $('s4Delta').textContent=r.table?(d>0?'+':'')+d.toFixed(4):'基准';
+  $('s4Delta').style.color= !r.table?'var(--ink2)':(d>0?'var(--bad)':'var(--good)');
+  const last=r.curve.slice(-5), lastB=base.curve.slice(-5), md=avg(last.map((p,i)=>p[2]-lastB[i][2]));
+  $('s4Avg').textContent=r.table?(md>0?'+':'')+md.toFixed(4):'基准';
+  $('s4Coll').textContent=r.coll2==null?'–':(100*r.coll2).toFixed(1)+'%';
+  const vmin=r.curve.reduce((a,p)=>p[2]<a[2]?p:a);
+  const notes=[
+    `FineWeb:表从 0 → 16384 行,val 降 <b>0.013</b>(单种子,接近噪声量级);→ 262144 行,降 <b>0.062</b>。只查 2-gram 与 2+3-gram 差 0.005,这个规模上分不出高下。5000 步时 loss 还在 5.0 附近往下走,是小规模、训练早期的对照。`,
+    `shakespeare:表越大,train 越低、val 越高。不挂表 val <b>1.5334</b>;32768 行 train 降到 <b>1.0813</b>,val 涨到 <b>1.6536</b>。选中这组的 val 最低点在第 ${vmin[0]} 步(${vmin[2].toFixed(4)})。`,
+  ];
+  $('s4Note').innerHTML=notes[ds];
+}
+document.querySelectorAll('#dsBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{ds=i;runSel=DS[i].def;renderFinal();}));
+renderFinal();
+
+/* ============ STEP 5:数据流 + 吞吐 ============ */
+let devSel=1;
+const DEV=[
+  {key:'none', name:'不挂表'},
+  {key:'same', name:'表在 GPU(same)'},
+  {key:'cpu',  name:'表在 CPU(--table-device cpu)'},
+];
+function renderFlow(){
+  const mode=DEV[devSel].key;
+  const W=900,H=236, LANE=[[16,96],[132,212]];
+  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="一步训练里数据在 CPU 与 GPU 之间怎么走">`;
+  g+=`<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6B6B68"/></marker></defs>`;
+  [['CPU · 主机内存','#F4F2EA'],['GPU · 显存','#E5EBF9']].forEach(([t,c],i)=>{
+    g+=`<rect x="4" y="${LANE[i][0]}" width="${W-8}" height="${LANE[i][1]-LANE[i][0]}" rx="10" fill="${c}" stroke="#E5E2D9"/>`;
+    g+=`<text x="14" y="${LANE[i][0]+16}" font-size="11" font-weight="700" font-family="ui-monospace,monospace" fill="#6B6B68">${t}</text>`;
+  });
+  const box=(lane,x,w,t1,t2,col)=>{
+    const y=LANE[lane][0]+26, h=44;
+    g+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" fill="#fff" stroke="${col}" stroke-width="${col==='#D97757'?2.2:1.2}"/>`;
+    g+=`<text x="${x+w/2}" y="${y+18}" text-anchor="middle" font-size="11.5" font-weight="700" fill="${col==='#D97757'?'#D97757':'#1A1A18'}">${t1}</text>`;
+    if(t2) g+=`<text x="${x+w/2}" y="${y+34}" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#6B6B68">${t2}</text>`;
+    return {x,y,w,h,cx:x+w/2,cy:y+h/2};
+  };
+  const arrow=(a,b,label)=>{
+    let x1,y1,x2,y2;
+    if(Math.abs(a.cy-b.cy)<2){ x1=a.x+a.w; y1=a.cy; x2=b.x; y2=b.cy; }
+    else { x1=a.cx+(b.cx>a.cx?a.w/4:-a.w/4); y1=a.cy<b.cy?a.y+a.h:a.y; x2=b.cx+(b.cx>a.cx?-b.w/4:b.w/4); y2=a.cy<b.cy?b.y:b.y+b.h; }
+    g+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#6B6B68" stroke-width="1.4" marker-end="url(#ah)"/>`;
+    if(label) g+=`<text x="${(x1+x2)/2+6}" y="${(y1+y2)/2+4}" font-size="10" font-family="ui-monospace,monospace" fill="#b8512f">${label}</text>`;
+  };
+  const C='#1A1A18', A='#D97757';
+  let cap='';
+  if(mode==='none'){
+    const b0=box(0,24,150,'取 batch','x, y(token id)',C);
+    const b1=box(1,300,200,'嵌入 + 4 个 Block','输出头 · loss',C);
+    const b2=box(1,560,230,'反向 · AdamW','全部参数在 GPU',C);
+    arrow(b0,b1,'x, y'); arrow(b1,b2);
+    cap='不挂表:第 12 章四件套小模型,所有参数和计算都在 GPU 上。';
+  }else if(mode==='same'){
+    const b0=box(0,24,130,'取 batch','x, y',C);
+    const b1=box(0,176,160,'算行号','ngram_rows(x)',A);
+    const b2=box(1,300,170,'查表 · 8 行 × 16 维','表 4.19M 在 GPU',A);
+    const b3=box(1,500,170,'门控 + 注入','+ 4 个 Block · loss',C);
+    const b4=box(1,700,180,'反向 · AdamW','含表的 4.19M 参数',C);
+    arrow(b0,b1); arrow(b1,b2,'行号'); arrow(b2,b3,'e'); arrow(b3,b4);
+    cap='表在 GPU:行号在 CPU 上随 batch 算好,只传行号;查表、表的梯度和更新都在 GPU。';
+  }else{
+    const b0=box(0,24,120,'取 batch','x, y',C);
+    const b1=box(0,160,140,'算行号','ngram_rows(x)',A);
+    const b2=box(0,320,170,'查表 · 8 行 × 16 维','表 4.19M 在 CPU',A);
+    const b5=box(0,700,180,'表的 AdamW 更新','4.19M 参数在 CPU',A);
+    const b3=box(1,420,170,'门控 + 注入','+ 4 个 Block · loss',C);
+    const b4=box(1,640,200,'反向 · 其余 AdamW','主干 7.24M 在 GPU',C);
+    arrow(b0,b1); arrow(b1,b2); arrow(b2,b3,'每 token 128 个数'); arrow(b3,b4); arrow(b4,b5,'表的梯度');
+    cap='表在 CPU:查表在 CPU 上做,只把取出的 128 个数 / token 送进 GPU;反向时表的梯度回到 CPU,表的 AdamW 更新也在 CPU 上算。';
+  }
+  g+=`</svg>`;
+  $('flowSvg').innerHTML=g;
+  $('flowCap').textContent=cap;
+
+  const mx=Math.max(...Object.values(SPEED));
+  $('speedBars').innerHTML=DEV.map((d,i)=>{
+    const v=SPEED[d.key];
+    return `<div class="lbar${i===devSel?' sel':''}"><div class="ln">${d.name}</div>
+      <div class="lt"><div class="lf" style="width:${(100*v/mx).toFixed(1)}%;background:${i===devSel?'#D97757':'#B9B5AA'}"></div></div>
+      <div class="lv">${en(v)}</div></div>`;
+  }).join('')+`<div class="hp-note">token / 秒 · 单卡 RTX 4090 · 各 400 步测一次 · 挂表的两组都是 32768 行(4,194,304 参数)</div>`;
+  const v=SPEED[mode], rel=v/SPEED.same-1;
+  $('s5Tps').textContent=en(v);
+  $('s5Rel').textContent= mode==='same'?'基准':((rel>0?'+':'')+(100*rel).toFixed(1)+'%');
+  $('s5Mem').textContent= mode==='same'?en(SPEED_TABLE_P):'0';
+  const notes={
+    none:`不挂表 <b>${en(SPEED.none)}</b> token/s,表在 GPU 时 <b>${en(SPEED.same)}</b>,低 ${(100*(1-SPEED.same/SPEED.none)).toFixed(1)}%,单次测量。`,
+    same:`表在 GPU:<b>${en(SPEED.same)}</b> token/s。每 token 只读 8 行,挂上 4.19M 参数的表以后吞吐比不挂表低 ${(100*(1-SPEED.same/SPEED.none)).toFixed(1)}%。`,
+    cpu:`表在 CPU:<b>${en(SPEED.cpu)}</b> token/s,比表在 GPU 慢 <b>${(100*(1-SPEED.cpu/SPEED.same)).toFixed(1)}%</b>,换来显存里不放这 4.19M 个表参数。`,
+  };
+  $('s5Note').innerHTML=notes[mode];
+  setActiveBtn('devBtns',devSel);
+}
+document.querySelectorAll('#devBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{devSel=i;renderFlow();}));
+renderFlow();
+
+(function(){
+  const F=Object.fromEntries(FW_RUNS.map(r=>[r.id,fin(r)])), S=Object.fromEntries(SHK_RUNS.map(r=>[r.id,fin(r)]));
+  $('okList').innerHTML=[
+    `FineWeb-Edu:不挂表 val <b>${F.fw0[2].toFixed(4)}</b>;16384 行 <b>${F.fw16k[2].toFixed(4)}</b>(−${(F.fw0[2]-F.fw16k[2]).toFixed(3)});262144 行 <b>${F.fw262k[2].toFixed(4)}</b>(−${(F.fw0[2]-F.fw262k[2]).toFixed(3)}),表 33,554,432 参数,是主干的 4.63 倍。`,
+    `只查 2-gram(262144 行)val <b>${F.fw262k2[2].toFixed(4)}</b>,与 2+3-gram 差 ${(F.fw262k[2]-F.fw262k2[2]).toFixed(4)},噪声量级。`,
+    `2-gram 撞行:16384 行 <b>85.3%</b>,32768 行 71.5%,262144 行 <b>18.4%</b>。`,
+    `tiny shakespeare 字符级:不挂表 val ${S.s0[2].toFixed(4)};32768 行 train <b>${S.s32k[1].toFixed(4)}</b>、val <b>${S.s32k[2].toFixed(4)}</b>,表把训练集背了下来。`,
+    `吞吐(32768 行,400 步):不挂表 ${en(SPEED.none)} · 表在 GPU ${en(SPEED.same)} · 表在 CPU <b>${en(SPEED.cpu)}</b> token/s。`,
+  ].map(t=>`<li><span class="ck">✓</span><div>${t}</div></li>`).join('');
+})();
+
+
+/* ============ 名词气泡 ============ */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent, def=el.dataset.def||'', key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def+(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8; if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw; if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el)); el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* ============ 通关庆祝 ============ */
+function celebrate(){
+  document.getElementById('congrats').classList.add('show');
+  const cv=document.getElementById('confetti'); cv.style.display='block';
+  const ctx=cv.getContext('2d'); cv.width=innerWidth; cv.height=innerHeight;
+  const COL=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const ps=[];for(let i=0;i<150;i++)ps.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    vx:(Math.random()-0.5)*3,vy:2+Math.random()*4,s:5+Math.random()*7,c:COL[i%COL.length],a:Math.random()*6.28,va:(Math.random()-0.5)*0.3});
+  let t0=null;
+  function frame(ts){ if(!t0)t0=ts; const el=ts-t0;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.04;p.a+=p.va;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.a);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.6);ctx.restore();});
+    if(el<3400) requestAnimationFrame(frame); else { ctx.clearRect(0,0,cv.width,cv.height); cv.style.display='none'; }
+  }
+  requestAnimationFrame(frame);
+  document.getElementById('congrats').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ============ 初始化:深链 ============ */
+const m=/^#step-(\d+)$/.exec(location.hash);
+goto(m?parseInt(m[1],10)-1:0);
+window.addEventListener('hashchange',()=>{const mm=/^#step-(\d+)$/.exec(location.hash);goto(mm?parseInt(mm[1],10)-1:0);});
+
+</script>
+<!--site-copyright-->
+<footer style="max-width:960px;margin:56px auto 0;padding:18px 24px 44px;border-top:1px solid var(--border);text-align:center;font-size:12px;color:var(--ink2);line-height:1.7">
+  © 2026 <a href="https://fim.ai" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">FIM Labs</a> · 从零手写大语言模型 · MIT License
+</footer>
+</body>
+</html>

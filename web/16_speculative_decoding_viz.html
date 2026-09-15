@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>投机解码与 MTP · 先猜后验</title>
+<meta name="description" content="便宜的草稿员先猜 γ 个字,主模型一次 forward 验收:min(1, p/q) 接受规则、γ 的取舍、DeepSeek-V3 的 MTP 草稿头,以及 RTX 4090 上的真实账本。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 16 章 · 投机解码与 MTP · 从零手写大语言模型">
+<meta property="og:description" content="便宜的草稿员先猜 γ 个字,主模型一次 forward 验收:min(1, p/q) 接受规则、γ 的取舍、DeepSeek-V3 的 MTP 草稿头,以及 RTX 4090 上的真实账本。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/16_speculative_decoding_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 16 章 · 投机解码与 MTP · 从零手写大语言模型">
+<meta name="twitter:description" content="便宜的草稿员先猜 γ 个字,主模型一次 forward 验收:min(1, p/q) 接受规则、γ 的取舍、DeepSeek-V3 的 MTP 草稿头,以及 RTX 4090 上的真实账本。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
+<style>
+
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --good:#3f7d63; --good-soft:#D7EBE0; --bad:#9a3a22; --bad-soft:#F3D9CE;
+    --e0:#b8512f; --e0s:#F7E6DE; --e1:#3a63c0; --e1s:#E5EBF9;
+    --e2:#3f7d63; --e2s:#E4EFE9; --e3:#a3548c; --e3s:#F6E6F0;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 24px 90px;}
+
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:790px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  .steps-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:26px 0 18px;}
+  .step-tab{background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 14px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13.5px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+  .hp-note code{font-family:var(--mono);font-size:11.5px;}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 20px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:10px;padding:10px 14px;}
+
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;align-items:center;}
+  .btn-row.sm .btn{font-size:13px;padding:7px 13px;}
+
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:24px 0 6px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  .codepath{font-family:var(--mono);font-size:11.5px;color:var(--ink2);background:#F4F2EA;
+    border:1px solid var(--border);border-radius:8px;padding:5px 10px;display:inline-block;margin-top:10px;}
+  .codepath b{color:var(--accent);}
+
+  /* 名词气泡 */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:280px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;font-family:system-ui,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* 庆祝 */
+  .congrats{display:none;text-align:center;background:linear-gradient(135deg,#FBF1EA,#F6E6F0);
+    border:1px solid var(--accent-soft);border-radius:16px;padding:22px;margin-top:18px;}
+  .congrats.show{display:block;animation:fade .5s ease;}
+  .congrats .ct{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--accent);}
+  .congrats .cs{font-size:13.5px;color:var(--ink2);margin-top:6px;}
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;}
+
+  /* ===== 通用件(与其余章节页一致)===== */
+  .nav{display:flex;justify-content:space-between;margin-top:22px;gap:10px;}
+  .checklist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:8px;}
+  .checklist li{display:flex;gap:10px;align-items:flex-start;font-size:13px;background:#fff;border:1px solid var(--border);
+    border-radius:10px;padding:10px 13px;}
+  .checklist li .ck{color:#3f7d63;font-weight:700;flex-shrink:0;}
+  .checklist li b{color:var(--accent);}
+  .rk-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0;}
+  .rk-row label{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:172px;}
+  .rk-val{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent);min-width:52px;text-align:center;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:8px;padding:2px 6px;}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;background:var(--accent-soft);
+    flex:1;min-width:150px;max-width:340px;outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.18);}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid #fff;}
+
+  .lab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin:10px 0;}
+  .scroll-x{overflow-x:auto;}
+  .dotread{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:12px 0 4px;}
+  .dr{background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 13px;text-align:center;}
+  .dr .drv{font-family:var(--mono);font-size:21px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .dr .drl{font-size:11.5px;color:var(--ink2);margin-top:2px;}
+  .glucalc{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-top:10px;
+    font-family:var(--mono);font-size:12.5px;line-height:1.9;overflow-x:auto;}
+  .glucalc .hl{color:var(--accent);font-weight:700;}
+
+  /* ===== STEP 1:掩码格子 ===== */
+  .tokstrip{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 10px;align-items:center;}
+  .tk{font-family:var(--mono);font-size:14px;font-weight:700;min-width:26px;text-align:center;padding:3px 6px;border-radius:6px;
+    border:1px solid var(--border);background:#F4F2EA;}
+  .tk.draft{background:var(--accent-soft);border-color:#E9BFAE;color:var(--e0);}
+  .fwdstrip{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 2px;}
+  .fwd{font-family:var(--mono);font-size:11.5px;border-radius:8px;padding:4px 9px;background:#fff;border:1px solid var(--border);}
+  .fwd.one{border-color:var(--accent);color:var(--accent);font-weight:700;}
+  svg text{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;}
+  .maskrow{cursor:pointer;}
+
+  /* ===== STEP 2:p / q 条 ===== */
+  .pqrow{display:grid;grid-template-columns:44px 1fr 150px;gap:10px;align-items:center;padding:6px 8px;border-radius:10px;
+    cursor:pointer;border:1px solid transparent;}
+  .pqrow:hover{background:#fff;}
+  .pqrow.sel{background:#fff;border-color:var(--accent);}
+  .pqrow .ch{font-family:var(--mono);font-size:16px;font-weight:700;text-align:center;}
+  .pqbars{display:flex;flex-direction:column;gap:2px;}
+  .pqbar{height:7px;border-radius:4px;min-width:2px;transition:width .3s ease;}
+  .pqnum{font-family:var(--mono);font-size:11px;color:var(--ink2);line-height:1.35;font-variant-numeric:tabular-nums;}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin:2px 0 8px;}
+  .legend span::before{content:"";display:inline-block;width:12px;height:8px;border-radius:3px;margin-right:5px;background:var(--c);vertical-align:middle;}
+  .simlog{font-family:var(--mono);font-size:12px;background:#fff;border:1px solid var(--border);border-radius:10px;
+    padding:8px 12px;margin-top:8px;min-height:40px;line-height:1.7;}
+  .acc{color:var(--good);font-weight:700;} .rej{color:var(--bad);font-weight:700;}
+
+  /* ===== STEP 3:曲线 ===== */
+  .chartbox{background:#fff;border:1px solid var(--border);border-radius:12px;padding:8px;margin-top:10px;overflow-x:auto;}
+
+  /* ===== STEP 4:MTP 结构 + 样本 ===== */
+  .mtp-part{cursor:pointer;}
+  .trace{font-family:var(--mono);font-size:13.5px;line-height:1.9;background:#fff;border:1px solid var(--border);
+    border-radius:12px;padding:12px 14px;margin-top:8px;word-break:break-all;}
+  .trace span{border-radius:3px;padding:0 1px;white-space:pre;}
+  .trace .ma{background:var(--good-soft);color:var(--good);}
+  .trace .mr{background:var(--bad-soft);color:var(--bad);}
+  .trace .mm{color:var(--ink);}
+  .trace .cur{outline:2px solid var(--accent);outline-offset:0;}
+  .trace.plain .ma,.trace.plain .mr{background:none;color:var(--ink);}
+  .abrow{display:flex;align-items:center;gap:11px;margin:7px 0;}
+  .abrow .an{font-family:var(--mono);font-size:12px;width:150px;flex-shrink:0;color:var(--ink2);}
+  .abrow .at{flex:1;min-width:120px;height:22px;background:#F4F2EA;border:1px solid var(--border);border-radius:7px;overflow:hidden;position:relative;}
+  .abrow .af{height:100%;border-radius:6px 0 0 6px;transition:width .45s cubic-bezier(.2,.7,.2,1);}
+  .abrow .band{position:absolute;top:0;bottom:0;background:rgba(58,99,192,.18);border-left:1px dashed var(--e1);border-right:1px dashed var(--e1);}
+  .abrow .av{font-family:var(--mono);font-size:12.5px;font-weight:700;width:70px;text-align:right;flex-shrink:0;font-variant-numeric:tabular-nums;}
+
+  /* ===== STEP 5:账本表 ===== */
+  .tbl-scroll{overflow-x:auto;margin:8px 0 2px;}
+  .ledger{border-collapse:collapse;font-family:var(--mono);font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap;width:100%;}
+  .ledger th{font-size:11.5px;font-weight:700;color:var(--ink2);text-align:right;padding:6px 10px;border-bottom:1px solid var(--border);}
+  .ledger th:first-child,.ledger td:first-child{text-align:left;}
+  .ledger td{padding:5px 10px;text-align:right;border-bottom:1px dashed var(--border);}
+  .ledger tr.row{cursor:pointer;}
+  .ledger tr.row:hover td{background:#fff;}
+  .ledger tr.sel td{background:#FBF1EA;}
+  .spd{display:inline-block;position:relative;width:90px;height:10px;background:#F4F2EA;border-radius:4px;vertical-align:middle;margin-left:6px;}
+  .spd i{position:absolute;top:0;bottom:0;left:0;border-radius:4px;}
+  .spd em{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--ink2);}
+  .minitbl{border-collapse:collapse;font-family:var(--mono);font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .minitbl th{font-size:11.5px;font-weight:700;color:var(--ink2);text-align:left;padding:4px 14px 4px 0;border-bottom:1px solid var(--border);}
+  .minitbl td{padding:3px 14px 3px 0;color:var(--ink2);}
+  .minitbl td b{color:var(--accent);font-weight:700;}
+
+  @media (max-width:640px){
+    .panel{padding:18px 14px;}
+    .pqrow{grid-template-columns:34px 1fr 118px;gap:6px;}
+    .abrow .an{width:104px;}
+  }
+
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <header>
+    <span class="filename">16_speculative_decoding_viz.html</span>
+    <h1>投机解码与 MTP:先便宜地猜,再一次验收</h1>
+    <p class="subtitle">
+      第 5 章的<span class="term" data-term="自回归 · autoregressive" data-key="autoregressive" data-def="每次只生成一个 token,把它接回输入再生成下一个。">自回归</span>生成,每吐一个字都要把主模型完整跑一遍。
+      <span class="term" data-term="投机解码 · speculative decoding" data-key="speculative-decoding" data-def="让便宜的草稿员先猜 γ 个 token,主模型一次 forward 算出这些位置的分布,按 min(1, p/q) 逐个接受,拒绝时从 max(0, p−q) 重抽。输出分布与主模型逐个采样相同,省的是主模型 forward 次数。">投机解码</span>换一种分工:
+      便宜的草稿员先猜 γ 个字,主模型<b>一次 forward</b> 把这 γ 个位置全算出来,再按一条接受规则逐个验收。
+      草稿员可以是一个小模型,也可以是主模型自带的
+      <span class="term" data-term="MTP · 多 token 预测" data-key="mtp" data-def="Multi-Token Prediction:训练时让主模型顺带预测更远的 token。DeepSeek-V3 用顺序的 MTP 模块(深度 1),推理时它就是现成的草稿员。">MTP 头</span>。
+      本关两种都真训一遍,再在 RTX 4090 上量账。配套代码 <code>phase4-efficiency/14_mtp.py</code>。
+    </p>
+  </header>
+
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">一次 forward 验收一串</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">接受规则:min(1, p/q)</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">γ 猜几个</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">MTP:主模型自带草稿头</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">真实账本</div></div>
+  </div>
+
+  <div class="hp-bar">
+    <span class="hp-label">这一关</span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">主模型 <b>4 层 · 0.743M</b> <i>n_embd 128,第 12 章 LLaMA 骨架</i></span>
+    <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">草稿模型 <b>1 层 64 维</b> <i>0.055M,主模型的 7%</i></span>
+    <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">γ <b>1–8</b> <i>每轮草稿长度</i></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">MTP 深度 <b>1</b> <i>多预测 1 个字</i></span>
+    <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">λ <b>0.3</b> <i>MTP loss 权重</i></span>
+    <span class="hp-chip" style="color:#6B6B68;background:#EEEBE1">block_size <b>64</b> <i>上下文窗口</i></span>
+    <span class="hp-note">RTX 4090 · CUDA · PyTorch 2.4.1 · tiny shakespeare 字符级 · 单种子</span>
+  </div>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>① 一次 forward 验收一串</h2>
+    <p class="lead">
+      第 2 章的<span class="term" data-term="因果掩码 · causal mask" data-key="causal-mask" data-def="注意力矩阵右上角置为 −∞,让每个位置只能看见自己和之前的 token。">因果掩码</span>让第 k 个位置只看得见前 k 个字。
+      所以把"上下文 + γ 个草稿"一起喂给主模型,<b>每一行输出都是"只看前面"时的结果</b>,一次 forward 就拿到 γ+1 个位置的分布 p。
+      拖 γ、切模式,点格子里任意一行看它看得见什么:
+    </p>
+
+    <div class="lab">
+      <div class="rk-row"><label>草稿长度 γ</label>
+        <input type="range" id="s1Gamma" min="1" max="6" step="1" value="3">
+        <span class="rk-val" id="s1GammaV">3</span></div>
+      <div class="btn-row sm" id="s1Mode">
+        <button class="btn">普通生成:每次只用最后一行</button>
+        <button class="btn primary">投机验收:一次用 γ+1 行</button>
+      </div>
+      <div class="tokstrip" id="s1Toks"></div>
+      <div class="hp-note">灰色 8 个字取自验证集;橙色草稿字符是示意,不是模型输出。</div>
+      <div class="scroll-x" id="s1Grid" style="margin-top:8px"></div>
+      <div class="fwdstrip" id="s1Fwd"></div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s1Plain">4</div><div class="drl">逐个生成这些字:主模型 forward 次数</div></div>
+        <div class="dr"><div class="drv" id="s1Spec" style="color:var(--accent)">1</div><div class="drl">投机验收:主模型 forward 次数</div></div>
+        <div class="dr"><div class="drv" id="s1Diff" style="color:var(--good)">0</div><div class="drl">实测:前 56 个位置的 logits 最大差</div></div>
+      </div>
+      <div class="note" id="s1Note" style="margin-top:10px"></div>
+    </div>
+
+    <div class="note">
+      最右一格读数来自 <code>14_mtp.py</code>:同一段 64 字符的验证集文本,只喂前 56 个字 vs 喂满 64 个字,前 56 个位置的 logits 逐个比较,最大差 <b>0.0</b>。多喂的 8 个字没有改动前面任何一个位置的输出。
+    </div>
+
+    <div class="codepath">↳ 代码:<b>14_mtp.py</b> 的 <code>spec_draft_model</code> 【步骤 2】<code>main_model(crop(seq + drafts))</code> 取 <code>ml[0, -(gamma + 1):]</code></div>
+
+    <details class="dig">
+      <summary>草稿中途猜错了,后面那几行不就白算了?</summary>
+      <div class="dig-body">
+        是白算了。第一个被拒绝的位置之后,草稿全部作废,那几行的 p 也一起丢掉。
+        但这次 forward 本来就要跑:哪怕只接受 0 个草稿,主模型也会在拒绝位置重抽出 1 个字,不比普通生成少。
+        错位置之前的那些行,因为因果掩码看不见后面的错字,算出来的 p 仍然有效。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>真实推理系统里,这一步怎么和 KV cache 配合?</summary>
+      <div class="dig-body">
+        上下文的 K/V 已经在 <span class="term" data-term="KV-cache · 键值缓存" data-key="kv-cache" data-def="把过去每个 token 的 K/V 缓存下来,生成新 token 时只算新的一列,避免重算整段。">KV cache</span> 里,验收时只需要把"最后一个已确认的字 + γ 个草稿"这一小段送进去,
+        算出它们的 γ+1 行输出,同时把它们的 K/V 追加进 cache。被拒绝的草稿对应的 K/V 截掉即可。
+        本关的教学脚本没有 KV cache,每次 forward 都把最近 64 个字整段重算,机制一样,只是更慢。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:一次 forward 拿到了 γ+1 个 p,草稿员当时给的是它自己的分布 q。p 和 q 不一样时,收还是不收?</div>
+  </section>
+
+  <!-- ============ STEP 2 ============ -->
+  <section class="panel" id="panel1">
+    <h2>② 接受规则:min(1, p/q)</h2>
+    <p class="lead">
+      草稿员从 q 里抽出一个字 x。主模型给它的概率是 p(x)。规则(Leviathan et al. 2023,arXiv 2211.17192 §2.3):
+      <b>以 <code>min(1, p(x)/q(x))</code> 的概率接受</b>;拒绝时从 <code>max(0, p−q)</code> 归一化后的分布里重抽一个。
+      下面是验证集里一个真实位置,上下文结尾 <code id="s2Ctx"></code>,主模型与草稿模型对下一个字的前 8 名。<b>点一行</b>,假设草稿抽到了它:
+    </p>
+
+    <div class="lab">
+      <div class="btn-row sm" id="s2Scale">
+        <button class="btn primary">条长:线性</button>
+        <button class="btn">条长:√ 放大小概率</button>
+      </div>
+      <div class="legend">
+        <span style="--c:var(--accent)">p · 主模型</span>
+        <span style="--c:var(--e1)">q · 草稿模型</span>
+        <span style="--c:var(--good)">投机采样 20 万次的频率</span>
+      </div>
+      <div id="s2Bars"></div>
+      <div class="glucalc" id="s2Calc"></div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s2TvSpec" style="color:var(--good)">–</div><div class="drl">20 万次:投机采样 vs p 的总变差距离</div></div>
+        <div class="dr"><div class="drv" id="s2TvQ" style="color:var(--e1)">–</div><div class="drl">草稿 q vs p 的总变差距离</div></div>
+        <div class="dr"><div class="drv" id="s2Acc">–</div><div class="drl">20 万次里的接受率(理论 Σmin(p,q))</div></div>
+      </div>
+    </div>
+
+    <div class="sub-h"><span class="badge">亲手抽</span>在页面里跑同一套规则</div>
+    <div class="lab">
+      <div class="btn-row sm">
+        <button class="btn" id="s2One">抽一次</button>
+        <button class="btn" id="s2Many">连抽 1 万次</button>
+        <button class="btn" id="s2Clear">清零</button>
+      </div>
+      <div class="simlog" id="s2Log">点"抽一次"。</div>
+      <div id="s2Hist" style="margin-top:10px"></div>
+      <div class="hp-note" id="s2HistNote"></div>
+    </div>
+
+    <div class="note">总变差距离:投机采样离 p 是 <b>0.0005</b>,草稿 q 自己离 p 是 <b>0.053</b>。经过验收的输出分布回到了 p。</div>
+
+    <div class="codepath">↳ 代码:<b>14_mtp.py</b> 的 <code>Counter.check</code>(接受 / 残差重抽)· 20 万次模拟在脚本里"正确性(采样)"那一段</div>
+
+    <details class="dig">
+      <summary>为什么这样验收之后,输出分布和 p 完全相同?</summary>
+      <div class="dig-body">
+        对任意一个字 x,它被输出有两条路:
+        <br>① 草稿抽到 x 并被接受:<code>q(x) · min(1, p(x)/q(x)) = min(p(x), q(x))</code>;
+        <br>② 草稿被拒绝(总概率 <code>1 − Σ min(p,q)</code>),再从残差里抽到 x:残差是 <code>max(0, p−q)</code> 除以它的总和,
+        而这个总和恰好等于 <code>Σ (p − min(p,q)) = 1 − Σ min(p,q)</code>,两者约掉,这条路的概率是 <code>max(0, p(x) − q(x))</code>。
+        <br>两条路相加:<code>min(p,q) + max(0, p−q) = p(x)</code>。上面的计算卡对每个字都把这两项算了出来。
+        证明见 Leviathan 2023 附录 A.1;平均接受率 α = Σ min(p,q)(Corollary 3.6)。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>主模型比草稿更确定(p &gt; q)的字,为什么一定接受?</summary>
+      <div class="dig-body">
+        p(x) ≥ q(x) 时 <code>p/q ≥ 1</code>,接受概率取 1。草稿抽到 x 的频率 q(x) 还不够 p(x),全部收下也只是"不超额";
+        差的那部分 <code>p(x) − q(x)</code> 由拒绝后的残差分布补上。
+        反过来 q(x) &gt; p(x) 的字(本例里的 <code>e</code>:q=0.0489,p=0.0062)草稿抽得太多,只按 p/q 的比例收下,多出来的被拒绝。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:每个草稿有一定概率被接受。那一轮该让草稿员猜几个?猜多了,后面的更容易作废。</div>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="panel" id="panel2">
+    <h2>③ γ 猜几个</h2>
+    <p class="lead">
+      设每个草稿被接受的概率都是 α(相互独立)。一轮里主模型 forward 1 次,期望吐出
+      <code>(1 − α^(γ+1)) / (1 − α)</code> 个字(Leviathan 2023 式 (1))。
+      但草稿员每轮要跑 γ 次,每次耗时是主模型的 c 倍,墙钟加速的期望是上式再除以 <code>γc + 1</code>(Theorem 3.8)。
+      拖 α 和 c,橙线是公式,蓝点是本关小草稿模型的 6 次真实测量:
+    </p>
+
+    <div class="lab">
+      <div class="btn-row sm" id="s3Metric">
+        <button class="btn primary">每次主 forward 吐几个字</button>
+        <button class="btn">墙钟加速</button>
+      </div>
+      <div class="rk-row"><label>接受率 α</label>
+        <input type="range" id="s3Alpha" min="0.3" max="0.95" step="0.01" value="0.70">
+        <span class="rk-val" id="s3AlphaV">0.70</span></div>
+      <div class="rk-row"><label>草稿耗时比 c</label>
+        <input type="range" id="s3C" min="0" max="0.6" step="0.01" value="0.27">
+        <span class="rk-val" id="s3CV">0.27</span></div>
+      <div class="btn-row sm" id="s3CPreset">
+        <button class="btn primary">本关实测 c</button>
+        <button class="btn">c = 0.05</button>
+        <button class="btn">c = 0(草稿不花时间)</button>
+      </div>
+      <div class="chartbox" id="s3Chart"></div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s3Best" style="color:var(--accent)">–</div><div class="drl">当前 α、c 下墙钟最快的 γ</div></div>
+        <div class="dr"><div class="drv" id="s3BestV">–</div><div class="drl">这个 γ 的理论墙钟加速</div></div>
+        <div class="dr"><div class="drv" id="s3Cmeas" style="color:var(--e1)">–</div><div class="drl">本关 c = 草稿 / 主模型单次 forward</div></div>
+      </div>
+      <div class="note" id="s3Note" style="margin-top:10px"></div>
+    </div>
+
+    <div class="note">
+      c 决定 γ 能开多大。本关草稿模型单次 forward 0.225 ms、主模型 0.836 ms,c ≈ 0.27;Leviathan 论文实验里草稿比目标模型小两个数量级,c 始终 <b>小于 0.05</b>(Definition 3.7 下的说明)。
+    </div>
+
+    <div class="codepath">↳ 代码:<b>14_mtp.py</b> 主测量那段 <code>for gamma in [1, 2, 3, 4, 6, 8]</code>,每行记下 <code>tokens_per_main</code> 与 <code>expected_tokens_per_main</code></div>
+
+    <details class="dig">
+      <summary>γ=8 每次吐的字比 γ=6 还少,公式不对吗?</summary>
+      <div class="dig-body">
+        公式里的 α 是一个固定值,真实测量里每一行的 α 各不相同:γ=6 那次实测接受率 0.717,γ=8 那次 0.676。
+        把各自的 α 代进公式,γ=6 期望 3.192 个、γ=8 期望 2.993 个,实测 3.093 和 2.956,方向一致。
+        每行只生成 600 个字、跑一次,α 在 0.67–0.75 之间浮动属于这个样本量下的波动。
+        公式还假设每个位置的接受相互独立,真实文本里难猜的字往往扎堆出现。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:小草稿模型要单独训练、单独部署,每轮还要自回归跑 γ 次。能不能让主模型训练时顺手学会打草稿?</div>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="panel" id="panel3">
+    <h2>④ MTP:主模型自带草稿头</h2>
+    <p class="lead">
+      DeepSeek-V3 的 Multi-Token Prediction(arXiv 2412.19437 §2.2):主模型最后一层的隐状态 h<sub>t</sub> 已经编码了前文,
+      再拼上"下一个字"的嵌入,过一个小 Block,就能预测<b>下下个字</b>。嵌入表和输出头与主模型共用。
+      推理时它每次猜 1 个字,正好当草稿员。点图里的部件看它是什么、多少参数:
+    </p>
+
+    <div class="lab">
+      <div class="btn-row sm" id="s4Part">
+        <button class="btn">主干 4 层</button>
+        <button class="btn">嵌入表</button>
+        <button class="btn">两个 RMSNorm</button>
+        <button class="btn primary">投影 M</button>
+        <button class="btn">MTP Block</button>
+        <button class="btn">输出头</button>
+      </div>
+      <div class="scroll-x" id="s4Svg"></div>
+      <div class="note" id="s4PartNote" style="margin-top:8px"></div>
+    </div>
+
+    <div class="sub-h"><span class="badge">真实样本</span>MTP 自草稿生成的 240 个字</div>
+    <p class="lead" style="margin-bottom:8px">
+      主模型每次 forward 做两件事:验收上一轮 MTP 头给的草稿,再顺手采样一个字;MTP 头接着给下一轮的草稿。
+      接受时这次 forward 吐 2 个字,拒绝时吐 1 个。拖滑块逐次看:
+    </p>
+    <div class="lab">
+      <div class="btn-row sm" id="s4Color">
+        <button class="btn primary">按来源上色</button>
+        <button class="btn">不上色</button>
+      </div>
+      <div class="legend">
+        <span style="--c:var(--good-soft)">被接受的草稿</span>
+        <span style="--c:#E5E2D9">主模型采样</span>
+        <span style="--c:var(--bad-soft)">拒绝后重抽</span>
+      </div>
+      <div class="rk-row"><label>第 k 次主模型 forward</label>
+        <input type="range" id="s4Round" min="1" max="10" step="1" value="1">
+        <span class="rk-val" id="s4RoundV">1</span></div>
+      <div class="hp-note" id="s4RoundNote"></div>
+      <div class="trace" id="s4Trace"></div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s4Fw">–</div><div class="drl">主模型 forward 次数</div></div>
+        <div class="dr"><div class="drv" id="s4Tpf" style="color:var(--accent)">–</div><div class="drl">每次 forward 吐几个字</div></div>
+        <div class="dr"><div class="drv" id="s4Acc" style="color:var(--good)">–</div><div class="drl">这段样本的草稿接受率</div></div>
+      </div>
+    </div>
+
+    <div class="sub-h"><span class="badge">对比</span>同样每轮猜 1 个:MTP 头 vs 小草稿模型</div>
+    <div class="lab" id="s4Cmp"></div>
+    <div class="note">
+      DeepSeek-V3 用顺序 MTP、深度 D=1,报告第二个 token 的接受率在 <b>85%–90%</b>,解码 TPS 为原来的 <b>1.8 倍</b>(§5.4.3)。MTP loss 权重 λ 在前 10T token 取 0.3,之后的 4.8T 取 0.1。
+    </div>
+
+    <div class="codepath">↳ 代码:<b>14_mtp.py</b> 的 <code>GPT.mtp_logits</code> · <code>spec_mtp</code> · <code>train</code> 里 <code>loss = main + args.lam * mtp</code></div>
+
+    <details class="dig">
+      <summary>MTP 头预测的是隔一个字,val loss 为什么和主模型差不多?</summary>
+      <div class="dig-body">
+        它的输入里已经有 x<sub>t+1</sub> 的嵌入,预测 x<sub>t+2</sub> 时和主模型预测下一个字面对的是同一类问题,只是多了主模型 4 层算好的 h<sub>t</sub> 可用。
+        结束时 MTP 头 val loss <b>1.5332</b>,主模型 <b>1.5276</b>。小草稿模型只有主模型 7% 的参数、从原始字符算起,val loss <b>1.8862</b>。
+        推理时 x<sub>t+1</sub> 是主模型刚采样出来的真字,所以 MTP 头的草稿建立在正确的前一个字上。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>本关 MTP 接受率落在 DeepSeek-V3 报告的区间里,算复现吗?</summary>
+      <div class="dig-body">
+        不算。DeepSeek-V3 是 671B 总参数、每 token 激活 37B 的 MoE,在 14.8T token 上预训练,评测的是多领域生成;
+        本关主模型 0.74M 参数、字符级 tiny shakespeare、单种子。规模和任务差了几个数量级,两个数字接近只能说明机制在两端都能工作,不能互相印证。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>Meta 2024 年的 MTP 和 DeepSeek-V3 的有什么不同?</summary>
+      <div class="dig-body">
+        Gloeckle et al.(arXiv 2404.19737,ICML 2024)在共享主干上接 n 个<b>独立</b>输出头,各自是一层 Transformer,并行预测后面 n 个 token;
+        4-token 预测的模型用自投机解码,推理最多快 3 倍。
+        DeepSeek-V3 改成<b>顺序</b>模块:第 k 个模块吃第 k−1 个的隐状态和第 i+k 个 token 的嵌入,
+        原文是 "sequentially predict additional tokens and keep the complete causal chain at each prediction depth"。本关代码只做深度 1:模块输入里除了 h<sub>t</sub>,还有 x<sub>t+1</sub> 的嵌入,这是它和独立并行头最直观的区别。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:forward 次数确实少了。钟表上快了多少?把所有方法摆进一张账本。</div>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="panel" id="panel4">
+    <h2>⑤ 真实账本</h2>
+    <p class="lead">
+      每种方法都从 <code>ROMEO:\n</code> 开始,temperature 1.0 采样生成 600 个字,记下主模型和草稿的 forward 次数与墙钟秒数。
+      RTX 4090 · CUDA · PyTorch 2.4.1 · batch=1 · 每行只跑一次。点表头按钮排序,点一行看理论值:
+    </p>
+
+    <div class="btn-row sm" id="s5Sort">
+      <button class="btn primary">原顺序</button>
+      <button class="btn">按每次吐字</button>
+      <button class="btn">按墙钟加速</button>
+    </div>
+    <div class="tbl-scroll"><table class="ledger" id="s5Table"></table></div>
+    <div class="note" id="s5Note"></div>
+
+    <div class="note">
+      forward 次数最多省到 <b>1/3</b>(γ=6 每次吐 3.09 个字),墙钟加速最高 <b>1.27×</b>(MTP),γ=6、γ=8 比普通生成还慢。
+    </div>
+
+    <div class="sub-h"><span class="badge">正确性</span>输出没有被改动</div>
+    <ul class="checklist" id="s5Checks"></ul>
+
+    <details class="dig">
+      <summary>forward 省了三分之二,墙钟为什么只快 1.0–1.3 倍,γ=6、8 还变慢?</summary>
+      <div class="dig-body">
+        ① <b>草稿不够便宜</b>:草稿模型单次 forward 0.225 ms,是主模型 0.836 ms 的约 27%。γ=8 时每轮 8 次草稿 forward 加起来比一次主 forward 还贵。
+        <br>② <b>γ 次草稿逐个跑</b>:草稿员自己也是自回归,γ 个字要 γ 次 forward,每次都有 Python 调度、kernel 启动的固定开销。
+        这类开销不随模型变小而缩小:草稿模型参数只有主模型的 7%,单次 forward 却要主模型 27% 的时间。
+        <br>③ <b>每个字都有采样开销</b>:batch=1,脚本每抽一个字都把分布拷回 CPU 再 multinomial,草稿的字也要抽,验收时还有 <code>.item()</code> 同步。
+        普通生成 600 个字 0.53 s,折合每个字约 0.88 ms,比单次 forward 的 0.836 ms 多出来的主要是这类开销。
+        <br>④ <b>每行只测一次</b>:几百毫秒量级的计时,相邻两行差 0.02–0.03 s 可能就是抖动。
+        <br>点表里任意一行,可以看到用该行 α 和 c ≈ 0.27 代进 Theorem 3.8 的理论墙钟加速,实测都低于它。式子只计 forward 的耗时,③ 不在式子里。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>600 个字早就超出 64 的上下文窗口了,这几行的输出还和主模型一致吗?</summary>
+      <div class="dig-body">
+        一致的是<b>分布</b>,口径是"验收时的截断规则"。总长超过 block_size=64 以后,普通生成每步把窗口右移 1 格;
+        验收时却是把"已生成 + γ 个草稿"整体截成最后 64 个字,靠后的草稿位置看到的历史更短。
+        两边其实是窗口规则不同的两台生成器。所以这几行保证的是:输出分布等于"主模型在验收截断规则下"的分布,不是和普通滑窗生成逐字对应。
+        <br><br>
+        这也是贪心一致性检查只在窗口以内做的原因:8 个字的提示 + 生成 48 个字 + 最多 8 个草稿 = 64。
+        真实系统用 KV cache,上下文远长于生成长度,不会碰到这个问题。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>贪心解码时,接受规则变成什么?</summary>
+      <div class="dig-body">
+        temperature=0 时脚本把 p、q 都换成 argmax 位置为 1 的 one-hot(<code>dist</code> 函数)。
+        草稿抽到的字 x 是 q 的 argmax:若它也是 p 的 argmax,p(x)/q(x) = 1,接受;否则 p(x) = 0,必拒绝,
+        残差 <code>max(0, p−q)</code> 只剩 p 的 argmax 那一格,重抽出来的就是主模型自己会选的字。
+        所以贪心下投机解码的输出应当和主模型贪心逐字相同,下面的检查就是验证这一点。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>带 MTP loss 训练,主模型本身变好了吗?</summary>
+      <div class="dig-body">
+        本关看不出来。同样 5000 步,带 MTP loss(λ=0.3)的主模型 val loss <b>1.5276</b>,不带的 <b>1.5357</b>,差 −0.008。
+        两次都是单种子,这个差距在种子噪声的量级内,不足以说明 MTP 让主模型变好。
+        Gloeckle 2024 报告的收益出现在 13B 规模的代码任务上,和本关的规模、数据都不同。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>读原论文时,为什么 Chen 2023 和 Leviathan 2023 的 p、q 对不上?</summary>
+      <div class="dig-body">
+        两篇论文同期独立提出同一套规则,字母含义相反。
+        Leviathan et al.(arXiv 2211.17192,ICML 2023)里 <b>p 是目标模型、q 是草稿</b>,接受概率 <code>min(1, p/q)</code>;
+        Chen et al.(DeepMind,arXiv 2302.01318)里 <b>q 是目标模型、p 是草稿</b>,写作 <code>min(1, q/p)</code>,残差 <code>(q − p)₊</code>。
+        本页统一用 Leviathan 的记号:p = 主模型,q = 草稿。Chen 2023 在 Chinchilla 70B 上报告分布式环境下 2–2.5 倍解码加速。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>Medusa、EAGLE 又是怎么打草稿的?</summary>
+      <div class="dig-body">
+        <b>Medusa</b>(Cai et al.,arXiv 2401.10774):在主模型上加几个额外的解码头,并行预测后面多个 token,再用树注意力一次验收多条候选。Medusa-1 加速超过 2.2 倍,Medusa-2 为 2.3–3.6 倍。
+        <br><b>EAGLE</b>(Li et al.,arXiv 2401.15077):草稿在特征层(倒数第二层)做自回归,原文认为这比在 token 层自回归更直接;LLaMA2-Chat 70B 上 2.7–3.5 倍。
+        DeepSeek-V3 论文提到自己保持因果链的做法和 EAGLE 相近,区别是 EAGLE 的目标是投机解码,MTP 首先用来改进训练。
+      </div>
+    </details>
+
+    <div class="codepath">↳ 跑法:<code>python 14_mtp.py</code>(主模型 + MTP 头 + 草稿模型 + 全部测量)· <code>python 14_mtp.py --mtp 0 --no-spec</code>(不带 MTP loss 的对照)</div>
+
+    <div class="congrats" id="congrats">
+      <div class="ct">🎉 投机解码与 MTP · 通关</div>
+      <div class="cs">你亲手验过了接受规则为什么不改分布、γ 为什么不能无限加、MTP 头为什么接受率更高,也看清了玩具规模下省 forward 不等于省时间。</div>
+    </div>
+  </section>
+
+  <div class="nav">
+    <button class="btn" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<canvas id="confetti"></canvas>
+
+<script>
+/* ================================================================
+   REAL-DATA:全部来自 phase4-efficiency/runs/cuda/ 下两个 json(RTX 4090 · CUDA · PyTorch 2.4.1 · seed 1337 单种子)
+   ch16_mtp.json   ← python 14_mtp.py --json runs/ch16_mtp.json
+   ch16_nomtp.json ← python 14_mtp.py --mtp 0 --no-spec --json runs/ch16_nomtp.json
+   ================================================================ */
+const PARAMS={"main": 742849, "mtp": 214528, "draft": 54657};   // params_main / params_mtp / params_draft
+const VAL={"main_mtp": 1.5276, "main_nomtp": 1.5357, "mtp_head": 1.5332, "draft": 1.8862};   // main_val(两个 json)/ mtp_head_val / draft_val
+const CAUSAL_MAXDIFF=0.0;   // spec.causal_logit_maxdiff
+const GREEDY={"prompts": 20, "prompt_len": 8, "tokens_each": 48, "identical": {"draft_g1": 20, "draft_g4": 20, "draft_g8": 20, "mtp": 20}};   // spec.greedy_check
+const SC={"context": "a forward guest\nWithin y", "top": ["o", "e", "i", "a", "t", "r", "v", "O"], "p": [0.9901, 0.0062, 0.003, 0.0001, 0.0001, 0.0001, 0.0001, 0.0001], "q": [0.9373, 0.0489, 0.0085, 0.0022, 0.0, 0.0009, 0.0, 0.0], "spec": [0.9898, 0.0063, 0.0033, 0.0, 0.0001, 0.0001, 0.0, 0.0001], "tv_spec_vs_p": 0.0005, "tv_q_vs_p": 0.053, "accept_rate": 0.9472, "alpha_theory": 0.947};   // spec.sampling_check(top_tokens 改名 top)
+const MS={"main": 0.836, "draft": 0.225};   // spec.ms_per_forward(毫秒)
+const ROWS=[{"method": "plain", "gamma": 0, "main_forwards": 600, "draft_forwards": 0, "tokens_per_main": 1.0, "alpha": null, "seconds": 0.53}, {"method": "draft", "gamma": 1, "main_forwards": 360, "draft_forwards": 360, "tokens_per_main": 1.667, "alpha": 0.6667, "alpha_minpq": 0.6706, "expected_tokens_per_main": 1.667, "seconds": 0.46, "speedup_wall": 1.158}, {"method": "draft", "gamma": 2, "main_forwards": 261, "draft_forwards": 522, "tokens_per_main": 2.299, "alpha": 0.7451, "alpha_minpq": 0.7256, "expected_tokens_per_main": 2.3, "seconds": 0.43, "speedup_wall": 1.238}, {"method": "draft", "gamma": 3, "main_forwards": 255, "draft_forwards": 765, "tokens_per_main": 2.353, "alpha": 0.6699, "alpha_minpq": 0.6828, "expected_tokens_per_main": 2.419, "seconds": 0.49, "speedup_wall": 1.076}, {"method": "draft", "gamma": 4, "main_forwards": 219, "draft_forwards": 876, "tokens_per_main": 2.74, "alpha": 0.7167, "alpha_minpq": 0.7169, "expected_tokens_per_main": 2.862, "seconds": 0.51, "speedup_wall": 1.041}, {"method": "draft", "gamma": 6, "main_forwards": 194, "draft_forwards": 1164, "tokens_per_main": 3.093, "alpha": 0.7173, "alpha_minpq": 0.7053, "expected_tokens_per_main": 3.192, "seconds": 0.56, "speedup_wall": 0.944}, {"method": "draft", "gamma": 8, "main_forwards": 203, "draft_forwards": 1624, "tokens_per_main": 2.956, "alpha": 0.6757, "alpha_minpq": 0.7132, "expected_tokens_per_main": 2.993, "seconds": 0.71, "speedup_wall": 0.747}, {"method": "mtp", "gamma": 1, "main_forwards": 317, "draft_forwards": 317, "tokens_per_main": 1.893, "alpha": 0.8987, "alpha_minpq": 0.8768, "expected_tokens_per_main": 1.899, "seconds": 0.42, "speedup_wall": 1.27}];   // spec.rows(600 token,temperature 1.0)
+const TRACE={"text": "You accusit on, my good force. I am consumbly\nProve well, I have groanted as with a sovereign.\n\nvISABELLA:\nI cannot beheld he did anymon life,\nWith\nClifford's baseness to word on this day\nFall blood\nShall we are letter on all his alon. But,", "marks": "mamamamamamrramamamamamamamamamamramamamamramrramamamamamamamamamamamamramamamamamamamamamamamamamamamamamamamamamamamamamamamamamramramamamamramamamamamamamamamamamamamamamamramamamamamamramamamamamamamamamamamamramamramamamamamamamamamama"};   // mtp_trace(240 字,marks:a 接受的草稿 / m 主模型采样 / r 拒绝后重抽)
+
+const $=id=>document.getElementById(id);
+function setActiveBtn(containerId, n){
+  document.querySelectorAll('#'+containerId+' .btn').forEach((b,i)=>b.classList.toggle('primary', i===n));
+}
+const showCh=c=> c===' '?'␣':(c==='\n'?'↵':c);
+const DRAFT_ROWS=ROWS.filter(r=>r.method==='draft');
+const C_MEAS=MS.draft/MS.main;
+
+/* ============ 步骤切换 ============ */
+const NSTEP=5;
+const tabs=document.querySelectorAll('.step-tab');
+const panels=[];for(let i=0;i<NSTEP;i++)panels.push(document.getElementById('panel'+i));
+let cur=0;
+function goto(i){
+  cur=Math.max(0,Math.min(NSTEP-1,i));
+  tabs.forEach(t=>t.classList.toggle('active',+t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active',idx===cur));
+  document.getElementById('prevBtn').disabled = cur===0;
+  document.getElementById('nextBtn').textContent = cur===NSTEP-1 ? '完成 🎉' : '下一步 →';
+  const hash='#step-'+(cur+1);
+  if(location.hash!==hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+document.getElementById('prevBtn').addEventListener('click',()=>goto(cur-1));
+document.getElementById('nextBtn').addEventListener('click',()=>{ if(cur===NSTEP-1) celebrate(); else goto(cur+1); });
+
+/* ============ STEP 1:一次 forward 验收一串 ============ */
+const S1_CTX=SC.context.slice(-8);   // 验证集里真实的 8 个字符(sampling_check.context 的结尾)
+const S1_DRAFT='ou sha';              // 示意草稿,不是模型输出
+let s1Gamma=3, s1Mode=1, s1Row=-1;
+function renderS1(){
+  const g=s1Gamma;
+  $('s1GammaV').textContent=g;
+  setActiveBtn('s1Mode', s1Mode);
+  const toks=[...S1_CTX].map(c=>({c,d:false})).concat([...S1_DRAFT.slice(0,g)].map(c=>({c,d:true})));
+  const N=toks.length, last=S1_CTX.length-1;
+  if(s1Row>=N) s1Row=-1;
+  $('s1Toks').innerHTML=toks.map(t=>`<span class="tk${t.d?' draft':''}">${showCh(t.c)}</span>`).join('');
+  const cs=24, L=30, T=30, W=L+N*cs+190, H=T+N*cs+6;
+  const used=i=> s1Mode===1 ? i>=last : i===N-1;
+  let s=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="因果掩码格子">`;
+  s+=`<text x="${L}" y="11" font-size="10" fill="#6B6B68">列 = 被看的字(key)</text>`;
+  toks.forEach((t,j)=>{ s+=`<text x="${L+j*cs+cs/2}" y="${T-6}" font-size="12" font-weight="700" text-anchor="middle" fill="${t.d?'#b8512f':'#1A1A18'}">${showCh(t.c)}</text>`; });
+  for(let i=0;i<N;i++){
+    const u=used(i), sel=i===s1Row;
+    s+=`<g class="maskrow" data-i="${i}">`;
+    s+=`<rect x="0" y="${T+i*cs}" width="${L+N*cs+186}" height="${cs}" fill="${sel?'#FBF1EA':'transparent'}"/>`;
+    s+=`<text x="${L-8}" y="${T+i*cs+16}" font-size="12" font-weight="700" text-anchor="end" fill="${toks[i].d?'#b8512f':'#1A1A18'}">${showCh(toks[i].c)}</text>`;
+    for(let j=0;j<N;j++){
+      const vis=j<=i;
+      let fill = vis ? (u ? (toks[j].d?'#E9A98F':'#D9CFBF') : '#ECE8DE') : '#fff';
+      if(sel && vis) fill = toks[j].d ? '#D97757' : '#8C8A83';
+      s+=`<rect x="${L+j*cs+1}" y="${T+i*cs+1}" width="${cs-2}" height="${cs-2}" rx="3" fill="${fill}" stroke="#E5E2D9"/>`;
+    }
+    if(u){
+      const k=i-last;
+      const lbl = s1Mode===1 ? (k<g ? `→ p 验收草稿 ${k+1}` : `→ p 全接受时再送 1 个`) : '→ 只用这一行出 1 个字';
+      s+=`<text x="${L+N*cs+8}" y="${T+i*cs+16}" font-size="11.5" font-weight="700" fill="#D97757">${lbl}</text>`;
+    }
+    s+=`</g>`;
+  }
+  s+=`</svg>`;
+  $('s1Grid').innerHTML=s;
+  $('s1Grid').querySelectorAll('.maskrow').forEach(el=>el.addEventListener('click',()=>{s1Row=+el.dataset.i;renderS1();}));
+  // forward 条
+  if(s1Mode===0){
+    let h=''; for(let k=0;k<=g;k++) h+=`<span class="fwd">forward ${k+1}:读 ${S1_CTX.length+k} 个字 → 出 1 个</span>`;
+    $('s1Fwd').innerHTML=h;
+  }else{
+    $('s1Fwd').innerHTML=`<span class="fwd one">forward 1:读 ${N} 个字 → 出 ${g+1} 个位置的 p</span>`;
+  }
+  $('s1Plain').textContent=g+1;
+  $('s1Spec').textContent=1;
+  $('s1Diff').textContent=CAUSAL_MAXDIFF.toFixed(1);
+  if(s1Row<0){
+    $('s1Note').innerHTML= s1Mode===1
+      ? `橙字标注的 <b>${g+1}</b> 行都是有用输出:前 ${g} 行各给出一个草稿位置上主模型的 p,最后一行在草稿全部接受时再给出一个字。点任意一行看它的视野。`
+      : `普通生成每次 forward 只取最后一行,吐 1 个字,接回输入再跑。要得到同样 ${g+1} 个字,主模型要跑 ${g+1} 次。`;
+  }else{
+    const hid=N-1-s1Row;
+    $('s1Note').innerHTML=`第 <b>${s1Row+1}</b> 行(字 <code>${showCh(toks[s1Row].c)}</code>)看得见前 ${s1Row+1} 列,`+
+      (hid>0?`右边 ${hid} 列被因果掩码挡住。`:`已经是最后一行。`)+
+      `它输出的是"下一个字"的分布,和它右边喂了什么无关,所以草稿写在后面不会污染它。`;
+  }
+}
+$('s1Gamma').addEventListener('input',e=>{s1Gamma=+e.target.value;renderS1();});
+document.querySelectorAll('#s1Mode .btn').forEach((b,i)=>b.addEventListener('click',()=>{s1Mode=i;s1Row=-1;renderS1();}));
+renderS1();
+
+/* ============ STEP 2:接受规则 ============ */
+let s2Sel=1, s2Scale=0;
+const sum=a=>a.reduce((x,y)=>x+y,0);
+const P8=SC.p.map(v=>v/sum(SC.p)), Q8=SC.q.map(v=>v/sum(SC.q));   // 页面模拟:前 8 名重新归一化
+const R8=(()=>{const r=P8.map((v,i)=>Math.max(0,v-Q8[i])); const s=sum(r); return r.map(v=>v/s);})();
+let s2Hist=new Array(8).fill(0), s2N=0;
+function pick(dist){ let u=Math.random(), acc=0; for(let i=0;i<dist.length;i++){acc+=dist[i]; if(u<acc) return i;} return dist.length-1; }
+function renderS2(){
+  $('s2Ctx').textContent=SC.context.slice(-12).replace(/\n/g,'↵');
+  setActiveBtn('s2Scale', s2Scale);
+  const sc=v=> s2Scale===0 ? 100*v : 100*Math.sqrt(v);
+  $('s2Bars').innerHTML=SC.top.map((c,i)=>`
+    <div class="pqrow${i===s2Sel?' sel':''}" data-i="${i}">
+      <div class="ch">${showCh(c)}</div>
+      <div class="pqbars">
+        <div class="pqbar" style="width:${sc(SC.p[i]).toFixed(2)}%;background:var(--accent)"></div>
+        <div class="pqbar" style="width:${sc(SC.q[i]).toFixed(2)}%;background:var(--e1)"></div>
+        <div class="pqbar" style="width:${sc(SC.spec[i]).toFixed(2)}%;background:var(--good)"></div>
+      </div>
+      <div class="pqnum">p ${SC.p[i].toFixed(4)}<br>q ${SC.q[i].toFixed(4)} · 投机 ${SC.spec[i].toFixed(4)}</div>
+    </div>`).join('');
+  $('s2Bars').querySelectorAll('.pqrow').forEach(el=>el.addEventListener('click',()=>{s2Sel=+el.dataset.i;renderS2();}));
+  const c=showCh(SC.top[s2Sel]), p=SC.p[s2Sel], q=SC.q[s2Sel];
+  const mn=Math.min(p,q), rs=Math.max(0,p-q);
+  let head;
+  if(q===0) head=`草稿给 <span class="hl">${c}</span> 的概率 q = 0(四位小数下),草稿员几乎抽不到它;它主要从拒绝后的残差里来。`;
+  else if(p>=q) head=`草稿抽到 <span class="hl">${c}</span>:p = ${p.toFixed(4)} ≥ q = ${q.toFixed(4)},接受概率 min(1, p/q) = <span class="hl">1</span>,一定收下。`;
+  else head=`草稿抽到 <span class="hl">${c}</span>:p = ${p.toFixed(4)} &lt; q = ${q.toFixed(4)},接受概率 min(1, p/q) = <span class="hl">${(p/q).toFixed(3)}</span>,其余 ${(1-p/q).toFixed(3)} 被拒绝后重抽。`;
+  $('s2Calc').innerHTML=`${head}<br>
+    输出 ${c} 的概率 = 草稿抽到且接受 min(p,q) = ${mn.toFixed(4)} + 残差补上 max(0, p−q) = ${rs.toFixed(4)}
+    = <span class="hl">${(mn+rs).toFixed(4)}</span> = p(${c})`;
+  $('s2TvSpec').textContent=SC.tv_spec_vs_p.toFixed(4);
+  $('s2TvQ').textContent=SC.tv_q_vs_p.toFixed(4);
+  $('s2Acc').textContent=`${SC.accept_rate.toFixed(4)}(${SC.alpha_theory.toFixed(3)})`;
+}
+function simOnce(){
+  const x=pick(Q8), a=Math.min(1,P8[x]/Q8[x]), u=Math.random();
+  if(u<a){ s2Hist[x]++; s2N++; return {x,a,u,ok:true,y:x}; }
+  const y=pick(R8); s2Hist[y]++; s2N++; return {x,a,u,ok:false,y};
+}
+function renderHist(){
+  const tv=s2N? 0.5*sum(P8.map((v,i)=>Math.abs(s2Hist[i]/s2N-v))) : null;
+  const sc=v=> s2Scale===0 ? 100*v : 100*Math.sqrt(v);
+  $('s2Hist').innerHTML=SC.top.map((c,i)=>{
+    const f=s2N? s2Hist[i]/s2N : 0;
+    return `<div class="pqrow" style="cursor:default"><div class="ch">${showCh(c)}</div>
+      <div class="pqbars"><div class="pqbar" style="width:${sc(P8[i]).toFixed(2)}%;background:var(--accent)"></div>
+      <div class="pqbar" style="width:${sc(f).toFixed(2)}%;background:#8C8A83"></div></div>
+      <div class="pqnum">p ${P8[i].toFixed(4)}<br>页面 ${f.toFixed(4)}(${s2Hist[i]} 次)</div></div>`;
+  }).join('');
+  $('s2HistNote').innerHTML= s2N
+    ? `已抽 <b>${s2N.toLocaleString()}</b> 次,灰条是页面模拟的频率,与 p 的总变差距离 <b>${tv.toFixed(4)}</b>。页面只用前 8 名的 p、q 并各自重新归一化(其余 57 个字符 p 合计约 0.0002)。`
+    : `页面模拟只用前 8 名的 p、q 并各自重新归一化(其余 57 个字符 p 合计约 0.0002)。`;
+}
+$('s2One').addEventListener('click',()=>{
+  const r=simOnce();
+  $('s2Log').innerHTML=`草稿从 q 抽到 <b>${showCh(SC.top[r.x])}</b>,接受概率 ${r.a.toFixed(3)},随机数 u = ${r.u.toFixed(3)} → `+
+    (r.ok?`<span class="acc">接受</span>,输出 ${showCh(SC.top[r.y])}`:`<span class="rej">拒绝</span>,从残差 max(0,p−q) 重抽到 <b>${showCh(SC.top[r.y])}</b>`);
+  renderHist();
+});
+$('s2Many').addEventListener('click',()=>{
+  let rej=0; for(let k=0;k<10000;k++){ if(!simOnce().ok) rej++; }
+  $('s2Log').innerHTML=`这 1 万次里拒绝 <span class="rej">${rej}</span> 次,接受率 ${(1-rej/10000).toFixed(4)}。`;
+  renderHist();
+});
+$('s2Clear').addEventListener('click',()=>{ s2Hist=new Array(8).fill(0); s2N=0; $('s2Log').textContent='点"抽一次"。'; renderHist(); });
+document.querySelectorAll('#s2Scale .btn').forEach((b,i)=>b.addEventListener('click',()=>{s2Scale=i;renderS2();renderHist();}));
+renderS2(); renderHist();
+
+/* ============ STEP 3:γ 猜几个 ============ */
+let s3Alpha=0.70, s3C=+C_MEAS.toFixed(2), s3Metric=0, s3Sel=-1;
+const C_PRESETS=[+C_MEAS.toFixed(2), 0.05, 0];
+const expTok=(a,g)=> a>=1 ? g+1 : (1-Math.pow(a,g+1))/(1-a);     // Leviathan 式 (1)
+const wallFac=(a,g,c)=> expTok(a,g)/(g*c+1);                       // Theorem 3.8
+function renderS3(){
+  $('s3AlphaV').textContent=s3Alpha.toFixed(2);
+  $('s3CV').textContent=s3C.toFixed(2);
+  setActiveBtn('s3Metric', s3Metric);
+  setActiveBtn('s3CPreset', C_PRESETS.findIndex(v=>Math.abs(v-s3C)<1e-9));
+  const G=[1,2,3,4,5,6,7,8];
+  const f=g=> s3Metric===0 ? expTok(s3Alpha,g) : wallFac(s3Alpha,g,s3C);
+  const real=r=> s3Metric===0 ? r.tokens_per_main : r.speedup_wall;
+  const ys=G.map(f).concat(DRAFT_ROWS.map(real));
+  const ymax=Math.max(s3Metric===0?4:2, Math.ceil(Math.max(...ys)*2)/2);
+  const W=600, H=270, L=46, R=16, T=16, B=40;
+  const X=g=> L+(g-1)*(W-L-R)/7, Y=v=> T+(H-T-B)*(1-v/ymax);
+  let s=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="γ 与期望吐字数 / 墙钟加速">`;
+  const step=ymax<=2?0.5:1;
+  for(let v=0; v<=ymax+1e-9; v+=step){
+    s+=`<line x1="${L}" y1="${Y(v)}" x2="${W-R}" y2="${Y(v)}" stroke="#EEEBE1"/>`;
+    s+=`<text x="${L-6}" y="${Y(v)+4}" font-size="10.5" text-anchor="end" fill="#6B6B68">${v.toFixed(v%1?1:0)}</text>`;
+  }
+  if(s3Metric===1){ s+=`<line x1="${L}" y1="${Y(1)}" x2="${W-R}" y2="${Y(1)}" stroke="#9a3a22" stroke-dasharray="4 3"/>
+    <text x="${W-R-2}" y="${Y(1)-5}" font-size="10.5" text-anchor="end" fill="#9a3a22">1.0 = 和普通生成一样快</text>`; }
+  G.forEach(g=>{ s+=`<text x="${X(g)}" y="${H-B+16}" font-size="11" text-anchor="middle" fill="#6B6B68">${g}</text>`; });
+  s+=`<text x="${(L+W-R)/2}" y="${H-6}" font-size="11" text-anchor="middle" fill="#6B6B68">γ(每轮草稿长度)</text>`;
+  s+=`<polyline fill="none" stroke="#D97757" stroke-width="2.5" points="${G.map(g=>X(g)+','+Y(f(g)).toFixed(1)).join(' ')}"/>`;
+  G.forEach(g=>{ s+=`<circle cx="${X(g)}" cy="${Y(f(g)).toFixed(1)}" r="3" fill="#D97757"/>`; });
+  DRAFT_ROWS.forEach((r,i)=>{
+    const sel=i===s3Sel;
+    s+=`<g class="maskrow s3dot" data-i="${i}"><circle cx="${X(r.gamma)}" cy="${Y(real(r)).toFixed(1)}" r="${sel?8:6}" fill="#3a63c0" stroke="#fff" stroke-width="2"/>
+      <text x="${X(r.gamma)+9}" y="${Y(real(r))-8}" font-size="10.5" font-weight="700" fill="#3a63c0">${real(r).toFixed(3)}</text></g>`;
+  });
+  s+=`</svg>`;
+  $('s3Chart').innerHTML=s;
+  $('s3Chart').querySelectorAll('.s3dot').forEach(el=>el.addEventListener('click',()=>{s3Sel=+el.dataset.i;renderS3();}));
+  let best=1; G.forEach(g=>{ if(wallFac(s3Alpha,g,s3C)>wallFac(s3Alpha,best,s3C)) best=g; });
+  $('s3Best').textContent=(s3C===0 && s3Alpha>0) ? '越大越好' : 'γ = '+best;
+  $('s3BestV').textContent=wallFac(s3Alpha,best,s3C).toFixed(2)+'×';
+  $('s3Cmeas').textContent=C_MEAS.toFixed(2);
+  if(s3Sel>=0){
+    const r=DRAFT_ROWS[s3Sel];
+    $('s3Note').innerHTML=`<b>γ = ${r.gamma} 的真实测量</b>:接受率 α = ${r.alpha.toFixed(4)},主模型 forward ${r.main_forwards} 次、草稿 ${r.draft_forwards} 次,
+      每次主 forward 吐 <b>${r.tokens_per_main}</b> 个字(用这一行自己的 α 代入式 (1) 期望 ${r.expected_tokens_per_main}),
+      墙钟 ${r.seconds.toFixed(2)} s,加速 <b>${r.speedup_wall.toFixed(3)}×</b>;用这个 α 和实测 c 代入 Theorem 3.8 是 ${wallFac(r.alpha,r.gamma,C_MEAS).toFixed(3)}×。`;
+  }else{
+    $('s3Note').innerHTML= s3Metric===0
+      ? `α = ${s3Alpha.toFixed(2)} 时,γ 从 1 加到 8,期望吐字从 ${expTok(s3Alpha,1).toFixed(2)} 涨到 ${expTok(s3Alpha,8).toFixed(2)},上限是 1/(1−α) = ${(1/(1-s3Alpha)).toFixed(2)}:越往后的草稿越可能被前面的拒绝连累。点蓝点看真实测量。`
+      : `把草稿的耗时算进去,曲线在 γ = ${best} 达到最高 ${wallFac(s3Alpha,best,s3C).toFixed(2)}×,再往后草稿跑得比省下的多。拖 c 到 0.05 看论文那种草稿够便宜时的形状。`;
+  }
+}
+$('s3Alpha').addEventListener('input',e=>{s3Alpha=+e.target.value;s3Sel=-1;renderS3();});
+$('s3C').addEventListener('input',e=>{s3C=+e.target.value;s3Sel=-1;renderS3();});
+document.querySelectorAll('#s3Metric .btn').forEach((b,i)=>b.addEventListener('click',()=>{s3Metric=i;renderS3();}));
+document.querySelectorAll('#s3CPreset .btn').forEach((b,i)=>b.addEventListener('click',()=>{s3C=C_PRESETS[i];$('s3C').value=s3C;s3Sel=-1;renderS3();}));
+renderS3();
+
+/* ============ STEP 4:MTP ============ */
+// 参数量按 14_mtp.py 的 Cfg 与层定义算:n_embd 128、n_head 4、n_kv_head 2、SwiGLU 隐层 (int(8d/3)+7)//8*8
+const D=128, VOCAB=65;
+const swHid=d=>Math.floor((Math.floor(8*d/3)+7)/8)*8;
+const blockParams=(d,nh,nkv)=>{const hs=d/nh; return d*d + 2*d*nkv*hs + d*d + 3*d*swHid(d) + 2*d;};
+const P_BLOCK=blockParams(D,4,2), P_PROJ=2*D*D, P_NORMS=2*D;
+const P_MTP_SUM=P_NORMS+P_PROJ+P_BLOCK;          // 应等于 PARAMS.mtp
+const P_TOK=VOCAB*D, P_HEAD=D*VOCAB+VOCAB;
+const S4_PARTS=[
+  {name:'主干 4 层',code:'GPT.blocks',info:`主模型自己的 4 个 Block,${(4*P_BLOCK).toLocaleString()} 个参数。MTP 不改它,只读它最后一层输出的隐状态 h<sub>t</sub>(<code>forward</code> 返回的第二个值)。`},
+  {name:'嵌入表',code:'GPT.tok',info:`与主模型<b>共用</b>,${P_TOK.toLocaleString()} 个参数(65 个字符 × 128 维)。MTP 用它查 x<sub>t+1</sub> 的嵌入。`},
+  {name:'两个 RMSNorm',code:'mtp_norm_h / mtp_norm_e',info:`MTP 自己的,各 128 个参数,共 ${P_NORMS}。h<sub>t</sub> 和 Emb(x<sub>t+1</sub>) 尺度不同,先各自归一化再拼接。`},
+  {name:'投影 M',code:'mtp_proj',info:`MTP 自己的,把拼接后的 2×128 = 256 维压回 128 维:256 × 128 = <b>${P_PROJ.toLocaleString()}</b> 个参数。对应 DeepSeek-V3 式 (21) 的 M<sub>k</sub> ∈ R<sup>d×2d</sup>。`},
+  {name:'MTP Block',code:'mtp_block',info:`MTP 自己的 1 个 Block,结构和主干每层相同(GQA 注意力 + SwiGLU):<b>${P_BLOCK.toLocaleString()}</b> 个参数,占 MTP 模块的 ${(100*P_BLOCK/PARAMS.mtp).toFixed(0)}%。`},
+  {name:'输出头',code:'norm_f + lm_head',info:`与主模型<b>共用</b>,${(P_HEAD+D).toLocaleString()} 个参数。所以 MTP 头的 logits 和主模型在同一个 65 字符的词表上,可以直接当草稿分布 q。`},
+];
+let s4Part=3, s4Color=0, s4Round=1;
+function renderS4Svg(){
+  setActiveBtn('s4Part', s4Part);
+  const W=640, H=250;
+  const box=(i,x,y,w,h,label,sub,shared)=>{
+    const sel=i===s4Part;
+    return `<g class="mtp-part" data-i="${i}"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="9"
+      fill="${sel?'#FBF1EA':(shared?'#F4F2EA':'#fff')}" stroke="${sel?'#D97757':(shared?'#cfc9ba':'#3f7d63')}" stroke-width="${sel?2.5:1.5}" ${shared?'stroke-dasharray="5 3"':''}/>
+      <text x="${x+w/2}" y="${y+h/2-(sub?3:-4)}" font-size="12" font-weight="700" text-anchor="middle" fill="#1A1A18">${label}</text>
+      ${sub?`<text x="${x+w/2}" y="${y+h/2+13}" font-size="10" text-anchor="middle" fill="#6B6B68">${sub}</text>`:''}</g>`;
+  };
+  const arr=(x1,y1,x2,y2)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#8C8A83" stroke-width="1.5" marker-end="url(#ah)"/>`;
+  let s=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="MTP 模块结构">
+    <defs><marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#8C8A83"/></marker></defs>`;
+  s+=`<text x="10" y="236" font-size="11" fill="#6B6B68">x₀…x_t</text>`;
+  s+=arr(40,222,70,196);
+  s+=box(0,20,140,120,52,'主干 4 层','输出 h_t',true);
+  s+=box(5,20,40,120,48,'输出头','→ p(x_t+1)',true);
+  s+=arr(80,140,80,90);
+  s+=box(1,180,176,110,46,'嵌入表','Emb(x_t+1)',true);
+  s+=box(2,180,96,110,56,'RMSNorm ×2','h_t 与 Emb 各一个',false);
+  s+=arr(140,166,180,130); s+=arr(235,176,235,154);
+  s+=box(3,330,96,110,56,'投影 M','256 → 128',false);
+  s+=arr(290,124,330,124);
+  s+=box(4,480,96,110,56,'MTP Block','GQA + SwiGLU',false);
+  s+=arr(440,124,480,124);
+  s+=`<g class="mtp-part" data-i="5"><rect x="480" y="16" width="110" height="46" rx="9" fill="${s4Part===5?'#FBF1EA':'#F4F2EA'}" stroke="${s4Part===5?'#D97757':'#cfc9ba'}" stroke-width="${s4Part===5?2.5:1.5}" stroke-dasharray="5 3"/>
+    <text x="535" y="36" font-size="12" font-weight="700" text-anchor="middle" fill="#1A1A18">输出头(共用)</text>
+    <text x="535" y="52" font-size="10" text-anchor="middle" fill="#6B6B68">→ q(x_t+2)</text></g>`;
+  s+=arr(535,96,535,64);
+  s+=`<text x="330" y="200" font-size="10.5" fill="#6B6B68">实线框 = MTP 自己的参数</text>`;
+  s+=`<text x="330" y="216" font-size="10.5" fill="#6B6B68">虚线框 = 与主模型共用</text>`;
+  s+=`</svg>`;
+  $('s4Svg').innerHTML=s;
+  $('s4Svg').querySelectorAll('.mtp-part').forEach(el=>el.addEventListener('click',()=>{s4Part=+el.dataset.i;renderS4Svg();}));
+  const p=S4_PARTS[s4Part];
+  $('s4PartNote').innerHTML=`<b>${p.name}</b> · <code>${p.code}</code><br>${p.info}<br>
+    MTP 自己的参数合计 ${P_NORMS} + ${P_PROJ.toLocaleString()} + ${P_BLOCK.toLocaleString()} = <b>${P_MTP_SUM.toLocaleString()}</b>`+
+    (P_MTP_SUM===PARAMS.mtp?`,与 json 的 params_mtp 一致`:`(json 记录 ${PARAMS.mtp.toLocaleString()})`)+
+    `,是主模型 ${PARAMS.main.toLocaleString()} 的 ${(100*PARAMS.mtp/PARAMS.main).toFixed(0)}%。`;
+}
+// 把 marks 切成一次次 forward:开头一个 m(还没有草稿),之后每次是 a+m(接受)或 r(拒绝)
+const ROUNDS=(()=>{
+  const m=TRACE.marks, out=[]; let i=0;
+  if(m[0]==='m'){ out.push({s:0,n:1,k:'first'}); i=1; }
+  while(i<m.length){
+    if(m[i]==='a'){ const n=(m[i+1]==='m')?2:1; out.push({s:i,n,k:'acc'}); i+=n; }
+    else if(m[i]==='r'){ out.push({s:i,n:1,k:'rej'}); i+=1; }
+    else { out.push({s:i,n:1,k:'first'}); i+=1; }
+  }
+  return out;
+})();
+const NA=[...TRACE.marks].filter(c=>c==='a').length, NR=[...TRACE.marks].filter(c=>c==='r').length;
+function renderS4Trace(){
+  setActiveBtn('s4Color', s4Color);
+  $('s4Round').max=ROUNDS.length;
+  $('s4RoundV').textContent=s4Round;
+  const rd=ROUNDS[s4Round-1];
+  const chars=[...TRACE.text];
+  let h='';
+  chars.forEach((c,i)=>{
+    const mk=TRACE.marks[i]||'m';
+    const inR=i>=rd.s && i<rd.s+rd.n;
+    const cls='m'+mk+(inR?' cur':'');
+    h+= c==='\n' ? `<span class="${cls}">↵</span><br>` : `<span class="${cls}">${c.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</span>`;
+  });
+  $('s4Trace').innerHTML=h;
+  $('s4Trace').classList.toggle('plain', s4Color===1);
+  const txt=chars.slice(rd.s,rd.s+rd.n).map(showCh).join('');
+  $('s4RoundNote').innerHTML= rd.k==='first'
+    ? `第 1 次 forward 还没有草稿,主模型采样出 <b>${txt}</b>,MTP 头给出第一个草稿。`
+    : (rd.k==='acc'
+      ? `这次 forward 验收上一轮的草稿 <b>${showCh(chars[rd.s])}</b>:<span class="acc">接受</span>,主模型顺手再采样 <b>${rd.n>1?showCh(chars[rd.s+1]):'(样本在此截断)'}</b>,一次吐 ${rd.n} 个字。`
+      : `这次 forward 验收上一轮的草稿:<span class="rej">拒绝</span>,从残差里重抽出 <b>${txt}</b>,一次吐 1 个字。`);
+  $('s4Fw').textContent=ROUNDS.length;
+  $('s4Tpf').textContent=(chars.length/ROUNDS.length).toFixed(2);
+  $('s4Acc').textContent=(NA/(NA+NR)).toFixed(3);
+}
+function renderS4Cmp(){
+  const mtp=ROWS.find(r=>r.method==='mtp'), d1=ROWS.find(r=>r.method==='draft'&&r.gamma===1);
+  const bar=(name,v,max,color,band)=>`<div class="abrow"><div class="an">${name}</div>
+    <div class="at">${band||''}<div class="af" style="width:${(100*v/max).toFixed(1)}%;background:${color}"></div></div>
+    <div class="av">${v.toFixed(4)}</div></div>`;
+  const band=`<div class="band" style="left:85%;width:5%" title="DeepSeek-V3 报告 85%–90%"></div>`;
+  $('s4Cmp').innerHTML=
+    `<div class="hp-note" style="margin-bottom:4px"><b>接受率</b>(600 字、temperature 1.0 的主测量;蓝色虚线带 = DeepSeek-V3 报告的 85%–90%)</div>`+
+    bar('MTP 头',mtp.alpha,1,'var(--good)',band)+
+    bar('小草稿模型 γ=1',d1.alpha,1,'var(--e3)',band)+
+    `<div class="hp-note" style="margin:12px 0 4px"><b>每次主 forward 吐几个字</b>(γ=1 时上限 2)</div>`+
+    bar('MTP 头',mtp.tokens_per_main,2,'var(--good)')+
+    bar('小草稿模型 γ=1',d1.tokens_per_main,2,'var(--e3)')+
+    `<div class="hp-note" style="margin:12px 0 4px"><b>val loss</b>(越低越好;MTP 头预测下下个字,另外两个预测下一个字)</div>`+
+    bar('主模型',VAL.main_mtp,2,'var(--e1)')+
+    bar('MTP 头',VAL.mtp_head,2,'var(--good)')+
+    bar('小草稿模型',VAL.draft,2,'var(--e3)')+
+    `<div class="hp-note" style="margin-top:8px">MTP 头墙钟加速 ${mtp.speedup_wall.toFixed(3)}×,小草稿模型 γ=1 为 ${d1.speedup_wall.toFixed(3)}×。</div>`;
+}
+document.querySelectorAll('#s4Part .btn').forEach((b,i)=>b.addEventListener('click',()=>{s4Part=i;renderS4Svg();}));
+document.querySelectorAll('#s4Color .btn').forEach((b,i)=>b.addEventListener('click',()=>{s4Color=i;renderS4Trace();}));
+$('s4Round').addEventListener('input',e=>{s4Round=+e.target.value;renderS4Trace();});
+renderS4Svg(); renderS4Trace(); renderS4Cmp();
+
+/* ============ STEP 5:真实账本 ============ */
+let s5Sort=0, s5Sel=-1;
+const methodName=r=> r.method==='plain' ? '普通生成' : (r.method==='mtp' ? 'MTP 自草稿' : '小草稿模型');
+function renderS5(){
+  setActiveBtn('s5Sort', s5Sort);
+  const idx=ROWS.map((r,i)=>i);
+  if(s5Sort===1) idx.sort((a,b)=>ROWS[b].tokens_per_main-ROWS[a].tokens_per_main);
+  if(s5Sort===2) idx.sort((a,b)=>(ROWS[b].speedup_wall??1)-(ROWS[a].speedup_wall??1));
+  const maxS=1.4;
+  let h=`<tr><th>方法</th><th>γ</th><th>主 forward</th><th>草稿 forward</th><th>每次主 forward 吐字</th><th>接受率</th><th>秒</th><th>墙钟加速</th></tr>`;
+  idx.forEach(i=>{
+    const r=ROWS[i], sp=r.speedup_wall??1;
+    const col= r.method==='plain' ? '#8C8A83' : (sp>=1?'var(--good)':'var(--bad)');
+    h+=`<tr class="row${i===s5Sel?' sel':''}" data-i="${i}">
+      <td>${methodName(r)}</td><td>${r.method==='plain'?'–':r.gamma}</td><td>${r.main_forwards}</td><td>${r.draft_forwards}</td>
+      <td><b>${r.tokens_per_main.toFixed(3)}</b></td><td>${r.alpha==null?'–':r.alpha.toFixed(4)}</td><td>${r.seconds.toFixed(2)}</td>
+      <td>${r.speedup_wall==null?'1(基准)':'<b>'+r.speedup_wall.toFixed(3)+'×</b>'}<span class="spd"><i style="width:${(100*Math.min(sp,maxS)/maxS).toFixed(1)}%;background:${col}"></i><em style="left:${(100/maxS).toFixed(1)}%"></em></span></td></tr>`;
+  });
+  $('s5Table').innerHTML=h;
+  $('s5Table').querySelectorAll('tr.row').forEach(el=>el.addEventListener('click',()=>{s5Sel=+el.dataset.i;renderS5();}));
+  if(s5Sel<0){
+    $('s5Note').innerHTML=`条上的竖线是 1.0×。点一行看它的理论墙钟加速。`;
+  }else{
+    const r=ROWS[s5Sel];
+    if(r.method==='plain') $('s5Note').innerHTML=`<b>普通生成</b>:600 个字、主模型 forward ${r.main_forwards} 次、${r.seconds.toFixed(2)} s,其余各行的墙钟加速都以它为基准。`;
+    else if(r.method==='draft') $('s5Note').innerHTML=`<b>小草稿模型 γ=${r.gamma}</b>:α = ${r.alpha.toFixed(4)},c = ${MS.draft} / ${MS.main} ≈ ${C_MEAS.toFixed(3)}。
+      Theorem 3.8 理论墙钟加速 ${wallFac(r.alpha,r.gamma,C_MEAS).toFixed(3)}×,实测 <b>${r.speedup_wall.toFixed(3)}×</b>。
+      主模型 forward 从 600 次降到 ${r.main_forwards} 次,草稿 forward ${r.draft_forwards} 次。`;
+    else $('s5Note').innerHTML=`<b>MTP 自草稿</b>:α = ${r.alpha.toFixed(4)},每次 forward 期望吐 1 + α = ${r.expected_tokens_per_main},实测 ${r.tokens_per_main}。
+      MTP 头的耗时没有单独计时,没法代入 Theorem 3.8;它不需要单独的草稿模型从头跑,只在主模型的隐状态上多过 1 个 Block。实测墙钟 <b>${r.speedup_wall.toFixed(3)}×</b>。`;
+  }
+}
+document.querySelectorAll('#s5Sort .btn').forEach((b,i)=>b.addEventListener('click',()=>{s5Sort=i;renderS5();}));
+renderS5();
+(function(){
+  const gi=GREEDY.identical;
+  $('s5Checks').innerHTML=[
+    `<b>贪心逐字一致</b>:${GREEDY.prompts} 段验证集提示(各 ${GREEDY.prompt_len} 字)× 各生成 ${GREEDY.tokens_each} 字,投机解码与主模型贪心生成逐字相同的段数:
+     小草稿 γ=1 <b>${gi.draft_g1}/${GREEDY.prompts}</b>、γ=4 <b>${gi.draft_g4}/${GREEDY.prompts}</b>、γ=8 <b>${gi.draft_g8}/${GREEDY.prompts}</b>、MTP <b>${gi.mtp}/${GREEDY.prompts}</b>。`,
+    `<b>采样分布一致</b>:同一位置重复 20 万次投机采样,与 p 的总变差距离 <b>${SC.tv_spec_vs_p}</b>;草稿 q 本身与 p 相差 <b>${SC.tv_q_vs_p}</b>(见 STEP 2,推导也在那里)。`,
+    `<b>一次 forward 验收的前提成立</b>:前 56 个位置单独算与多喂 8 个字再算,logits 最大差 <b>${CAUSAL_MAXDIFF.toFixed(1)}</b>(见 STEP 1)。`,
+    `<b>带 MTP loss 训练的主模型</b>:val loss <b>${VAL.main_mtp}</b>,不带的 <b>${VAL.main_nomtp}</b>,差 ${(VAL.main_mtp-VAL.main_nomtp).toFixed(4)},在单种子噪声量级内,本关不据此判断 MTP 让主模型变好或变差。`,
+  ].map(t=>`<li><span class="ck">✓</span><div>${t}</div></li>`).join('');
+})();
+
+/* ============ 名词气泡 ============ */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent, def=el.dataset.def||'', key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def+(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8; if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw; if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el)); el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* ============ 通关庆祝 ============ */
+function celebrate(){
+  document.getElementById('congrats').classList.add('show');
+  const cv=document.getElementById('confetti'); cv.style.display='block';
+  const ctx=cv.getContext('2d'); cv.width=innerWidth; cv.height=innerHeight;
+  const COL=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const ps=[];for(let i=0;i<150;i++)ps.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    vx:(Math.random()-0.5)*3,vy:2+Math.random()*4,s:5+Math.random()*7,c:COL[i%COL.length],a:Math.random()*6.28,va:(Math.random()-0.5)*0.3});
+  let t0=null;
+  function frame(ts){ if(!t0)t0=ts; const el=ts-t0;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.04;p.a+=p.va;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.a);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.6);ctx.restore();});
+    if(el<3400) requestAnimationFrame(frame); else { ctx.clearRect(0,0,cv.width,cv.height); cv.style.display='none'; }
+  }
+  requestAnimationFrame(frame);
+  document.getElementById('congrats').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ============ 初始化:深链 ============ */
+const m=/^#step-(\d+)$/.exec(location.hash);
+goto(m?parseInt(m[1],10)-1:0);
+window.addEventListener('hashchange',()=>{const mm=/^#step-(\d+)$/.exec(location.hash);goto(mm?parseInt(mm[1],10)-1:0);});
+
+</script>
+<!--site-copyright-->
+<footer style="max-width:960px;margin:56px auto 0;padding:18px 24px 44px;border-top:1px solid var(--border);text-align:center;font-size:12px;color:var(--ink2);line-height:1.7">
+  © 2026 <a href="https://fim.ai" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">FIM Labs</a> · 从零手写大语言模型 · MIT License
+</footer>
+</body>
+</html>

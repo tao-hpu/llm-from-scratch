@@ -1,0 +1,1245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>线性注意力 · 把 KV cache 换成固定大小的记忆板</title>
+<meta name="description" content="把越存越长的 KV cache 换成一块 32×32 的记忆板:写入是加一个外积,delta rule 先擦再写,遗忘门按比例衰减。五种层配方与键值检索的真实对照,以及工业界的 3:1 混合。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 13 章 · 线性注意力 · 从零手写大语言模型">
+<meta property="og:description" content="把越存越长的 KV cache 换成一块 32×32 的记忆板:写入是加一个外积,delta rule 先擦再写,遗忘门按比例衰减。五种层配方与键值检索的真实对照,以及工业界的 3:1 混合。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/13_linear_attention_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 13 章 · 线性注意力 · 从零手写大语言模型">
+<meta name="twitter:description" content="把越存越长的 KV cache 换成一块 32×32 的记忆板:写入是加一个外积,delta rule 先擦再写,遗忘门按比例衰减。五种层配方与键值检索的真实对照,以及工业界的 3:1 混合。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
+<style>
+
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --good:#3f7d63; --good-soft:#D7EBE0; --bad:#9a3a22; --bad-soft:#F3D9CE;
+    --e0:#b8512f; --e0s:#F7E6DE; --e1:#3a63c0; --e1s:#E5EBF9;
+    --e2:#3f7d63; --e2s:#E4EFE9; --e3:#a3548c; --e3s:#F6E6F0;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 24px 90px;}
+
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:790px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  .steps-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:26px 0 18px;}
+  .step-tab{background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 14px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13.5px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+  .hp-note code{font-family:var(--mono);font-size:11.5px;}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 20px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:10px;padding:10px 14px;}
+
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;align-items:center;}
+  .btn-row.sm .btn{font-size:13px;padding:7px 13px;}
+
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:24px 0 6px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  .codepath{font-family:var(--mono);font-size:11.5px;color:var(--ink2);background:#F4F2EA;
+    border:1px solid var(--border);border-radius:8px;padding:5px 10px;display:inline-block;margin-top:10px;}
+  .codepath b{color:var(--accent);}
+
+  /* 名词气泡 */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:280px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;font-family:system-ui,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* 庆祝 */
+  .congrats{display:none;text-align:center;background:linear-gradient(135deg,#FBF1EA,#F6E6F0);
+    border:1px solid var(--accent-soft);border-radius:16px;padding:22px;margin-top:18px;}
+  .congrats.show{display:block;animation:fade .5s ease;}
+  .congrats .ct{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--accent);}
+  .congrats .cs{font-size:13.5px;color:var(--ink2);margin-top:6px;}
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;}
+
+  /* ===== 通用件(与其余章节页一致)===== */
+  .nav{display:flex;justify-content:space-between;margin-top:22px;gap:10px;}
+  .checklist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:8px;}
+  .checklist li{display:flex;gap:10px;align-items:flex-start;font-size:13px;background:#fff;border:1px solid var(--border);
+    border-radius:10px;padding:10px 13px;}
+  .checklist li .ck{color:#3f7d63;font-weight:700;flex-shrink:0;}
+  .checklist li b{color:var(--accent);}
+  .rk-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0;}
+  .rk-row label{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:172px;}
+  .rk-val{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent);min-width:64px;text-align:center;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:8px;padding:2px 6px;}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;background:var(--accent-soft);
+    flex:1;min-width:150px;max-width:340px;outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.18);}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid #fff;}
+  input[type=range]:disabled{opacity:.35;}
+  .lab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin:10px 0;}
+  .dotread{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0 4px;}
+  .dr{background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 13px;text-align:center;}
+  .dr .drv{font-family:var(--mono);font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .dr .drl{font-size:11.5px;color:var(--ink2);margin-top:2px;}
+  .glucalc{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-top:10px;
+    font-family:var(--mono);font-size:12.5px;line-height:1.9;overflow-x:auto;}
+  .glucalc .hl{color:var(--accent);font-weight:700;}
+  .scroll-x{overflow-x:auto;}
+
+  /* 折叠块里的小表格;窄屏时自己横向滚 */
+  .tbl-scroll{overflow-x:auto;margin:8px 0 2px;}
+  .minitbl{border-collapse:collapse;font-family:var(--mono);font-size:12.5px;
+    font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .minitbl th{font-size:11.5px;font-weight:700;color:var(--ink2);text-align:left;
+    padding:4px 14px 4px 0;border-bottom:1px solid var(--border);}
+  .minitbl td{padding:3px 14px 3px 0;color:var(--ink2);}
+  .minitbl td b{color:var(--accent);font-weight:700;}
+
+  /* 横向条(STEP 1 / 4 / 5 共用) */
+  .abrow{display:flex;align-items:center;gap:11px;margin:7px 0;}
+  .abrow.click{cursor:pointer;}
+  .abrow .an{font-family:var(--mono);font-size:12px;width:190px;flex-shrink:0;color:var(--ink2);line-height:1.35;}
+  .abrow.sel .an{color:var(--accent);font-weight:700;}
+  .abrow .at{flex:1;min-width:120px;height:24px;background:#F4F2EA;border:1px solid var(--border);border-radius:7px;
+    overflow:hidden;position:relative;}
+  .abrow .af{height:100%;border-radius:6px 0 0 6px;transition:width .45s cubic-bezier(.2,.7,.2,1);}
+  .abrow .av{font-family:var(--mono);font-size:12.5px;font-weight:700;width:150px;text-align:right;flex-shrink:0;
+    font-variant-numeric:tabular-nums;line-height:1.35;}
+  .abrow .av small{display:block;font-weight:400;font-size:11px;color:var(--ink2);}
+  .chance{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink);opacity:.55;}
+  @media (max-width:640px){
+    .abrow{flex-wrap:wrap;gap:4px 10px;}
+    .abrow .an{width:100%;}
+    .abrow .av{width:auto;}
+  }
+
+  /* 热力格 */
+  .heat{display:inline-grid;gap:3px;}
+  .heat .hc{font-family:var(--mono);font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;
+    border-radius:5px;border:1px solid var(--border);font-variant-numeric:tabular-nums;}
+  .heat.big .hc{width:62px;height:46px;font-size:13px;}
+  .heat.mid .hc{width:46px;height:34px;}
+  .heat.tiny .hc{width:30px;height:24px;font-size:9px;font-weight:600;}
+
+  /* STEP 2 / 3 左右布局 */
+  .duo{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center;}
+  @media (max-width:640px){ .duo{grid-template-columns:1fr;} }
+  .mat-cap{font-family:var(--mono);font-size:11.5px;color:var(--ink2);margin-bottom:6px;}
+
+  /* STEP 3 时间线 */
+  .tline{display:grid;grid-template-columns:repeat(3,minmax(170px,1fr));gap:10px;margin:8px 0;}
+  @media (max-width:640px){ .tline{grid-template-columns:1fr;} }
+  .tcard{background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 12px;}
+  .tcard .th{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);}
+  .tcard .tw{font-family:var(--mono);font-size:11.5px;color:var(--ink2);margin:3px 0 7px;line-height:1.5;}
+  .fcard{background:#fff;border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:10px;
+    padding:10px 14px;margin:10px 0 0;font-family:var(--mono);font-size:13px;overflow-x:auto;}
+  .fcard .src{font-family:system-ui,sans-serif;font-size:11.5px;color:var(--ink2);margin-top:4px;}
+
+  /* STEP 5 检索样本 */
+  .seq{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:6px 0;}
+  .tok{font-family:var(--mono);font-size:12px;font-weight:700;border-radius:6px;padding:3px 6px;border:1.5px solid transparent;
+    cursor:default;transition:all .15s ease;}
+  .tok.k{color:#3a63c0;background:#E5EBF9;}
+  .tok.v{color:#3f7d63;background:#E4EFE9;}
+  .tok.qk{color:#3a63c0;background:#E5EBF9;cursor:pointer;}
+  .tok.ans{color:#a3548c;background:#F6E6F0;border-style:dashed;border-color:#a3548c;}
+  .tok.hit{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
+  .seqsep{font-family:var(--mono);font-size:11px;color:var(--ink2);padding:0 6px;}
+
+  /* STEP 5 层排布 */
+  .strip{display:flex;flex-wrap:wrap;gap:3px;margin:10px 0 4px;}
+  .strip .ly{width:18px;height:26px;border-radius:4px;display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:9.5px;font-weight:700;color:#fff;}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-family:var(--mono);font-size:11.5px;color:var(--ink2);margin:6px 0;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;}
+  .legend .lg-click{cursor:pointer;border-radius:6px;padding:1px 6px;border:1px solid transparent;}
+  .legend .lg-click.sel{border-color:var(--accent);color:var(--ink);background:#fff;}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <header>
+    <span class="filename">13_linear_attention_viz.html</span>
+    <h1>线性注意力:把 KV cache 换成一块固定大小的记忆板</h1>
+    <p class="subtitle">
+      第 12 章的注意力推理时要把每个 token 的 K/V 都存下来,上下文越长,
+      <span class="term" data-term="KV-cache · 键值缓存" data-key="kv-cache" data-def="把过去每个 token 的 K/V 缓存下来,生成新 token 时只算新的一列,避免重算整段。">KV cache</span>
+      越大。<span class="term" data-term="线性注意力 · linear attention" data-key="linear-attention" data-def="不存历史 K/V,每个头只维护一块 head_size×head_size 的矩阵 S:来一个 token 就把 v·kᵀ 写进去,读的时候算 S·q。状态大小与上下文长度无关,模型变回 RNN。">线性注意力</span>
+      只留一块 head_size × head_size 的矩阵,每来一个 token 往里写一次,大小和上下文长度无关。
+      本关从最朴素的写法出发,加上 delta rule 和遗忘门,得到 Qwen3-Next 用的
+      <span class="term" data-term="Gated DeltaNet · 门控 delta 网络" data-key="gated-deltanet" data-def="S ← α·S + β·(v − α·S·k)·kᵀ。α 是整块记忆的保留率,β 是这一步写多重;先读出 k 当前存的值,只补差额。Yang, Kautz, Hatamizadeh,arXiv 2412.06464。">Gated DeltaNet</span>,
+      再用 9 次真实训练看它在语言模型和精确检索上各输赢在哪。配套代码 <code>phase4-efficiency/11_linear_attn.py</code>。
+    </p>
+  </header>
+
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">KV cache 越存越长</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">记忆板:写入是加外积</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">先擦再写:delta 与遗忘门</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">五种层配方 · 真实对照</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">精确检索与 3:1 混合</div></div>
+  </div>
+
+  <div class="hp-bar">
+    <span class="hp-label">这一关</span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">n_embd <b>128</b> <i>主干维度</i></span>
+    <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">n_head <b>4</b> <i>头数</i></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">head_size <b>32</b> <i>记忆板 32×32</i></span>
+    <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">n_kv_head <b>2</b> <i>只在注意力层</i></span>
+    <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">block_size <b>64</b> <i>训练长度</i></span>
+    <span class="hp-chip" style="color:#6B6B68;background:#ECE9E0">层配方 <b>3:1</b> <i>3 GDN + 1 注意力</i></span>
+    <span class="hp-note">4 层 · 其余零件同第 12 章四件齐上 · 训练在 RTX 4090 / CUDA / PyTorch 2.4.1</span>
+  </div>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>① KV cache 越存越长</h2>
+    <p class="lead">
+      全注意力层每个 token 要存一份 K 和 V,上下文每长一个 token,cache 就多一份。
+      记忆板层每个头只存一块 head_size × head_size 的矩阵,读多长的文本都是这么大。
+      拖滑块改上下文长度,比较三种层配方要存多少个数:
+    </p>
+
+    <div class="lab">
+      <div class="btn-row sm" id="s1Scale">
+        <button class="btn primary">本关玩具(4 层)</button>
+        <button class="btn">Qwen3-Next-80B-A3B(48 层)</button>
+      </div>
+      <div class="hp-note" id="s1Desc" style="margin:4px 0 10px"></div>
+      <div class="rk-row"><label>上下文长度 T(token)</label>
+        <input type="range" id="s1Ctx" min="6" max="20" step="1" value="12">
+        <span class="rk-val" id="s1CtxV">4K</span></div>
+      <div id="s1Bars" style="margin-top:12px"></div>
+      <div class="glucalc" id="s1Calc"></div>
+    </div>
+    <div class="note" id="s1Note"></div>
+
+    <details class="dig">
+      <summary>玩具这三个数是怎么算出来的?</summary>
+      <div class="dig-body">
+        <code>11_linear_attn.py</code> 训练完把两项写进 json:
+        <code>kv_per_token = 2 × n_kv_head × head_size × 注意力层数</code>,
+        <code>state_const = n_head × head_size × head_size × 记忆板层数</code>。
+        全注意力(4 层):2 × 2 × 32 × 4 = <b>512</b> 个数 / token;
+        全 GDN(4 层):4 × 32 × 32 × 4 = <b>16,384</b> 个数,与长度无关;
+        3:1 混合:注意力 1 层 = <b>128</b> 个数 / token,记忆板 3 层 = <b>12,288</b> 个数。
+        三组数分别来自 <code>runs/cuda/ch13_lm_attn.json</code>、<code>ch13_lm_gdn.json</code>、<code>ch13_lm_hybrid.json</code>。
+        记忆板层还带一个 kernel=4 的短卷积,推理时要缓存最近 3 个 token 的输入,量级很小,这里没有计入。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>Qwen3-Next 那一栏按什么配置估算?</summary>
+      <div class="dig-body">
+        出自 HF 模型卡 Qwen/Qwen3-Next-80B-A3B-Instruct:48 层,布局 <code>12 × (3 × (Gated DeltaNet → MoE) → 1 × (Gated Attention → MoE))</code>。
+        Gated Attention:16 个 Q 头、<b>2 个 KV 头</b>、head dim <b>256</b>,所以 12 层注意力每 token 存 2 × 12 × 2 × 256 = 12,288 个数。
+        Gated DeltaNet:V <b>32</b> 头、QK 16 头、head dim <b>128</b>,本页按每层 32 × 128 × 128 个数估算记忆板,36 层共 18,874,368 个数。
+        "48 层全用注意力"和"48 层全用 GDN"两行是按同一套头配置算出的假想对照,用来和实际布局比。字节数一律按每个数 2 字节(BF16)折算,不含短卷积缓存。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:一块固定大小的矩阵,怎么装得下越来越长的历史?先看怎么往里写。</div>
+  </section>
+
+  <!-- ============ STEP 2 ============ -->
+  <section class="panel" id="panel1">
+    <h2>② 记忆板:写入就是加一个外积</h2>
+    <p class="lead">
+      把 (k, v) 写进记忆板:<code>S ← S + v kᵀ</code>。读的时候拿 query 去乘:<code>o = S q</code>。
+      如果 q 恰好等于某个写过的 k,而且所有 k 互相正交、长度为 1,读出来的就是那个 k 对应的 v。
+      下面用 2 维向量演示(只为了上屏;真实每个头 head_size=32,记忆板 32×32)。
+      <b>点按钮写入或撤掉一对,再选一个 key 去读:</b>
+    </p>
+
+    <div class="lab">
+      <div class="rk-row"><label>写入(可多选)</label>
+        <div class="btn-row sm" id="s2Write" style="margin:0">
+          <button class="btn">写入 (k1, v1)</button>
+          <button class="btn">写入 (k2, v2)</button>
+          <button class="btn">写入 (k3, v3)</button>
+        </div></div>
+      <div class="rk-row"><label>用哪个 key 读</label>
+        <div class="btn-row sm" id="s2Read" style="margin:0">
+          <button class="btn">用 k1 读</button>
+          <button class="btn">用 k2 读</button>
+          <button class="btn">用 k3 读</button>
+        </div></div>
+      <div class="rk-row"><label>k3 的方向(与 k1 的夹角)</label>
+        <input type="range" id="s2Ang" min="0" max="90" step="1" value="37">
+        <span class="rk-val" id="s2AngV">37°</span></div>
+
+      <div class="duo" style="margin-top:12px">
+        <div>
+          <div class="mat-cap">记忆板 S(2×2)</div>
+          <div id="s2Heat"></div>
+          <div class="hp-note" style="margin-top:6px">橙 = 正,蓝 = 负,颜色越深绝对值越大</div>
+        </div>
+        <div class="scroll-x" id="s2Plane"></div>
+      </div>
+      <div class="glucalc" id="s2Calc"></div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s2Out">–</div><div class="drl">读出 o = S q</div></div>
+        <div class="dr"><div class="drv" id="s2Want" style="color:var(--good)">–</div><div class="drl">这个 key 写入时的 v</div></div>
+        <div class="dr"><div class="drv" id="s2Err" style="color:var(--accent)">–</div><div class="drl">误差 ‖o − v‖</div></div>
+      </div>
+    </div>
+    <div class="note" id="s2Note"></div>
+
+    <div class="codepath">↳ 代码:<b>11_linear_attn.py</b> 的 <code>RecurrentMixer.forward</code>(<code>mode == "linear"</code> 那一支)</div>
+
+    <details class="dig">
+      <summary>这和第 2 章的 softmax 注意力是什么关系?</summary>
+      <div class="dig-body">
+        去掉 softmax 之后,注意力的输出是 <code>o_t = Σ_i v_i (k_iᵀ q_t) = (Σ_i v_i k_iᵀ) q_t</code>。
+        括号里那一坨就是 S:把所有历史 (k, v) 的外积加起来。先求和再乘 q,和逐个打分再加权,算出来一样。
+        所以不需要留着每个 k_i、v_i,留着它们的和就够了,这就是 Katharopoulos et al. 2020
+        "Transformers are RNNs"(arXiv 2006.16236)的出发点,论文把复杂度从 O(N²) 降到 O(N)。
+        代价是 softmax 没了:softmax 能让最匹配的那个 key 压过其余所有 key,线性版只能靠 key 之间正交来避免串扰。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>32 维的记忆板能装多少对?</summary>
+      <div class="dig-body">
+        32 维空间里最多有 <b>32 个</b>互相正交的单位向量,所以一个头最多无串扰地存 32 对;再多就必然有 key 不正交,读出时混进别的 value。
+        本页的 2 维版本只能装 2 对,第三对一写进去就开始互相干扰。
+        Schlag et al. 2021(arXiv 2102.11174)从"快速权重"的角度推出了同一个结论,原文称之为 "memory capacity limitation"。
+        本项目的 <code>linear</code> 模式里 q、k 先过 <code>elu + 1</code>,所有分量都是正数,两个全正向量的点积不会小于 0,更难做到正交。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:同一个 key 写两次,只加不减会把新旧值叠在一起。能不能先擦掉旧的再写?</div>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="panel" id="panel2">
+    <h2>③ 先擦再写:delta rule 与遗忘门</h2>
+    <p class="lead">
+      只加不减的写法擦不掉旧值。<span class="term" data-term="delta rule · 增量写入规则" data-key="delta-rule" data-def="S ← S + β·(v − S·k)·kᵀ:先读出 k 当前存的值,只把与目标 v 的差额写进去。等价于对 ½‖S·k − v‖² 做一步 SGD,β 是学习率。">delta rule</span> 先读出这个 key 当前存的值,只补差额;Gated DeltaNet 再加一个遗忘门 α。
+      下面是一串三次写入:先把 A 写成旧值,再写 B,最后把 A 改成新值。然后分别用 kA、kB 去读。
+      <b>切换三种写法,拖 β、α 看读出值怎么变:</b>
+    </p>
+
+    <div class="lab">
+      <div class="btn-row sm" id="s3Mode">
+        <button class="btn">linear:只加</button>
+        <button class="btn">delta:先读旧值,只补差额</button>
+        <button class="btn">gdn:再加遗忘门 α</button>
+      </div>
+      <div class="rk-row"><label>β 写入强度</label>
+        <input type="range" id="s3Beta" min="0" max="1" step="0.05" value="1">
+        <span class="rk-val" id="s3BetaV">1.00</span></div>
+      <div class="rk-row"><label>α 保留率(只有 gdn)</label>
+        <input type="range" id="s3Alpha" min="0" max="1" step="0.05" value="0.8">
+        <span class="rk-val" id="s3AlphaV">0.80</span></div>
+
+      <div class="tline" id="s3Line"></div>
+      <div class="duo">
+        <div class="dotread" style="grid-template-columns:1fr;min-width:220px">
+          <div class="dr"><div class="drv" id="s3ReadA">–</div><div class="drl">用 kA 读(新值应为 (−0.70, 0.40))</div></div>
+          <div class="dr"><div class="drv" id="s3ReadB" style="color:var(--e1)">–</div><div class="drl">用 kB 读(写入时为 (−0.30, 0.80))</div></div>
+        </div>
+        <div class="scroll-x" id="s3Plane"></div>
+      </div>
+      <div class="fcard" id="s3Formula"></div>
+    </div>
+    <div class="note" id="s3Note"></div>
+
+    <div class="sub-h"><span class="badge">真实</span>训完之后,第一层的 α 学成了多少</div>
+    <p class="lead" style="margin-bottom:10px">
+      代码里 α 的偏置初始化成 3.0,开训时 α = sigmoid(3) ≈ 0.95。下面是训练 5000 步后,第一层 4 个头在 val 文本上的平均 α,
+      画成"一条记忆过 n 个 token 后还剩几成"(按平均 α 粗算 αⁿ;实际 α 每个 token 各算一次):
+    </p>
+    <div class="lab">
+      <div class="btn-row sm" id="s3Src">
+        <button class="btn primary">4 层 GDN(gdn.json)</button>
+        <button class="btn">3:1 混合(hybrid.json)</button>
+      </div>
+      <div class="scroll-x" id="s3Alphas"></div>
+      <div class="hp-note" id="s3AlphaNote"></div>
+    </div>
+
+    <div class="codepath">↳ 代码:<b>11_linear_attn.py</b> 的 <code>RecurrentMixer</code>(<code>b_proj</code> 算 β,<code>a_proj</code> 算 α)· 开关 <code>--preset linear / delta / gdn</code></div>
+
+    <details class="dig">
+      <summary>为什么叫 delta rule?</summary>
+      <div class="dig-body">
+        写入量正比于"想存的值 v"和"当前读出的值 S·k"之差,也就是误差 delta。
+        Yang et al. 2024(arXiv 2406.06484)把它写成 <code>S_t = S_{t-1} − β_t (S_{t-1} k_t − v_t) k_tᵀ</code>,
+        并解释为对在线回归损失 <code>½‖S k_t − v_t‖²</code> 做一步 SGD,β_t 就是学习率。
+        k 做了 L2 归一化时,β_t = 1 让 <code>I − k_t k_tᵀ</code> 成为投影矩阵:先把 k_t 方向上的旧内容整个投影掉,再写新值。
+        最早把 delta rule 用到线性 Transformer 上的是 Schlag et al. 2021(arXiv 2102.11174)。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>第一层的 α 只有 0.6 左右,是不是忘得太快了?</summary>
+      <div class="dig-body">
+        按平均 α 粗算,一条记忆过 1.2 到 1.7 个 token 衰减到一半,第一层的记忆板主要在记最近几个字符。
+        这里有两点要分开看:① 这是 64 段 × 256 个 val token 上的<b>平均值</b>,α 每个位置由 <code>a_proj</code> 各算一次,个别位置可以接近 1;
+        ② 只统计了第一层,代码没有导出后面三层的 α。开训时 α ≈ 0.95,训练把第一层压到了 0.55–0.66,
+        说明对字符级语言模型的第一层来说,忘得快的记忆板让 loss 更低。更长的依赖交给哪几层、α 是多少,本实验没有测。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:三种写法在玩具上的差别看清楚了。真训一遍语言模型,val loss 差多少?</div>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="panel" id="panel3">
+    <h2>④ 五种层配方的真实对照</h2>
+    <p class="lead">
+      同一份 tiny shakespeare、同一套超参(4 层、5000 步、batch 64、lr 1e-3、seed 1337),只换每层用什么:
+      全注意力、全 linear、全 delta、全 GDN、3 GDN + 1 注意力。训练长度 64,训完再拿 128 / 256 / 512 长的片段测 val loss。
+      <b>切换指标,点一组看细节:</b>
+    </p>
+
+    <div class="btn-row sm" id="s4Metric">
+      <button class="btn primary">val loss @64(训练长度)</button>
+      <button class="btn">长度外推 64 → 512</button>
+    </div>
+    <div class="btn-row sm" id="s4Zoom" style="display:none">
+      <button class="btn primary">纵轴全范围</button>
+      <button class="btn">放大 1.50–1.70</button>
+    </div>
+    <div class="lab scroll-x" id="s4Chart"></div>
+    <div class="lab" id="s4Info"></div>
+    <div class="note">
+      训练长度 64 上,五组 val loss 落在 <b>1.5357–1.5722</b> 之间;拉到 512,全注意力涨到 <b>3.5171</b>,GDN 与 3:1 混合停在 <b>1.532 / 1.536</b>。
+    </div>
+
+    <details class="dig">
+      <summary>为什么全注意力拉长到 512 就崩了?</summary>
+      <div class="dig-body">
+        全注意力层用 RoPE(第 12 章):位置越靠后转的角度越大。训练只见过 0–63 的位置,
+        到 128、256、512 时,q·k 里出现的相对距离和转角组合模型从没见过,val loss 从 1.539 涨到 1.941、2.855、3.517。
+        记忆板层没有位置编码,顺序靠"一个一个往里写"自带,所以 GDN 在更长的片段上 loss 反而略降(1.569 → 1.517 @256),多出来的上文有用。
+        3:1 混合的第 4 层也是带 RoPE 的注意力,512 时却是 1.536,没有崩。本实验没有单独做消融,这个现象的原因不在这里下结论。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>@64 这些差距,哪些是真的、哪些是噪声?</summary>
+      <div class="dig-body">
+        每组只跑了一个种子。页面上同一个模型有两个 @64 的数:训练末尾的 <code>val</code>(200 个 batch)和外推测试里的 64(40 个 batch),
+        两者最多差 <b>0.0069</b>(3:1 混合:1.5446 对 1.5515)。这就是这套评测的抽样噪声量级。
+        所以 <b>GDN 与 delta 的 0.0005</b>、<b>全注意力与 3:1 混合的 0.0089</b> 都在噪声附近,不能据此排先后。
+        全注意力比全 linear 低 <b>0.0365</b>,比全 GDN 低 <b>0.0289</b>,幅度大得多,更可能是真的差距。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>linear 和 delta 为什么越长越差?</summary>
+      <div class="dig-body">
+        点上面的 linear 看它的记忆板:读完 256 个字符后,第一层 head 0 左上 8×8 的最大绝对值是 <b>215.6</b>;
+        delta 是 <b>0.518</b>,GDN 是 <b>0.121</b>。linear 只加不减,越长累积越多,512 时 loss 涨到 1.673。
+        delta 的写入会替换旧值,状态没有发散,但它没有遗忘门,没被重新写到的方向一直留着,512 时涨到 1.629。
+        加了 α 的 GDN 在 512 时是 1.532。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>记忆板这几组为什么训得慢这么多?</summary>
+      <div class="dig-body">
+        <code>RecurrentMixer.forward</code> 用 Python for 循环逐 token 更新 S,每层每步要循环 64 次,全注意力是一次矩阵乘。
+        实测全注意力 <b>493 秒</b>,全 GDN <b>1603 秒</b>。另外这 9 组训练和第 14 章的 3 组是在同一张 RTX 4090 上<b>同时</b>跑的,
+        互相抢 GPU,秒数只能看个大概。
+        真实实现(flash-linear-attention 等)把序列切块并行计算,和逐 token 循环数学上等价;
+        代码里写循环,是为了让"它是个 RNN"一眼看得出来。
+      </div>
+    </details>
+
+    <div class="codepath">↳ 跑法:<code>python 11_linear_attn.py --preset attn / linear / delta / gdn / hybrid</code>(默认 <code>--task lm</code>)</div>
+
+    <div class="next-hint">↳ 下一步:loss 只差百分之几,记忆板还省了一大截 cache。它输在哪?换一个要精确找回的任务。</div>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="panel" id="panel4">
+    <h2>⑤ 精确检索与 3:1 混合</h2>
+    <p class="lead">
+      键值检索任务:序列前半段是 N 对 (key, value),后半段把这 N 个 key 打乱再出一遍,每个 key 后面要答出它当初配的 value。
+      只有答案位置算 loss。<b>点后半段任意一个 key,看它要去前面找哪一对:</b>
+    </p>
+
+    <div class="lab">
+      <div class="hp-note">一条 N = 8 的样本(页面按 <code>get_batch</code> 同样的规则现场生成;训练用 N = 32,序列长 128)</div>
+      <div id="s5Sample"></div>
+      <div class="legend">
+        <span><i style="background:#E5EBF9;border:1px solid #3a63c0"></i>key(token 0–63)</span>
+        <span><i style="background:#E4EFE9;border:1px solid #3f7d63"></i>value(token 64–127,显示成 V00–V63)</span>
+        <span><i style="background:#F6E6F0;border:1px dashed #a3548c"></i>要答的 value(只在这里算 loss)</span>
+      </div>
+      <div class="hp-note" id="s5SampleNote"></div>
+    </div>
+
+    <div class="sub-h"><span class="badge">真实</span>四种层配方答对多少</div>
+    <div class="btn-row sm" id="s5View">
+      <button class="btn primary">准确率</button>
+      <button class="btn">训练曲线</button>
+    </div>
+    <div class="lab">
+      <div id="s5AccWrap">
+        <div class="rk-row"><label>评测时的 N(训练固定 32)</label>
+          <input type="range" id="s5N" min="0" max="3" step="1" value="3">
+          <span class="rk-val" id="s5NV">32</span></div>
+        <div id="s5Bars" style="margin-top:10px"></div>
+        <div class="hp-note">竖线 = 随机猜的准确率 1/64 ≈ 1.56%(value 有 64 种)</div>
+      </div>
+      <div id="s5CurveWrap" class="scroll-x" hidden></div>
+    </div>
+    <div class="note">
+      同样 4 层、同样 32×32 的记忆板,<b>只加不减的 linear 在 N=32 时答对 16.6%</b>;带 delta rule 和遗忘门的 GDN 答对 <b>99.9%</b>,和全注意力的 100% 接近。
+    </div>
+
+    <details class="dig">
+      <summary>3:1 混合只有 88–93%,是不是说明混合不如纯 GDN?</summary>
+      <div class="dig-body">
+        这组数不能这么读,它<b>没训完</b>。切到"训练曲线"看:全注意力在 2000 → 2500 步之间 loss 从 2.60 骤降到 0.33,
+        GDN 在 1500 → 2500 步从 1.77 降到 0.07;混合这组平台期拖到很后面,5000 步时还是 1.35,5500 步 0.65,
+        最后一次评估(5999 步)train 0.1475 / val 0.1462,仍在往下走。训练预算固定 6000 步、只跑一个种子,
+        它刚好在骤降的半路上停了。要比较混合和纯 GDN,需要训到 loss 都走平、再多跑几个种子;本页不给这个排序。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>纯 GDN 这里也 99%,工业界为什么还要每 4 层留 1 层注意力?</summary>
+      <div class="dig-body">
+        要看条件。本实验最多记 <b>N = 32 对</b>,序列 128 个 token,每层 4 个头各有一块 32×32 的记忆板,要记的对数和 head_size 同一量级,
+        纯 GDN 装得下。真实模型的上下文是几万到几十万 token(Qwen3-Next 原生 262,144),要精确找回的内容远多于记忆板的维度,
+        固定大小的状态总有装不下的时候;全注意力层把每个 token 的 K/V 都留着,这类检索不受容量限制。
+        Zoology(Arora et al.,arXiv 2312.04927)对比注意力与多种高效架构,原文:"82% of the gap is explained by each model's ability to recall information that is previously mentioned in-context"。
+        Kimi Linear(arXiv 2510.26692)§5.2 的消融里,3 层 KDA 配 1 层 MLA 的 3:1 比例在质量与吞吐之间取舍最好。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>linear 为什么只答对 6–17%?</summary>
+      <div class="dig-body">
+        它比随机猜(1.56%)高,但离检索还很远。两个原因叠在一起:S 只加不减,32 对写进去全部叠加;
+        q、k 过了 <code>elu + 1</code> 全是正数,key 之间点积都大于 0,读任何一个 key 都会混进其他 value。
+        训练曲线上它的 loss 从 2.60 降到 2.47 就停住了,没有出现另外三组那样的骤降。
+      </div>
+    </details>
+
+    <div class="sub-h"><span class="badge">工业</span>真实模型怎么排层</div>
+    <p class="lead" style="margin-bottom:10px">
+      公开的线性注意力大模型都用<span class="term" data-term="混合注意力 · 3:1 hybrid" data-key="hybrid-attention" data-def="大部分层用固定状态的线性注意力(如 Gated DeltaNet),每隔几层留一层保留全部 K/V 的注意力。Qwen3-Next、Kimi Linear 都是 3 层线性配 1 层注意力。">混合排布</span>:每 3 层固定状态的层配 1 层保留 K/V 的注意力层。选一个模型看它的 48 或 60 层怎么排:
+    </p>
+    <div class="btn-row sm" id="s5Arch">
+      <button class="btn primary">本关 hybrid</button>
+      <button class="btn">Qwen3-Next-80B-A3B</button>
+      <button class="btn">Qwen3.5-397B-A17B</button>
+      <button class="btn">Qwen3.8-Flash-Next</button>
+      <button class="btn">Kimi Linear</button>
+    </div>
+    <div class="lab">
+      <div class="strip" id="s5Strip"></div>
+      <div class="legend" id="s5ArchLegend"></div>
+      <div class="hp-note" id="s5ArchNote"></div>
+    </div>
+
+    <details class="dig">
+      <summary>Mamba2 和 Gated DeltaNet 是什么关系?</summary>
+      <div class="dig-body">
+        Gated DeltaNet 论文(Yang, Kautz, Hatamizadeh,arXiv 2412.06464,ICLR 2025)标题就是 "Improving Mamba2 with Delta Rule"。§2.1 把几种写法摆在一起:
+        <div class="tbl-scroll"><table class="minitbl">
+          <tr><th>模型</th><th>记忆板更新</th></tr>
+          <tr><td>线性注意力</td><td>S_t = S_{t-1} + v_t k_tᵀ</td></tr>
+          <tr><td>Mamba2</td><td>S_t = <b>α_t</b> S_{t-1} + v_t k_tᵀ</td></tr>
+          <tr><td>DeltaNet</td><td>S_t = S_{t-1}(I − <b>β_t</b> k_t k_tᵀ) + β_t v_t k_tᵀ</td></tr>
+          <tr><td>Gated DeltaNet</td><td>S_t = S_{t-1}(<b>α_t</b>(I − <b>β_t</b> k_t k_tᵀ)) + β_t v_t k_tᵀ</td></tr>
+        </table></div>
+        Mamba2 有遗忘门 α、没有 delta rule;DeltaNet 有 delta rule、没有遗忘门;Gated DeltaNet 两个都要。
+        α 负责整块按比例清空,β 负责对单个 key 精确改写。Kimi Linear 的 KDA 在 Gated DeltaNet 基础上把门控做得更细。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>为什么 delta 和 GDN 的 key 要做 L2 归一化?</summary>
+      <div class="dig-body">
+        delta rule 写完一次后,<code>S' k = S k + β (v − S k) ‖k‖²</code>。
+        ‖k‖ = 1、β = 1 时,S'k 正好等于 v,"读出 S·k"才等于"这个 key 当前存的值"。
+        如果 ‖k‖² = 4,同样的 β 会把差额放大 4 倍,读出值越过 v,反复写同一个 key 时误差按 |1 − β‖k‖²| = 3 倍往上翻,状态会发散。
+        代码里 <code>F.normalize(q, dim=-1)</code>、<code>F.normalize(k, dim=-1)</code> 两行就是为此;linear 模式不归一化,用 <code>elu + 1</code>。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>短卷积在这里干什么用?</summary>
+      <div class="dig-body">
+        <code>RecurrentMixer</code> 在算 q/k/v 之前先过一个 kernel=4 的因果卷积,让每个位置的 q/k/v 看到自己和前 3 个 token。
+        检索任务里这一点很直接:读到 value 那一格时,应该以"前一个 token 的 key"为地址写入"这个 token 的 value";
+        没有卷积,第 t 个位置的 k 只来自第 t 个 token 自己。
+        Gated DeltaNet 与 Qwen3-Next 都带这个卷积(Qwen3.8-Flash-Next 的 config 里 conv kernel 也是 4)。
+        代码对 linear / delta / gdn 三种写法都加了它,所以对照里的差别只来自写规则。
+      </div>
+    </details>
+
+    <div class="sub-h"><span class="badge">达标</span>本关实测(RTX 4090 · CUDA · PyTorch 2.4.1 · 单种子)</div>
+    <ul class="checklist" id="okList"></ul>
+
+    <div class="codepath">↳ 代码:<b>11_linear_attn.py</b> 的 <code>get_batch</code>(recall 分支)· 跑法 <code>python 11_linear_attn.py --preset gdn --task recall</code></div>
+
+    <div class="congrats" id="congrats">
+      <div class="ct">🎉 线性注意力 · 通关</div>
+      <div class="cs">你已经看过记忆板的三种写法:只加的 linear、先擦再写的 delta、再加遗忘门的 Gated DeltaNet,也看到了它在长度外推上的优势和精确检索上的容量边界。下一关换一条路:K/V 全存,但每个 query 只读一部分。</div>
+    </div>
+  </section>
+
+  <div class="nav">
+    <button class="btn" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<canvas id="confetti"></canvas>
+
+<script>
+/* ================================================================
+   REAL-DATA:全部来自 phase4-efficiency/runs/cuda/ 下的 json
+   硬件:RTX 4090 · CUDA · PyTorch 2.4.1 · seed 1337 · 单种子
+   命令(runs/cuda/run_4090.sh,9 组与第 14 章 3 组同时启动):
+     python 11_linear_attn.py --preset {attn,linear,delta,gdn,hybrid} --json runs/ch13_lm_<preset>.json
+     python 11_linear_attn.py --preset {attn,linear,gdn,hybrid} --task recall --json runs/ch13_recall_<preset>.json
+   ================================================================ */
+
+/* ch13_lm_<preset>.json:params / train_seconds / val / val_by_len / kv_per_token / state_const /
+   curve 最后一行的 train / state_head0(第一个记忆板层 head 0 左上 8×8,读 256 个 val 字符后) */
+const LM={
+  attn:{name:'全注意力', short:'attn', layers:'attn ×4', params:742849, secs:493, val:1.5357, train:1.2859,
+    byLen:{64:1.5391,128:1.941,256:2.8545,512:3.5171}, kv:512, state:0, S:null},
+  linear:{name:'全 linear', short:'linear', layers:'linear ×4', params:880193, secs:1150, val:1.5722, train:1.2969,
+    byLen:{64:1.5756,128:1.5853,256:1.6057,512:1.673}, kv:0, state:16384,
+    S:[[7.551,5.895,3.211,-1.944,19.059,-0.04,14.285,2.84],[-1.856,15.524,0.063,9.746,18.455,11.128,-33.411,3.328],[-15.507,21.472,23.635,22.635,10.721,88.579,-100.897,54.76],[-14.76,-6.433,1.388,-1.364,-5.394,-21.526,-46.081,-13.431],[-28.484,9.46,5.62,10.277,8.616,19.155,-95.891,3.031],[-17.859,23.773,12.168,16.695,30.931,21.072,-109.798,-1.894],[80.321,27.857,23.304,31.552,40.513,23.031,215.598,24.947],[0.847,6.565,3.625,19.73,-1.674,3.404,-7.456,-4.905]]},
+  delta:{name:'全 delta', short:'delta', layers:'delta ×4', params:882257, secs:1475, val:1.5651, train:1.2459,
+    byLen:{64:1.5661,128:1.5447,256:1.5791,512:1.629}, kv:0, state:16384,
+    S:[[0.119,0.129,0.157,0.056,-0.009,-0.154,0.225,0.223],[0.226,0.059,-0.015,-0.044,0.437,-0.03,-0.194,0.048],[-0.403,0.02,0.005,-0.142,0.11,-0.058,-0.018,0.195],[0.038,0.458,-0.054,0.266,0.083,-0.01,-0.063,-0.09],[-0.051,0.055,0.19,0.109,-0.076,-0.016,-0.093,-0.175],[-0.331,0.005,0.285,0.072,0.199,-0.089,0.072,-0.109],[-0.232,0.271,0.071,0.518,-0.188,-0.055,-0.225,-0.039],[-0.115,0.056,0.002,0.099,-0.172,0.254,-0.013,-0.165]]},
+  gdn:{name:'全 GDN', short:'gdn', layers:'gdn ×4', params:884321, secs:1603, val:1.5646, train:1.207,
+    byLen:{64:1.5689,128:1.5463,256:1.5172,512:1.532}, kv:0, state:16384,
+    S:[[-0.023,0.004,0.007,-0.043,0.017,-0.014,0.035,-0.009],[0.002,0.017,-0.002,0.004,-0.0,0.002,-0.0,0.01],[-0.005,-0.039,0.008,-0.014,0.005,-0.007,0.004,-0.025],[-0.004,-0.054,0.013,-0.008,0.007,-0.006,0.001,-0.024],[-0.003,-0.044,0.027,-0.013,0.017,-0.011,0.014,-0.012],[0.002,-0.007,0.016,-0.002,0.01,-0.004,0.008,0.006],[-0.001,0.064,-0.011,-0.004,-0.004,0.003,0.009,0.027],[0.033,0.121,-0.011,0.052,-0.017,0.021,-0.02,0.078]]},
+  hybrid:{name:'3:1 混合', short:'hybrid', layers:'gdn, gdn, gdn, attn', params:848953, secs:1405, val:1.5446, train:1.2197,
+    byLen:{64:1.5515,128:1.5141,256:1.5372,512:1.5361}, kv:128, state:12288,
+    S:[[-0.039,0.214,0.211,-0.106,-0.102,-0.031,-0.057,-0.127],[0.003,-0.019,-0.043,0.009,0.016,0.003,0.002,0.019],[0.009,-0.077,-0.044,0.036,0.034,0.011,0.019,0.049],[-0.004,0.018,0.109,-0.019,-0.003,-0.002,-0.005,0.001],[-0.011,-0.019,0.189,-0.006,0.001,0.004,0.007,0.015],[-0.011,-0.022,0.111,0.003,-0.003,0.004,0.007,0.01],[-0.03,0.213,0.211,-0.109,-0.093,-0.031,-0.055,-0.123],[0.016,-0.018,0.025,0.004,0.01,0.003,0.01,0.005]]},
+};
+const LM_ORDER=['attn','linear','delta','gdn','hybrid'];
+const COL={attn:'#3a63c0', linear:'#8C8A83', delta:'#a87b1f', gdn:'#3f7d63', hybrid:'#D97757'};
+
+/* ch13_lm_gdn.json / ch13_lm_hybrid.json 的 alpha_mean_per_head(第一层每个头在 256 个 val token 上的平均 α) */
+const ALPHA={gdn:[0.6005,0.6639,0.6462,0.5837], hybrid:[0.5825,0.6496,0.658,0.5523]};
+const ALPHA_INIT=1/(1+Math.exp(-3));   // a_proj.bias 初始化为 3.0
+
+/* ch13_recall_<preset>.json:recall_acc(N=8/16/24/32)与 curve [step, train, val];训练固定 N=32、6000 步、batch 128 */
+const RECALL={
+  attn:{name:'全注意力', params:759040, secs:469, acc:{8:0.9998,16:0.9999,24:1.0,32:1.0},
+    curve:[[0,5.0194,5.0192],[500,3.3278,3.3252],[1000,2.8552,2.8569],[1500,2.6702,2.6698],[2000,2.5974,2.5969],[2500,0.331,0.3318],[3000,0.0472,0.049],[3500,0.0092,0.009],[4000,0.0018,0.0017],[4500,0.0002,0.0002],[5000,0.0003,0.0002],[5500,0.0002,0.0002],[5999,0.0002,0.0001]]},
+  linear:{name:'全 linear', params:896384, secs:2193, acc:{8:0.0724,16:0.0626,24:0.0608,32:0.1656},
+    curve:[[0,5.0282,5.0277],[500,3.3617,3.3631],[1000,2.832,2.8297],[1500,2.6591,2.6625],[2000,2.5994,2.601],[2500,2.5515,2.5494],[3000,2.5304,2.5326],[3500,2.5104,2.51],[4000,2.5115,2.5098],[4500,2.5078,2.5098],[5000,2.483,2.4821],[5500,2.4994,2.5011],[5999,2.4702,2.4709]]},
+  gdn:{name:'全 GDN', params:900512, secs:2573, acc:{8:0.9982,16:0.9911,24:0.9915,32:0.9987},
+    curve:[[0,5.0232,5.021],[500,3.0456,3.047],[1000,2.1577,2.159],[1500,1.7661,1.7653],[2000,0.8046,0.8003],[2500,0.0718,0.0727],[3000,0.025,0.0262],[3500,0.0137,0.0132],[4000,0.011,0.0106],[4500,0.0064,0.0064],[5000,0.0044,0.0042],[5500,0.0062,0.0058],[5999,0.0042,0.0039]]},
+  hybrid:{name:'3:1 混合', params:865144, secs:2338, acc:{8:0.9259,16:0.8829,24:0.8839,32:0.9334},
+    curve:[[0,5.0168,5.016],[500,3.1044,3.1007],[1000,2.6544,2.6511],[1500,2.7752,2.7757],[2000,2.6728,2.6738],[2500,2.6049,2.6056],[3000,2.5318,2.5292],[3500,2.1437,2.1434],[4000,1.9675,1.9685],[4500,1.4455,1.4468],[5000,1.3527,1.3541],[5500,0.6536,0.6524],[5999,0.1475,0.1462]]},
+};
+const RC_ORDER=['attn','linear','gdn','hybrid'];
+const RECALL_NS=[8,16,24,32];
+const N_VALS=64;                        // 11_linear_attn.py:N_KEYS, N_VALS = 64, 64
+
+/* ============ 通用小工具 ============ */
+function setActiveBtn(containerId, n){
+  document.querySelectorAll('#'+containerId+' .btn').forEach((b,i)=>b.classList.toggle('primary', i===n));
+}
+function bindBtns(containerId, fn){
+  document.querySelectorAll('#'+containerId+' .btn').forEach((b,i)=>b.addEventListener('click',()=>fn(i)));
+}
+const $=id=>document.getElementById(id);
+const en=v=>v.toLocaleString('en-US');
+const f2=v=>(Math.abs(v)<0.005?0:v).toFixed(2);
+const vec=v=>'('+f2(v[0])+', '+f2(v[1])+')';
+function heatHTML(M, cls, digits){
+  const n=M[0].length;
+  let mx=0; M.forEach(r=>r.forEach(x=>{ if(Math.abs(x)>mx) mx=Math.abs(x); }));
+  mx=Math.max(mx,1e-9);
+  const cells=M.map(r=>r.map(x=>{
+    const t=x/mx, a=Math.min(1,Math.abs(t));
+    const bg= t>=0 ? `rgba(217,119,87,${(0.08+0.92*a).toFixed(3)})` : `rgba(58,99,192,${(0.08+0.92*a).toFixed(3)})`;
+    const fg= a>0.55 ? '#fff' : 'var(--ink)';
+    return `<div class="hc" style="background:${bg};color:${fg}" title="${x}">${digits===null?'':x.toFixed(digits)}</div>`;
+  }).join('')).join('');
+  return `<div class="heat ${cls}" style="grid-template-columns:repeat(${n},auto)">${cells}</div>`;
+}
+/* 2 维平面上画箭头 */
+function planeSVG(arrows, R){
+  const W=250, C=W/2, sc=(W/2-18)/R;
+  let s=`<svg width="${W}" height="${W}" viewBox="0 0 ${W} ${W}" role="img" aria-label="二维向量平面">`;
+  s+=`<defs>${arrows.map((a,i)=>`<marker id="ah${a.id||''}${i}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${a.color}"/></marker>`).join('')}</defs>`;
+  s+=`<rect x="1" y="1" width="${W-2}" height="${W-2}" rx="12" fill="#fff" stroke="var(--border)"/>`;
+  s+=`<line x1="10" y1="${C}" x2="${W-10}" y2="${C}" stroke="var(--border)"/><line x1="${C}" y1="10" x2="${C}" y2="${W-10}" stroke="var(--border)"/>`;
+  s+=`<circle cx="${C+sc}" cy="${C}" r="0" /><text x="${C+sc}" y="${C+13}" font-size="9" text-anchor="middle" fill="#9a978f" font-family="ui-monospace">1</text>`;
+  s+=`<line x1="${C+sc}" y1="${C-3}" x2="${C+sc}" y2="${C+3}" stroke="#9a978f"/><line x1="${C-3}" y1="${C-sc}" x2="${C+3}" y2="${C-sc}" stroke="#9a978f"/>`;
+  arrows.forEach((a,i)=>{
+    const clamp=v=>Math.max(-R,Math.min(R,v));
+    const x=C+clamp(a.v[0])*sc, y=C-clamp(a.v[1])*sc;
+    if(Math.hypot(a.v[0],a.v[1])<1e-6){ s+=`<circle cx="${C}" cy="${C}" r="4" fill="${a.color}"/>`; return; }
+    s+=`<line x1="${C}" y1="${C}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${a.color}" stroke-width="${a.w||2.5}"
+         ${a.dash?'stroke-dasharray="5 4"':''} opacity="${a.op||1}" marker-end="url(#ah${a.id||''}${i})"/>`;
+    if(a.label) s+=`<text x="${(x+(a.v[0]>=0?5:-5)).toFixed(1)}" y="${(y+(a.v[1]>=0?-5:13)).toFixed(1)}" font-size="11" font-weight="700"
+         text-anchor="${a.v[0]>=0?'start':'end'}" fill="${a.color}" font-family="ui-monospace">${a.label}</text>`;
+  });
+  return s+'</svg>';
+}
+/* 字节数格式(1024 进制) */
+function fmtBytes(b){
+  const u=[['GiB',1024**3],['MiB',1024**2],['KiB',1024]];
+  for(const [n,v] of u){ if(b>=v){ const x=b/v; return (x>=100?Math.round(x):x.toFixed(x>=10?1:2))+' '+n; } }
+  return b+' 字节';
+}
+function fmtCount(n){
+  if(n>=1e9) return (n/1e9).toFixed(n>=1e10?1:2)+'B';
+  if(n>=1e6) return (n/1e6).toFixed(n>=1e7?1:2)+'M';
+  if(n>=1e4) return (n/1e3).toFixed(1)+'K';
+  return en(n);
+}
+
+/* ============ 步骤切换 ============ */
+const NSTEP=5;
+const tabs=document.querySelectorAll('.step-tab');
+const panels=[];for(let i=0;i<NSTEP;i++)panels.push(document.getElementById('panel'+i));
+let cur=0;
+function goto(i){
+  cur=Math.max(0,Math.min(NSTEP-1,i));
+  tabs.forEach(t=>t.classList.toggle('active',+t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active',idx===cur));
+  document.getElementById('prevBtn').disabled = cur===0;
+  document.getElementById('nextBtn').textContent = cur===NSTEP-1 ? '完成 🎉' : '下一步 →';
+  const hash='#step-'+(cur+1);
+  if(location.hash!==hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+document.getElementById('prevBtn').addEventListener('click',()=>goto(cur-1));
+document.getElementById('nextBtn').addEventListener('click',()=>{ if(cur===NSTEP-1) celebrate(); else goto(cur+1); });
+
+/* ============ STEP 1:KV cache vs 固定状态 ============
+   玩具:ch13_lm_{attn,gdn,hybrid}.json 的 kv_per_token / state_const
+   Qwen3-Next-80B-A3B(HF 模型卡):48 层 = 36 Gated DeltaNet + 12 Gated Attention
+     Gated Attention:2 个 KV 头 × head dim 256 → 每层每 token 2×2×256 个数
+     Gated DeltaNet:V 32 头,head dim 128 → 每层状态按 32×128×128 估算
+   ================================================================ */
+const S1=[
+  {desc:'4 层 · n_head=4 · head_size=32 · 注意力层 n_kv_head=2。三行数据来自 ch13_lm_attn / gdn / hybrid.json。',
+   bytes:false,
+   rows:[
+     {key:'attn', name:'全注意力(attn ×4)', per:512, fixed:0},
+     {key:'gdn', name:'全 GDN(gdn ×4)', per:0, fixed:16384},
+     {key:'hybrid', name:'3:1 混合(3 GDN + 1 attn)', per:128, fixed:12288},
+   ]},
+  {desc:'48 层 · Gated Attention 2 个 KV 头 × head dim 256 · Gated DeltaNet 32 个 V 头 × head dim 128。按模型卡配置估算,前两行是假想对照。',
+   bytes:true,
+   rows:[
+     {key:'attn', name:'假想:48 层全是 Gated Attention', per:2*48*2*256, fixed:0},
+     {key:'gdn', name:'假想:48 层全是 Gated DeltaNet', per:0, fixed:48*32*128*128},
+     {key:'hybrid', name:'实际:12 层注意力 + 36 层 GDN', per:2*12*2*256, fixed:36*32*128*128},
+   ]},
+];
+let s1Mode=0;
+function ctxLabel(T){ return T>=1048576?(T/1048576)+'M':(T>=1024?(T/1024)+'K':String(T)); }
+function renderS1(){
+  const cfg=S1[s1Mode];
+  const T=2**(+$('s1Ctx').value);
+  $('s1CtxV').textContent=ctxLabel(T);
+  $('s1Desc').textContent=cfg.desc;
+  setActiveBtn('s1Scale',s1Mode);
+  const tot=cfg.rows.map(r=>r.per*T+r.fixed);
+  const mx=Math.max(...tot);
+  $('s1Bars').innerHTML=cfg.rows.map((r,i)=>{
+    const w=Math.max(0.4,100*tot[i]/mx);
+    const sub= r.per&&r.fixed ? `${en(r.per)}×T + ${en(r.fixed)}` : (r.per? `${en(r.per)} × T` : '固定,与 T 无关');
+    return `<div class="abrow"><div class="an">${r.name}</div>
+      <div class="at"><div class="af" style="width:${w.toFixed(2)}%;background:${COL[r.key]}"></div></div>
+      <div class="av">${fmtCount(tot[i])} 个数<small>${cfg.bytes?fmtBytes(tot[i]*2)+' · ':''}${sub}</small></div></div>`;
+  }).join('');
+  const [a,g,h]=cfg.rows;
+  const cross=g.fixed/a.per;
+  $('s1Calc').innerHTML=
+    `${a.name}:${en(a.per)} × ${en(T)} = <span class="hl">${en(tot[0])}</span> 个数<br>
+     ${g.name}:<span class="hl">${en(tot[1])}</span> 个数(读多长都一样)<br>
+     ${h.name}:${en(h.per)} × ${en(T)} + ${en(h.fixed)} = <span class="hl">${en(tot[2])}</span> 个数
+     ${cfg.bytes?'<br><span style="color:var(--ink2)">(字节按每个数 2 字节折算,1 GiB = 1024³ 字节)</span>':''}`;
+  const ratio=tot[0]/tot[1];
+  $('s1Note').innerHTML=
+    `上下文超过 <b>${en(cross)}</b> 个 token 之后,全注意力存的数就比全 GDN 多;当前 T = ${en(T)},是全 GDN 的 <b>${ratio>=10?Math.round(ratio).toLocaleString('en-US'):ratio.toFixed(2)} 倍</b>。
+     3:1 混合是全注意力的 <b>${(100*tot[2]/tot[0]).toFixed(1)}%</b>${T>=65536?',长度越长越接近 25%(只有四分之一的层存 KV)':''}。`;
+}
+bindBtns('s1Scale',i=>{s1Mode=i;renderS1();});
+$('s1Ctx').addEventListener('input',renderS1);
+renderS1();
+
+/* ============ STEP 2:外积写入 ============ */
+const V2=[[0.8,-0.4],[0.2,0.9],[-0.6,0.5]];   // 三个 value(占位的 2 维数)
+const V2COL=['#3a63c0','#a3548c','#a87b1f'];
+let s2W=[true,true,false], s2R=0;
+function s2Keys(){
+  const th=(+$('s2Ang').value)*Math.PI/180;
+  return [[1,0],[0,1],[Math.cos(th),Math.sin(th)]];
+}
+function renderS2(){
+  const K=s2Keys();
+  $('s2AngV').textContent=$('s2Ang').value+'°';
+  document.querySelectorAll('#s2Write .btn').forEach((b,i)=>b.classList.toggle('primary',s2W[i]));
+  setActiveBtn('s2Read',s2R);
+  const S=[[0,0],[0,0]];
+  for(let i=0;i<3;i++) if(s2W[i]) for(let r=0;r<2;r++) for(let c=0;c<2;c++) S[r][c]+=V2[i][r]*K[i][c];
+  const q=K[s2R];
+  const o=[S[0][0]*q[0]+S[0][1]*q[1], S[1][0]*q[0]+S[1][1]*q[1]];
+  const want=V2[s2R];
+  const err=Math.hypot(o[0]-want[0],o[1]-want[1]);
+  $('s2Heat').innerHTML=heatHTML(S,'big',2);
+  const arrows=[];
+  for(let i=0;i<3;i++) arrows.push({v:K[i],color:V2COL[i],w:1.5,op:s2W[i]?0.45:0.15,label:'k'+(i+1),id:'k'});
+  arrows.push({v:want,color:'#3f7d63',dash:true,label:'v'+(s2R+1),id:'w'});
+  arrows.push({v:o,color:'#D97757',w:3,label:'o',id:'o'});
+  $('s2Plane').innerHTML=planeSVG(arrows,1.6);
+  const written=[0,1,2].filter(i=>s2W[i]);
+  $('s2Calc').innerHTML=
+    `S = ${written.length?written.map(i=>`v${i+1}·k${i+1}ᵀ`).join(' + '):'0(还没写入)'}<br>
+     k3 = (${f2(K[2][0])}, ${f2(K[2][1])}) · k${s2R+1}·k1 = ${f2(q[0])} · k${s2R+1}·k2 = ${f2(q[1])}${s2R===2?'':' · k'+(s2R+1)+'·k3 = '+f2(q[0]*K[2][0]+q[1]*K[2][1])}<br>
+     o = S · k${s2R+1} = <span class="hl">${vec(o)}</span>`;
+  $('s2Out').textContent=vec(o);
+  $('s2Want').textContent=vec(want);
+  $('s2Err').textContent=err.toFixed(3);
+  let msg;
+  if(!s2W[s2R]) msg=`k${s2R+1} 这一对<b>没写入</b>,读出来的 ${vec(o)} 全是别的 key 串过来的内容。`;
+  else if(err<0.005) msg=`读得准:参与写入的 key 和 k${s2R+1} 要么就是它自己,要么和它<b>正交</b>(点积 0),其他 value 一点都没混进来。`;
+  else {
+    const others=written.filter(i=>i!==s2R).map(i=>`k${i+1}·k${s2R+1} = ${f2(K[i][0]*q[0]+K[i][1]*q[1])}`);
+    msg=`出现串扰,误差 <b>${err.toFixed(3)}</b>:${others.join(',')},点积不为 0 的那些 key,会按点积的大小把自己的 value 混进读出值。2 维空间里第三个 key 不可能和前两个都正交。`;
+  }
+  $('s2Note').innerHTML=msg;
+}
+document.querySelectorAll('#s2Write .btn').forEach((b,i)=>b.addEventListener('click',()=>{s2W[i]=!s2W[i];renderS2();}));
+bindBtns('s2Read',i=>{s2R=i;renderS2();});
+$('s2Ang').addEventListener('input',renderS2);
+renderS2();
+
+/* ============ STEP 3:三种写法(与 RecurrentMixer.forward 同一套更新)============ */
+const KA=[1,0], KB=[0,1];
+const SEQ=[
+  {k:KA, v:[0.9,0.3], kn:'kA', lab:'① 写 A(旧值)'},
+  {k:KB, v:[-0.3,0.8], kn:'kB', lab:'② 写 B'},
+  {k:KA, v:[-0.7,0.4], kn:'kA', lab:'③ 写 A(新值)'},
+];
+const MODES=['linear','delta','gdn'];
+let s3M=2, s3Src=0;
+const mulSv=(S,k)=>[S[0][0]*k[0]+S[0][1]*k[1], S[1][0]*k[0]+S[1][1]*k[1]];
+function writeStep(S,k,v,mode,alpha,beta){
+  if(mode==='linear') return S.map((row,r)=>row.map((x,c)=>x+v[r]*k[c]));      // S ← S + v kᵀ
+  const Sa= mode==='gdn' ? S.map(row=>row.map(x=>alpha*x)) : S;                  // gdn:先整体遗忘 S ← αS
+  const vo=mulSv(Sa,k);                                                          // 读出这个 key 现在存着什么
+  return Sa.map((row,r)=>row.map((x,c)=>x+beta*(v[r]-vo[r])*k[c]));             // 只补差额
+}
+function renderS3(){
+  const mode=MODES[s3M];
+  const beta=+$('s3Beta').value, alpha=+$('s3Alpha').value;
+  $('s3BetaV').textContent= mode==='linear' ? '—' : beta.toFixed(2);
+  $('s3AlphaV').textContent= mode==='gdn' ? alpha.toFixed(2) : '—';
+  $('s3Beta').disabled= mode==='linear';
+  $('s3Alpha').disabled= mode!=='gdn';
+  setActiveBtn('s3Mode',s3M);
+  let S=[[0,0],[0,0]];
+  const cards=SEQ.map(e=>{
+    S=writeStep(S,e.k,e.v,mode,alpha,beta);
+    return `<div class="tcard"><div class="th">${e.lab}</div>
+      <div class="tw">${e.kn} = ${vec(e.k)}<br>v = ${vec(e.v)}</div>
+      <div class="mat-cap">写完后的 S</div>${heatHTML(S,'mid',2)}</div>`;
+  });
+  $('s3Line').innerHTML=cards.join('');
+  const oA=mulSv(S,KA), oB=mulSv(S,KB);
+  $('s3ReadA').textContent=vec(oA);
+  $('s3ReadB').textContent=vec(oB);
+  $('s3Plane').innerHTML=planeSVG([
+    {v:SEQ[0].v, color:'#8C8A83', dash:true, label:'A 旧', id:'a'},
+    {v:SEQ[2].v, color:'#3f7d63', dash:true, label:'A 新', id:'b'},
+    {v:SEQ[1].v, color:'#9fb4e3', dash:true, label:'B', id:'c'},
+    {v:oB, color:'#3a63c0', w:3, label:'读 B', id:'d'},
+    {v:oA, color:'#D97757', w:3, label:'读 A', id:'e'},
+  ],1.6);
+  const F={
+    linear:`S<sub>t</sub> = S<sub>t−1</sub> + v<sub>t</sub> k<sub>t</sub>ᵀ
+      <div class="src">线性注意力 · Katharopoulos et al. 2020,"Transformers are RNNs",arXiv 2006.16236</div>`,
+    delta:`S<sub>t</sub> = S<sub>t−1</sub>(I − β<sub>t</sub> k<sub>t</sub> k<sub>t</sub>ᵀ) + β<sub>t</sub> v<sub>t</sub> k<sub>t</sub>ᵀ
+       = S<sub>t−1</sub> − β<sub>t</sub>(S<sub>t−1</sub>k<sub>t</sub> − v<sub>t</sub>) k<sub>t</sub>ᵀ
+      <div class="src">DeltaNet · Yang et al.,"Parallelizing Linear Transformers with the Delta Rule over Sequence Length",arXiv 2406.06484;β<sub>t</sub> = σ(W<sub>β</sub>x<sub>t</sub>) ∈ (0,1),k 做 L2 归一化</div>`,
+    gdn:`S<sub>t</sub> = S<sub>t−1</sub>(α<sub>t</sub>(I − β<sub>t</sub> k<sub>t</sub> k<sub>t</sub>ᵀ)) + β<sub>t</sub> v<sub>t</sub> k<sub>t</sub>ᵀ ,  o<sub>t</sub> = S<sub>t</sub> q<sub>t</sub>
+      <div class="src">Gated DeltaNet 式 (10) · Yang, Kautz, Hatamizadeh,arXiv 2412.06464 §3.1(ICLR 2025);α<sub>t</sub> ∈ (0,1) 是随输入变化的标量衰减,β<sub>t</sub> ∈ (0,1) 是写入强度。代码写法 <code>S ← αS;S ← S + β(v − S k)kᵀ</code> 与此式相同</div>`,
+  };
+  $('s3Formula').innerHTML=F[mode];
+  const eA=Math.hypot(oA[0]-SEQ[2].v[0],oA[1]-SEQ[2].v[1]);
+  let msg;
+  if(mode==='linear') msg=`linear 读 A 得到 ${vec(oA)},正好是<b>旧值 + 新值</b>:同一个 key 写两次,两个 value 叠在一起,旧值擦不掉。B 没受影响,因为 kA、kB 正交。`;
+  else if(mode==='delta') msg= beta>=0.999
+    ? `delta、β=1:第 ③ 次写入先读出 A 当前存的 ${vec(SEQ[0].v)},只补上"新值 − 旧值"这份差额,读 A 得到<b>新值</b>。B 原样保留。`
+    : `delta、β=${beta.toFixed(2)}:每次只补差额的 ${Math.round(beta*100)}%,读 A 离新值还差 ${eA.toFixed(3)}。β 由 <code>b_proj</code> 逐 token 算出,模型自己决定这一步写多重。`;
+  else msg=`gdn:每写一次之前,整块 S 先乘 α=${alpha.toFixed(2)}。B 写入后又经历 1 次衰减,读 B 只剩原来的 <b>${Math.round(alpha*100)}%</b>;A 的旧值在第 ③ 步前衰减了 2 次,${beta>=0.999?'β=1 时仍被整个换成新值':'β<1 时读 A 是衰减后的旧值与新值的混合'}。α=1 时退回 delta。`;
+  $('s3Note').innerHTML=msg;
+}
+bindBtns('s3Mode',i=>{s3M=i;renderS3();});
+['s3Beta','s3Alpha'].forEach(id=>$(id).addEventListener('input',renderS3));
+renderS3();
+
+function renderAlphas(){
+  setActiveBtn('s3Src',s3Src);
+  const key=s3Src===0?'gdn':'hybrid';
+  const al=ALPHA[key];
+  const W=560, H=210, L=46, R=14, T=14, B=34, NMAX=10;
+  const x=n=>L+(W-L-R)*n/NMAX, y=v=>T+(H-T-B)*(1-v);
+  const HC=['#3a63c0','#a3548c','#3f7d63','#a87b1f'];
+  let s=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="每个头的记忆保留曲线">`;
+  for(let v=0;v<=1.0001;v+=0.25){ s+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="#EEEBE1"/><text x="${L-6}" y="${y(v)+4}" font-size="10" text-anchor="end" fill="#6B6B68" font-family="ui-monospace">${v.toFixed(2)}</text>`; }
+  for(let n=0;n<=NMAX;n+=2){ s+=`<text x="${x(n)}" y="${H-B+16}" font-size="10" text-anchor="middle" fill="#6B6B68" font-family="ui-monospace">${n}</text>`; }
+  s+=`<text x="${(L+W-R)/2}" y="${H-4}" font-size="10.5" text-anchor="middle" fill="#6B6B68">过了几个 token(n)</text>`;
+  const path=a=>{ let d=''; for(let i=0;i<=40;i++){ const n=NMAX*i/40; d+=(i?'L':'M')+x(n).toFixed(1)+','+y(Math.pow(a,n)).toFixed(1); } return d; };
+  s+=`<path d="${path(ALPHA_INIT)}" fill="none" stroke="#8C8A83" stroke-width="2" stroke-dasharray="5 4"/>`;
+  s+=`<text x="${x(NMAX)-4}" y="${y(Math.pow(ALPHA_INIT,NMAX))-6}" font-size="10.5" text-anchor="end" fill="#6B6B68" font-family="ui-monospace">开训时 α=${ALPHA_INIT.toFixed(3)}</text>`;
+  al.forEach((a,h)=>{ s+=`<path d="${path(a)}" fill="none" stroke="${HC[h]}" stroke-width="2.4"/>`; });
+  s+=`</svg>`;
+  $('s3Alphas').innerHTML=s;
+  $('s3AlphaNote').innerHTML='<div class="legend" style="margin-top:4px">'+al.map((a,h)=>
+    `<span><i style="background:${HC[h]}"></i>head ${h}:α=${a.toFixed(4)},约 ${(Math.log(0.5)/Math.log(a)).toFixed(2)} 个 token 衰减一半</span>`).join('')+
+    '</div>数据:<code>runs/cuda/ch13_lm_'+key+'.json</code> 的 <code>alpha_mean_per_head</code>(第一层,64 段 × 256 个 val token 上的平均)。';
+}
+bindBtns('s3Src',i=>{s3Src=i;renderAlphas();});
+renderAlphas();
+
+/* ============ STEP 4:五组语言模型对照 ============ */
+let s4Metric=0, s4Zoom=0, s4Sel='gdn';
+function renderS4(){
+  setActiveBtn('s4Metric',s4Metric);
+  setActiveBtn('s4Zoom',s4Zoom);
+  $('s4Zoom').style.display= s4Metric===1 ? 'flex' : 'none';
+  if(s4Metric===0){
+    const vals=LM_ORDER.map(k=>LM[k].val), mx=Math.max(...vals), mn=Math.min(...vals);
+    $('s4Chart').innerHTML=
+      `<div class="hp-note" style="margin-bottom:6px">val loss 越低越好;柱长按"离最差那组多远"画,四位小数的差别才看得见</div>`+
+      LM_ORDER.map(k=>{
+        const r=LM[k], w=18+82*(mx-r.val)/Math.max(mx-mn,1e-9);
+        return `<div class="abrow click${k===s4Sel?' sel':''}" data-k="${k}"><div class="an">${r.name}<br><span style="font-weight:400">${r.layers}</span></div>
+          <div class="at"><div class="af" style="width:${w.toFixed(1)}%;background:${COL[k]}"></div></div>
+          <div class="av">${r.val.toFixed(4)}<small>比全注意力 ${r.val-LM.attn.val>=0?'+':''}${(r.val-LM.attn.val).toFixed(4)}</small></div></div>`;
+      }).join('');
+    document.querySelectorAll('#s4Chart .abrow').forEach(el=>el.addEventListener('click',()=>{s4Sel=el.dataset.k;renderS4();}));
+  }else{
+    const lens=[64,128,256,512];
+    const W=600, H=300, L=52, R=90, T=16, B=38;
+    const [y0,y1]= s4Zoom===0 ? [1.4,3.6] : [1.50,1.70];
+    const x=i=>L+(W-L-R)*i/3, y=v=>T+(H-T-B)*(1-(v-y0)/(y1-y0));
+    let s=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="不同上下文长度下的 val loss">`;
+    s+=`<defs><clipPath id="s4clip"><rect x="${L}" y="${T}" width="${W-L-R}" height="${H-T-B}"/></clipPath></defs>`;
+    const step= s4Zoom===0 ? 0.4 : 0.04;
+    for(let v=y0;v<=y1+1e-9;v+=step){ s+=`<line x1="${L}" x2="${W-R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="#EEEBE1"/><text x="${L-6}" y="${(y(v)+4).toFixed(1)}" font-size="10" text-anchor="end" fill="#6B6B68" font-family="ui-monospace">${v.toFixed(2)}</text>`; }
+    lens.forEach((T0,i)=>{ s+=`<text x="${x(i)}" y="${H-B+16}" font-size="10.5" text-anchor="middle" fill="#6B6B68" font-family="ui-monospace">${T0}</text>`; });
+    s+=`<text x="${(L+W-R)/2}" y="${H-4}" font-size="10.5" text-anchor="middle" fill="#6B6B68">测试时的上下文长度(训练只见过 64)</text>`;
+    s+=`<g clip-path="url(#s4clip)">`;
+    LM_ORDER.forEach(k=>{
+      const r=LM[k], sel=k===s4Sel;
+      const d=lens.map((T0,i)=>(i?'L':'M')+x(i).toFixed(1)+','+y(r.byLen[T0]).toFixed(1)).join('');
+      s+=`<path d="${d}" fill="none" stroke="${COL[k]}" stroke-width="${sel?3.6:2}" opacity="${sel?1:0.55}"/>`;
+      lens.forEach((T0,i)=>{ s+=`<circle cx="${x(i).toFixed(1)}" cy="${y(r.byLen[T0]).toFixed(1)}" r="${sel?4.5:3}" fill="${COL[k]}" opacity="${sel?1:0.7}"/>`; });
+    });
+    s+=`</g>`;
+    LM_ORDER.forEach((k,j)=>{
+      const v=LM[k].byLen[512], yy= s4Zoom===0 ? y(Math.min(y1,v)) : null;
+      const label=`${LM[k].short} ${v.toFixed(3)}`;
+      const ty= s4Zoom===0 ? (k==='attn'? yy+4 : y(1.62)+ (j-1)*13) : T+14+j*15;
+      s+=`<text x="${W-R+8}" y="${ty.toFixed(1)}" font-size="10.5" font-weight="${k===s4Sel?700:400}" fill="${COL[k]}" font-family="ui-monospace">${label}${v>y1?' ↑':''}</text>`;
+    });
+    s+=`</svg>`;
+    $('s4Chart').innerHTML=s+
+      `<div class="legend">${LM_ORDER.map(k=>`<span class="lg-click${k===s4Sel?' sel':''}" data-k="${k}"><i style="background:${COL[k]}"></i>${LM[k].name}</span>`).join('')}</div>`+
+      `<div class="hp-note">右侧数字 = 512 长度的 val loss;${s4Zoom===1?'放大后超出范围的线被裁掉(全注意力 128 之后出界)':'点图例高亮一条'}</div>`;
+    document.querySelectorAll('#s4Chart .lg-click').forEach(el=>el.addEventListener('click',()=>{s4Sel=el.dataset.k;renderS4();}));
+  }
+  const r=LM[s4Sel];
+  let mx=0; if(r.S) r.S.forEach(row=>row.forEach(v=>{ if(Math.abs(v)>mx) mx=Math.abs(v); }));
+  $('s4Info').innerHTML=
+    `<div class="duo" style="align-items:start">
+      <div style="min-width:240px">
+        <div style="font-family:var(--serif);font-weight:600;font-size:15px;color:${COL[s4Sel]}">${r.name} <span style="font-family:var(--mono);font-size:12px;color:var(--ink2);font-weight:400">${r.layers}</span></div>
+        <div class="tbl-scroll"><table class="minitbl">
+          <tr><td>val loss @64</td><td><b>${r.val.toFixed(4)}</b>(train ${r.train.toFixed(4)})</td></tr>
+          <tr><td>val @64 / 128 / 256 / 512</td><td>${[64,128,256,512].map(t=>r.byLen[t].toFixed(3)).join(' / ')}</td></tr>
+          <tr><td>参数</td><td>${(r.params/1e6).toFixed(3)} M</td></tr>
+          <tr><td>训练用时</td><td>${r.secs} 秒(与其余 11 组同卡同时跑)</td></tr>
+          <tr><td>KV / token</td><td>${r.kv} 个数</td></tr>
+          <tr><td>固定状态</td><td>${en(r.state)} 个数</td></tr>
+        </table></div>
+      </div>
+      <div>${r.S
+        ? `<div class="mat-cap">第一个记忆板层 · head 0 · 左上 8×8(读完 256 个字符后)· 最大 |S| = <b style="color:var(--accent)">${mx}</b></div>${heatHTML(r.S,'tiny',null)}
+           <div class="hp-note" style="margin-top:4px">颜色按本矩阵自己的最大值归一化;悬停看数值</div>`
+        : `<div class="hp-note">全注意力没有记忆板,推理时每个 token 存 ${r.kv} 个数的 K/V。</div>`}</div>
+    </div>`;
+}
+bindBtns('s4Metric',i=>{s4Metric=i;renderS4();});
+bindBtns('s4Zoom',i=>{s4Zoom=i;renderS4();});
+renderS4();
+
+/* ============ STEP 5:键值检索 ============ */
+function rng(seed){ let s=seed>>>0; return ()=>{ s=(Math.imul(s,1664525)+1013904223)>>>0; return s/4294967296; }; }
+function shuffle(n,r){ const a=[...Array(n).keys()]; for(let i=n-1;i>0;i--){ const j=Math.floor(r()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+const SAMPLE=(function(){                          // 与 get_batch(recall)同一规则,N=8
+  const N=8, r=rng(13);
+  const keys=shuffle(64,r).slice(0,N);
+  const vals=keys.map(()=>Math.floor(r()*N_VALS));
+  const order=shuffle(N,r);
+  return {N, keys, vals, order};
+})();
+let s5Pick=0;
+const pad=n=>String(n).padStart(2,'0');
+function renderSample(){
+  const {N,keys,vals,order}=SAMPLE;
+  const qi=order[s5Pick];
+  let ctx='', qry='';
+  for(let i=0;i<N;i++){
+    const hit=i===qi;
+    ctx+=`<span class="tok k${hit?' hit':''}">K${pad(keys[i])}</span><span class="tok v${hit?' hit':''}">V${pad(vals[i])}</span>`;
+  }
+  for(let j=0;j<N;j++){
+    const i=order[j], hit=j===s5Pick;
+    qry+=`<span class="tok qk${hit?' hit':''}" data-j="${j}">K${pad(keys[i])}</span><span class="tok ans${hit?' hit':''}">V${pad(vals[i])}</span>`;
+  }
+  $('s5Sample').innerHTML=
+    `<div class="seq"><span class="seqsep">前半段</span>${ctx}</div>
+     <div class="seq"><span class="seqsep">后半段</span>${qry}</div>`;
+  const dist=(2*N+2*s5Pick)-(2*qi);
+  $('s5SampleNote').innerHTML=
+    `选中的是后半段第 ${s5Pick+1} 个 key <b>K${pad(keys[qi])}</b>:它在前半段第 ${qi+1} 对,距离 ${dist} 个 token,要答 <b>V${pad(vals[qi])}</b>。
+     value 是随机抽的,可能重复,只能靠"找到同一个 key、抄它后面那个 token"来答。`;
+  document.querySelectorAll('#s5Sample .qk').forEach(el=>el.addEventListener('click',()=>{s5Pick=+el.dataset.j;renderSample();}));
+}
+renderSample();
+
+let s5View=0;
+function renderRecall(){
+  setActiveBtn('s5View',s5View);
+  $('s5AccWrap').hidden= s5View!==0;
+  $('s5CurveWrap').hidden= s5View!==1;
+  const N=RECALL_NS[+$('s5N').value];
+  $('s5NV').textContent=N;
+  const chance=100/N_VALS;
+  $('s5Bars').innerHTML=RC_ORDER.map(k=>{
+    const r=RECALL[k], a=r.acc[N]*100;
+    return `<div class="abrow"><div class="an">${r.name}</div>
+      <div class="at"><div class="af" style="width:${Math.max(0.4,a).toFixed(2)}%;background:${COL[k]}"></div>
+        <div class="chance" style="left:${chance.toFixed(2)}%"></div></div>
+      <div class="av">${a>=99.95?a.toFixed(2):a.toFixed(1)}%<small>序列长 ${4*N} · 参数 ${(r.params/1e6).toFixed(3)} M</small></div></div>`;
+  }).join('');
+  if(s5View===1){
+    const W=600, H=280, L=46, R=92, T=14, B=38, XM=6000, YM=5.2;
+    const x=v=>L+(W-L-R)*v/XM, y=v=>T+(H-T-B)*(1-v/YM);
+    let s=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="检索任务训练曲线">`;
+    for(let v=0;v<=5;v+=1){ s+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="#EEEBE1"/><text x="${L-6}" y="${y(v)+4}" font-size="10" text-anchor="end" fill="#6B6B68" font-family="ui-monospace">${v}</text>`; }
+    for(let v=0;v<=6000;v+=1000){ s+=`<text x="${x(v)}" y="${H-B+16}" font-size="10" text-anchor="middle" fill="#6B6B68" font-family="ui-monospace">${v}</text>`; }
+    s+=`<text x="${(L+W-R)/2}" y="${H-4}" font-size="10.5" text-anchor="middle" fill="#6B6B68">训练步数 · 纵轴 = val loss(只在答案位置算)</text>`;
+    RC_ORDER.forEach((k,j)=>{
+      const c=RECALL[k].curve;
+      s+=`<path d="${c.map((p,i)=>(i?'L':'M')+x(p[0]).toFixed(1)+','+y(p[2]).toFixed(1)).join('')}" fill="none" stroke="${COL[k]}" stroke-width="2.4"/>`;
+      c.forEach(p=>{ s+=`<circle cx="${x(p[0]).toFixed(1)}" cy="${y(p[2]).toFixed(1)}" r="2.6" fill="${COL[k]}"><title>${RECALL[k].name} · step ${p[0]} · train ${p[1]} · val ${p[2]}</title></circle>`; });
+      const last=c[c.length-1];
+      s+=`<text x="${W-R+8}" y="${(k==='linear'?y(last[2])+4:y(0)-30+j*14).toFixed(1)}" font-size="10.5" fill="${COL[k]}" font-family="ui-monospace">${k} ${last[2]}</text>`;
+    });
+    s+=`</svg>`;
+    $('s5CurveWrap').innerHTML=s+
+      `<div class="legend">${RC_ORDER.map(k=>`<span><i style="background:${COL[k]}"></i>${RECALL[k].name}(${RECALL[k].secs} 秒)</span>`).join('')}</div>
+       <div class="hp-note">每 500 步评估一次;悬停圆点看 train / val。3:1 混合到 5999 步仍在下降。</div>`;
+  }
+}
+bindBtns('s5View',i=>{s5View=i;renderRecall();});
+$('s5N').addEventListener('input',renderRecall);
+renderRecall();
+
+/* 真实模型的层排布(出处见 factcheck:HF 模型卡 / 技术报告 / arXiv 2510.26692) */
+const ARCH=[
+  {rep:1, lin:'GDN', att:'注意力', attC:'#3a63c0',
+   note:'<code>PRESETS["hybrid"] = ["gdn", "gdn", "gdn", "attn"]</code>:4 层,注意力层放在最后。注意力层带 RoPE 与 GQA(n_kv_head=2)。'},
+  {rep:12, lin:'Gated DeltaNet', att:'Gated Attention', attC:'#3a63c0',
+   note:'HF 模型卡原文 <code>12 * (3 * (Gated DeltaNet -> MoE) -> 1 * (Gated Attention -> MoE))</code>,48 层;80B 总参 / 3B 激活;原生上下文 262,144。'},
+  {rep:15, lin:'Gated DeltaNet', att:'Gated Attention', attC:'#3a63c0',
+   note:'HF 模型卡 Qwen/Qwen3.5-397B-A17B:<code>15 * (3 * (Gated DeltaNet -> MoE) -> 1 * (Gated Attention -> MoE))</code>,60 层;397B 总参 / 17B 激活。'},
+  {rep:12, lin:'Gated DeltaNet', att:'QSA', attC:'#a3548c',
+   note:'HF 模型卡 <code>12 × (3 × (Gated DeltaNet → MoE) → 1 × (Qwen Sparse Attention → MoE))</code>,48 层;125B 总参 / 6B 激活。技术报告:每 4 层 1 层全注意力,持续预训练阶段换成 QSA(稀疏注意力,第 14 章)。'},
+  {rep:null, lin:'KDA', att:'MLA', attC:'#a3548c',
+   note:'Kimi Linear(Moonshot,arXiv 2510.26692):"repeating 3 KDA layers to 1 full MLA layer";KDA 在 Gated DeltaNet 上加了更细的门控;KV cache 最多省 75%;48B 总参 / 3B 激活;MLA 层不用位置编码(NoPE)。总层数本页没有核对,只画一个周期。'},
+];
+let s5Arch=0;
+function renderArch(){
+  setActiveBtn('s5Arch',s5Arch);
+  const a=ARCH[s5Arch];
+  const reps=a.rep||1;
+  let html='';
+  for(let r=0;r<reps;r++){
+    for(let i=0;i<3;i++) html+=`<div class="ly" style="background:#3f7d63" title="第 ${4*r+i+1} 层 · ${a.lin}">${a.rep&&a.rep>1?'':'L'}</div>`;
+    html+=`<div class="ly" style="background:${a.attC}" title="第 ${4*r+4} 层 · ${a.att}">${a.rep&&a.rep>1?'':'A'}</div>`;
+    if(r<reps-1) html+=`<div style="width:4px"></div>`;
+  }
+  if(!a.rep) html+=`<div class="ly" style="background:transparent;color:var(--ink2);width:auto;padding:0 6px">× ?</div>`;
+  $('s5Strip').innerHTML=html;
+  $('s5ArchLegend').innerHTML=
+    `<span><i style="background:#3f7d63"></i>${a.lin}(固定大小状态)</span>
+     <span><i style="background:${a.attC}"></i>${a.att}(保留 K/V)</span>
+     <span>${a.rep?`共 ${a.rep*4} 层 = ${a.rep} × (3 + 1)`:'3 : 1'}</span>`;
+  $('s5ArchNote').innerHTML=a.note;
+}
+bindBtns('s5Arch',i=>{s5Arch=i;renderArch();});
+renderArch();
+
+(function(){
+  const A=LM.attn, G=LM.gdn, H=LM.hybrid;
+  $('okList').innerHTML=[
+    `推理状态:全注意力每 token 存 <b>${A.kv}</b> 个数;全 GDN 固定 <b>${en(G.state)}</b> 个数,上下文超过 <b>${G.state/A.kv}</b> 个 token 就比全注意力省(见 STEP 1)。`,
+    `训练长度 64 上,全注意力 val <b>${A.val.toFixed(4)}</b>、3:1 混合 <b>${H.val.toFixed(4)}</b>、全 GDN <b>${G.val.toFixed(4)}</b>;混合与全注意力相差 ${(H.val-A.val).toFixed(4)},在单种子噪声量级。`,
+    `长度外推到 512:全注意力 <b>${A.byLen[512].toFixed(3)}</b>,全 GDN <b>${G.byLen[512].toFixed(3)}</b>,3:1 混合 <b>${H.byLen[512].toFixed(3)}</b>。`,
+    `键值检索 N=32:全注意力 <b>${(RECALL.attn.acc[32]*100).toFixed(1)}%</b>、全 GDN <b>${(RECALL.gdn.acc[32]*100).toFixed(1)}%</b>、全 linear <b>${(RECALL.linear.acc[32]*100).toFixed(1)}%</b>;3:1 混合 <b>${(RECALL.hybrid.acc[32]*100).toFixed(1)}%</b>,6000 步时 loss 仍在下降,未收敛。`,
+  ].map(t=>`<li><span class="ck">✓</span><div>${t}</div></li>`).join('');
+})();
+
+/* ============ 名词气泡 ============ */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent, def=el.dataset.def||'', key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def+(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8; if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw; if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el)); el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* ============ 通关庆祝 ============ */
+function celebrate(){
+  document.getElementById('congrats').classList.add('show');
+  const cv=document.getElementById('confetti'); cv.style.display='block';
+  const ctx=cv.getContext('2d'); cv.width=innerWidth; cv.height=innerHeight;
+  const COLS=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const ps=[];for(let i=0;i<150;i++)ps.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    vx:(Math.random()-0.5)*3,vy:2+Math.random()*4,s:5+Math.random()*7,c:COLS[i%COLS.length],a:Math.random()*6.28,va:(Math.random()-0.5)*0.3});
+  let t0=null;
+  function frame(ts){ if(!t0)t0=ts; const el=ts-t0;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.04;p.a+=p.va;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.a);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.6);ctx.restore();});
+    if(el<3400) requestAnimationFrame(frame); else { ctx.clearRect(0,0,cv.width,cv.height); cv.style.display='none'; }
+  }
+  requestAnimationFrame(frame);
+  document.getElementById('congrats').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ============ 初始化:深链 ============ */
+const m=/^#step-(\d+)$/.exec(location.hash);
+goto(m?parseInt(m[1],10)-1:0);
+window.addEventListener('hashchange',()=>{const mm=/^#step-(\d+)$/.exec(location.hash);goto(mm?parseInt(mm[1],10)-1:0);});
+
+</script>
+<!--site-copyright-->
+<footer style="max-width:960px;margin:56px auto 0;padding:18px 24px 44px;border-top:1px solid var(--border);text-align:center;font-size:12px;color:var(--ink2);line-height:1.7">
+  © 2026 <a href="https://fim.ai" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">FIM Labs</a> · 从零手写大语言模型 · MIT License
+</footer>
+</body>
+</html>

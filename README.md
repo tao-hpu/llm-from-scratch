@@ -1,7 +1,8 @@
 # LLM from scratch ｜ 从 0 到 1 手搓大模型
 
 > 用最少的代码、最白的中文，把一个语言模型从「预测下一个字符」一路搭到「复现 GPT-2 124M」，
-> 再往后走到后训练(SFT / LoRA / DPO)与现代架构(MoE、LLaMA 四件套)。
+> 再往后走到后训练(SFT / LoRA / DPO)、现代架构(MoE、LLaMA 四件套),
+> 以及长上下文与推理效率(线性注意力、稀疏注意力、N-gram 查表、投机解码、量化)。
 > 不调包、不填 YAML，每一行都看得懂为什么。
 >
 > **English version → [jump to bottom](#-english).**
@@ -31,6 +32,11 @@
 - [`web/10_dpo_viz.html`](web/10_dpo_viz.html) — 第 10 章 · 手搓 DPO(对应 `08_dpo.py`):偏好对齐,不训奖励模型/不走 RL——policy+冻结 ref + 隐式奖励 + DPO loss 滑块 + 真实曲线(loss↓/margin↑/准确率 0→100%)
 - [`web/11_moe_viz.html`](web/11_moe_viz.html) — 第 11 章 · 手搓 MoE(对应 `09_moe.py`):把 FFN 拆成 4 专家 + 路由器 top-2 派单,分工涌现热力图、负载均衡对照(top-1 关 aux 实测偏载滚雪球)、"参数翻倍算力不变"账本。1.35M 参数,大概是**全球最小的 MoE 之一**,机制却和 671B 的 DeepSeek 同款
 - [`web/12_llama_viz.html`](web/12_llama_viz.html) — 第 12 章 · 把 GPT-2 升级成 LLaMA(对应 `10_llama.py`):RoPE 把位置变成旋转角、RMSNorm 少做一半、SwiGLU 给 FFN 装闸门、GQA 让 K/V 拼车 —— 四个零件各能单独开关,附六组真实对照训练
+- [`web/13_linear_attention_viz.html`](web/13_linear_attention_viz.html) — 第 13 章 · 线性注意力(对应 `11_linear_attn.py`):把越存越长的 KV cache 换成固定大小的记忆板,linear / delta rule / Gated DeltaNet 三种写法,再用键值检索任务看它的容量上限和 3:1 混合
+- [`web/14_sparse_attention_viz.html`](web/14_sparse_attention_viz.html) — 第 14 章 · 稀疏注意力(对应 `12_sparse_attn.py`):NSA 的压缩、挑选、滑窗三条支路,每个 query 只读一小部分历史,附"远处找钥匙"对照
+- [`web/15_ngram_memory_viz.html`](web/15_ngram_memory_viz.html) — 第 15 章 · N-gram 查表(对应 `13_engram.py`):按最近两三个字哈希查一张大表,表越大容量越大,每 token 读取量不变,表还能留在 CPU
+- [`web/16_speculative_decoding_viz.html`](web/16_speculative_decoding_viz.html) — 第 16 章 · 投机解码与 MTP(对应 `14_mtp.py`):草稿员先猜、主模型一次验收,接受规则保证输出分布不变;小草稿模型与 DeepSeek-V3 式 MTP 头两种草稿员
+- [`web/17_quantization_viz.html`](web/17_quantization_viz.html) — 第 17 章 · 量化(对应 `15_quant.py`):把第 6 章的 124M 从 32 位压到 2 位,对照 int8 / int4 各种 scale 粒度、Q4_K、NVFP4、MXFP4
 - [`web/glossary.html`](web/glossary.html) — 名词表(术语字典,正文术语 hover 即弹气泡)
 - [`web/notes.html`](web/notes.html) — 学习札记 / 彩蛋:正课之外的小故事(如 Transformer 前世今生:8 作者、翻译起源、家谱)
 
@@ -42,7 +48,7 @@
 
 - 只会用框架(LLaMA-Factory / TRL),你永远是「填配置的操作员」,模型一出问题就抓瞎。
 - 本仓库只回答一个问题:**这些轮子到底是怎么造出来的。**
-  从 bigram 到 GPT-2 124M、从 SFT/LoRA/DPO 到 MoE 与 LLaMA 四件套,全部手搓,不调框架。
+  从 bigram 到 GPT-2 124M、从 SFT/LoRA/DPO 到 MoE 与 LLaMA 四件套,再到线性/稀疏注意力、投机解码与量化,全部手搓,不调框架。
 - 把原理吃透之后再回头用生产工具,你填的每个配置项才知道它在动什么。
 
 ---
@@ -72,7 +78,15 @@ phase2-sft-lora/     后训练：SFT + LoRA + DPO（逐步上线中）
 phase3-moe/          现代架构：MoE + LLaMA 四件套
   09_moe.py            手搓 MoE：FFN 换成 4 专家 + top-2 路由 + 负载均衡 aux loss（--top-k 1 --aux 0 观察偏载雪球）
   10_llama.py          把 GPT-2 升级成 LLaMA：RoPE / RMSNorm / SwiGLU / GQA 四个零件，每个都能单独开关
-                       （--preset gpt2 是老架构基线，--preset llama 四件齐上）
+                       （--preset gpt2 是老架构基线，--preset llama 四件齐上；--optim muon 换 Muon 优化器）
+
+phase4-efficiency/   长上下文与推理效率（11/12/14 用 tiny shakespeare；13 默认与 15 读 FineWeb-Edu val shard；Mac MPS 可跑）
+  11_linear_attn.py    线性注意力：linear / delta / Gated DeltaNet 记忆板，--preset hybrid 为 3:1 混合，--task recall 为键值检索
+  12_sparse_attn.py    稀疏注意力：NSA 式压缩 + 挑选 + 滑窗（--branches 逐条开关），--task recall 为远距离检索
+  13_engram.py         N-gram 查表：哈希 2/3-gram → 查表 → 门控注入第 2 层，--table 调表大小，--table-device cpu 表留 CPU
+  14_mtp.py            投机解码：小草稿模型与 MTP 头两种草稿员，验证贪心逐字一致、采样分布一致
+  15_quant.py          量化：加载 124M 权重，对比 int8/int4 各种 scale 粒度、Q4_K、NVFP4、MXFP4 的 val loss
+                       （需要 ../phase1-124m 的 10B 权重和一份 FineWeb-Edu val shard，放在 phase4-efficiency/data/）
 ```
 
 ---
@@ -96,8 +110,17 @@ phase3-moe/          现代架构：MoE + LLaMA 四件套
 
 - [x] **手搓 MoE**(`09_moe.py`):FFN 拆成 4 专家 + top-2 路由,负载均衡与专家塌缩对照
 - [x] **手搓 LLaMA 四件套**(`10_llama.py`):RoPE / RMSNorm / SwiGLU / GQA,逐件开关 + 六组对照
+- [x] **MoE 进阶**(`09_moe.py` 新开关):细粒度专家 + 共享专家 + 无 aux loss 的负载均衡
 
-> 到这里,这条学习线要手搓的东西就齐了:预训练 → 后训练 → 现代架构。
+### Phase 4 — 长上下文与推理效率 ✅
+
+- [x] **线性注意力**(`11_linear_attn.py`):固定大小记忆板,delta rule 与遗忘门,3:1 混合
+- [x] **稀疏注意力**(`12_sparse_attn.py`):NSA 三条支路,每个 query 只读一部分历史
+- [x] **N-gram 查表**(`13_engram.py`):容量与每 token 算力分开,表可放 CPU
+- [x] **投机解码与 MTP**(`14_mtp.py`):草稿 + 验收,输出分布不变
+- [x] **量化**(`15_quant.py`):124M 权重从 32 位压到 2 位的真实账本
+
+> 到这里,这条学习线要手搓的东西就齐了:预训练 → 后训练 → 现代架构 → 长上下文与推理效率。
 > **生产工具链(LLaMA-Factory / TRL / PEFT)不在本仓库范围内** —— 那是"怎么用现成轮子"的问题,
 > 而本仓库从头到尾只回答"轮子是怎么造出来的"。
 
@@ -195,8 +218,12 @@ python 05_sample.py --ckpt ckpt/latest.pt --prompt "The history of Rome" --n 3
 | Phase 1 玩具版(01/02/03) | ✅ | ✅ | ✅ 慢 |
 | GPT-2 124M **推理**(05) | ✅ | ✅ | ✅ 慢 |
 | GPT-2 124M **全量预训练**(04) | ✅ 必需 | ❌ | ❌ |
+| Phase 3 / Phase 4 玩具版(09–14) | ✅ | ✅ | ✅ 慢 |
+| 124M 量化评测(15) | ✅ | ✅ | ✅ 慢 |
 
 预训练那一步用了 bf16 / `torch.compile` / CUDA-only 的优化,所以需要一张 NVIDIA GPU(单卡 24G 如 4090 足够)。**其余一切在 Mac 和纯 CPU 上都能跑**——所以 macOS、Windows、Linux 都能复现这条学习线,只是「自己从头预训练 124M」需要 N 卡。
+
+页面里的真实对照数字大多在 Mac MPS 上跑出;第 13 章全部、第 14 章检索任务、第 11 章细粒度与共享专家、第 15 章吞吐、第 16 章在单卡 RTX 4090 上跑出,各页注明了硬件。
 
 ---
 

@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>稀疏注意力 · 每个 query 只挑一部分读</title>
+<meta name="description" content="K/V 照样全存,每个 query 只挑一部分去算:NSA 的压缩、挑选、滑窗三条支路加门控,四组语言建模训练 + 三组远处找钥匙训练的真实对照。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 14 章 · 稀疏注意力 · 从零手写大语言模型">
+<meta property="og:description" content="K/V 照样全存,每个 query 只挑一部分去算:NSA 的压缩、挑选、滑窗三条支路加门控,四组语言建模训练 + 三组远处找钥匙训练的真实对照。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/14_sparse_attention_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 14 章 · 稀疏注意力 · 从零手写大语言模型">
+<meta name="twitter:description" content="K/V 照样全存,每个 query 只挑一部分去算:NSA 的压缩、挑选、滑窗三条支路加门控,四组语言建模训练 + 三组远处找钥匙训练的真实对照。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
+<style>
+
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --good:#3f7d63; --good-soft:#D7EBE0; --bad:#9a3a22; --bad-soft:#F3D9CE;
+    --e0:#b8512f; --e0s:#F7E6DE; --e1:#3a63c0; --e1s:#E5EBF9;
+    --e2:#3f7d63; --e2s:#E4EFE9; --e3:#a3548c; --e3s:#F6E6F0;
+    --amber:#a87b1f; --amber-s:#FAEFD6;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 24px 90px;}
+  @media (max-width:520px){ .wrap{padding:24px 16px 80px;} .panel{padding:20px 16px !important;} }
+
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:790px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  .steps-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:26px 0 18px;}
+  .step-tab{background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 14px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13.5px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+  .hp-note code{font-family:var(--mono);font-size:11.5px;}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 20px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:10px;padding:10px 14px;}
+
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;align-items:center;}
+  .btn-row.small .btn{font-size:12px;padding:5px 9px;border-radius:8px;font-family:var(--mono);}
+
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:24px 0 6px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  .codepath{font-family:var(--mono);font-size:11.5px;color:var(--ink2);background:#F4F2EA;
+    border:1px solid var(--border);border-radius:8px;padding:5px 10px;display:inline-block;margin-top:10px;}
+  .codepath b{color:var(--accent);}
+
+  /* 维度色标 */
+  .d{display:inline-flex;align-items:baseline;gap:3px;font-family:var(--mono);font-weight:700;
+    font-size:12.5px;border-radius:6px;padding:0 5px;}
+  .d i{font-style:normal;font-size:9.5px;font-weight:600;opacity:.9;letter-spacing:.2px;}
+  .d-head{color:#a3548c;background:#F6E6F0;}
+  .d-blen{color:#3a63c0;background:#E5EBF9;}
+  .d-block{color:#3f7d63;background:#E4EFE9;}
+
+  /* 名词气泡 */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:280px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;font-family:system-ui,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* 庆祝 */
+  .congrats{display:none;text-align:center;background:linear-gradient(135deg,#FBF1EA,#F6E6F0);
+    border:1px solid var(--accent-soft);border-radius:16px;padding:22px;margin-top:18px;}
+  .congrats.show{display:block;animation:fade .5s ease;}
+  .congrats .ct{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--accent);}
+  .congrats .cs{font-size:13.5px;color:var(--ink2);margin-top:6px;}
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;}
+
+  /* ===== 通用件(与其余章节页一致)===== */
+  .nav{display:flex;justify-content:space-between;margin-top:22px;gap:10px;}
+  .checklist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:8px;}
+  .checklist li{display:flex;gap:10px;align-items:flex-start;font-size:13px;background:#fff;border:1px solid var(--border);
+    border-radius:10px;padding:10px 13px;}
+  .checklist li .ck{color:#3f7d63;font-weight:700;flex-shrink:0;}
+  .checklist li b{color:var(--accent);}
+  .rk-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0;}
+  .rk-row label{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:172px;}
+  .rk-val{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent);min-width:52px;text-align:center;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:8px;padding:2px 6px;}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;background:var(--accent-soft);
+    flex:1;min-width:150px;max-width:340px;outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.18);}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid #fff;}
+
+  .lab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin:10px 0;}
+  .svgbox{overflow-x:auto;margin:10px 0 4px;}
+  .svgbox svg{display:block;height:auto;}   /* 保持原宽,窄屏在容器里横向滚 */
+  .dotread{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:12px 0 4px;}
+  .dr{background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 13px;text-align:center;}
+  .dr .drv{font-family:var(--mono);font-size:21px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .dr .drl{font-size:11.5px;color:var(--ink2);margin-top:2px;}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin:6px 0 0;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .legend .sw{width:12px;height:12px;border-radius:3px;display:inline-block;border:1px solid rgba(0,0,0,.08);}
+  .formula{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin:10px 0;
+    font-family:var(--mono);font-size:13px;line-height:1.9;overflow-x:auto;}
+  .formula .hl{color:var(--accent);font-weight:700;}
+  .formula .off{color:#b9b5aa;text-decoration:line-through;}
+
+  /* ===== STEP 2 / 3:文本块格子 ===== */
+  .blkgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;margin:10px 0 4px;}
+  .blk{background:#fff;border:1.5px solid var(--border);border-radius:9px;padding:4px 5px 5px;cursor:pointer;
+    transition:all .18s ease;position:relative;}
+  .blk:hover{border-color:#cfc9ba;}
+  .blk .bh{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;color:var(--ink2);}
+  .blk .bt{font-weight:700;border-radius:4px;padding:0 4px;}
+  .blk .chars{display:grid;grid-template-columns:repeat(8,1fr);gap:1px;margin-top:3px;}
+  .blk .c{font-family:var(--mono);font-size:11px;text-align:center;background:#F4F2EA;border-radius:2px;
+    line-height:16px;height:17px;overflow:hidden;border-bottom:2px solid transparent;}
+  .blk .c.ws{color:#b9b5aa;}
+  .blk .c.win{border-bottom-color:var(--good);}
+  .blk .c.now{background:var(--accent);color:#fff;}
+  .blk.future{opacity:.38;}
+  .blk.done{border-color:var(--amber);}
+  .blk.done .bt{color:var(--amber);background:var(--amber-s);}
+  .blk.cur{border-style:dashed;border-color:var(--e3);}
+  .blk.cur .bt{color:var(--e3);background:var(--e3s);}
+  .blk.pick{border-color:var(--e1);box-shadow:0 0 0 1.5px var(--e1);}
+  .blk.pick .c{background:var(--e1s);}
+  .blk.pick .bt{color:#fff;background:var(--e1);}
+  .blk.focus{box-shadow:0 0 0 2.5px var(--accent);}
+
+  .cmpflow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid var(--border);
+    border-radius:12px;padding:12px 14px;margin:10px 0;}
+  .cmpflow .arrow{font-family:var(--mono);color:var(--ink2);font-size:12px;text-align:center;line-height:1.3;}
+  .vecs{display:flex;gap:4px;align-items:flex-end;}
+  .vec{display:flex;flex-direction:column;align-items:center;gap:2px;}
+  .vec .vb{width:14px;height:54px;border-radius:3px;background:linear-gradient(180deg,#E5EBF9,#b9c7ea);border:1px solid #c9d3ee;}
+  .vec .vl{font-family:var(--mono);font-size:10.5px;color:var(--ink2);}
+  .longbar{width:180px;height:14px;border-radius:3px;
+    background:repeating-linear-gradient(90deg,#c9d3ee 0 21px,#fff 21px 22.5px);border:1px solid #c9d3ee;}
+  .sumvec{width:22px;height:54px;border-radius:4px;background:linear-gradient(180deg,#FAEFD6,#e2c27c);border:1px solid #d8b76a;}
+
+  /* ===== STEP 5:对照条 ===== */
+  .ablab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin:10px 0;overflow-x:auto;}
+  .abrow{display:flex;align-items:center;gap:11px;margin:7px 0;cursor:pointer;}
+  .abrow .an{font-family:var(--mono);font-size:12px;width:132px;flex-shrink:0;color:var(--ink2);}
+  .abrow.sel .an{color:var(--accent);font-weight:700;}
+  .abrow .at{flex:1;min-width:130px;height:24px;background:#F4F2EA;border:1px solid var(--border);border-radius:7px;overflow:hidden;}
+  .abrow .af{height:100%;border-radius:6px 0 0 6px;transition:width .45s cubic-bezier(.2,.7,.2,1);}
+  .abrow .av{font-family:var(--mono);font-size:12.5px;font-weight:700;width:104px;text-align:right;flex-shrink:0;
+    font-variant-numeric:tabular-nums;}
+  .abgroup{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--ink2);margin:12px 0 2px;}
+
+  .indgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin:10px 0;}
+  .ind{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 14px;font-size:12.5px;color:var(--ink2);}
+  .ind h4{margin:0 0 2px;font-family:var(--serif);font-size:15px;color:var(--ink);}
+  .ind .src{font-family:var(--mono);font-size:10.5px;color:var(--ink2);margin-bottom:6px;}
+  .ind ul{margin:4px 0 0;padding-left:18px;}
+  .ind li{margin:2px 0;}
+  .ind code{font-family:var(--mono);font-size:11.5px;background:#F4F2EA;border:1px solid var(--border);
+    padding:0 4px;border-radius:4px;color:var(--accent);}
+  .ind b{color:var(--ink);}
+
+  .tbl-scroll{overflow-x:auto;margin:8px 0 2px;}
+  .minitbl{border-collapse:collapse;font-family:var(--mono);font-size:12.5px;
+    font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .minitbl th{font-size:11.5px;font-weight:700;color:var(--ink2);text-align:left;
+    padding:4px 14px 4px 0;border-bottom:1px solid var(--border);}
+  .minitbl td{padding:3px 14px 3px 0;color:var(--ink2);}
+  .minitbl td b{color:var(--accent);font-weight:700;}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <header>
+    <span class="filename">14_sparse_attention_viz.html</span>
+    <h1>稀疏注意力:每个 query 只挑一部分历史去读</h1>
+    <p class="subtitle">
+      第 13 章把 <span class="term" data-term="KV-cache · 键值缓存" data-key="kv-cache" data-def="把过去每个 token 的 K/V 缓存下来,生成新 token 时只算新的一列,避免重算整段。">KV cache</span>
+      压成固定大小的记忆板,换来的是精确检索变弱。这一关走另一条路:K/V 照样全存,
+      但每个 query 只挑一小部分去算,这叫
+      <span class="term" data-term="稀疏注意力 · sparse attention" data-key="sparse-attention" data-def="每个 query 只和一部分 key 算注意力分数,其余位置不参与。K/V 仍可全部保存,省的是每一步要读和要算的量。">稀疏注意力</span>。
+      挑法取自 DeepSeek 的
+      <span class="term" data-term="NSA · Native Sparse Attention" data-key="nsa" data-def="DeepSeek 2025(arXiv 2502.11089):压缩、挑选、滑窗三条支路并行,各自的输出乘一个 sigmoid 门再相加;从预训练开始就按稀疏方式训练。">NSA</span>:
+      压缩、挑选、滑窗三条支路,再用门控加权。配套代码 <code>phase4-efficiency/12_sparse_attn.py</code>,
+      含四组语言建模训练(Mac MPS)与三组"远处找钥匙"训练(RTX 4090)。
+    </p>
+  </header>
+
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">每个 query 读多少</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">压缩:一块一个摘要</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">挑选:只细看 top-n 块</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">滑窗与门控</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">真实对照 · 工业版</div></div>
+  </div>
+
+  <div class="hp-bar">
+    <span class="hp-label">这一关</span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">block_size <b>256</b> <i>上下文长度</i></span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">block_len <b>8</b> <i>一块几个 token</i></span>
+    <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">top_n <b>4</b> <i>每个 query 细看几块(含当前块)</i></span>
+    <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">window <b>32</b> <i>滑窗长度</i></span>
+    <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">n_kv_head <b>2</b> <i>K/V 头数(同组共用一次挑选)</i></span>
+    <span class="hp-note">另:n_embd 128 · n_head 4 · head_size 32 · 4 层。window=32 与 top_n×block_len=32 数值相同,含义不同。</span>
+  </div>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>① 每个 query 到底读多少个 key</h2>
+    <p class="lead">
+      第 2 章的因果注意力里,位置 <code>t</code> 的 query 要和 <code>t+1</code> 个 key 逐个打分(见
+      <span class="term" data-term="因果掩码 · causal mask" data-key="causal-mask" data-def="注意力矩阵右上角置为 −∞,让每个位置只能看见自己和之前的 token。">因果掩码</span>)。
+      上下文越长,每一步读得越多。拖滑块选一个 query 位置,切换三种读法,看这一行掩码里哪些格子亮着:
+    </p>
+
+    <div class="lab">
+      <div class="btn-row" id="readMode">
+        <button class="btn">全注意力</button>
+        <button class="btn">只滑窗</button>
+        <button class="btn primary">NSA 三支路</button>
+      </div>
+      <div class="rk-row"><label>query 位置 t</label>
+        <input type="range" id="readT" min="0" max="255" step="1" value="143">
+        <span class="rk-val" id="readTV">143</span></div>
+      <div class="svgbox" id="readSvg"></div>
+      <div class="legend" id="readLegend"></div>
+      <div class="dotread" id="readCards"></div>
+      <div class="note" id="readNote"></div>
+    </div>
+
+    <div class="codepath">↳ 代码:<b>12_sparse_attn.py</b> 的 <code>tokens_read</code>(读数公式)· 掩码 <code>CAUSAL</code> / <code>WINDOW</code> / <code>BLOCK_DONE</code></div>
+
+    <div class="sub-h"><span class="badge">放大</span>换成 NSA 论文的默认配置</div>
+    <p class="lead" style="margin-bottom:10px">
+      论文默认:压缩块 <code>l=32</code>、步长 <code>d=16</code>;挑选块 <code>l′=64</code>、挑 <code>n=16</code> 块;滑窗 <code>w=512</code>。
+      解码时每一步最多读 <code>s/d</code> 个压缩 token、<code>n·l′</code> 个挑选 token、<code>w</code> 个邻近 token。拖上下文长度:
+    </p>
+    <div class="lab">
+      <div class="rk-row"><label>上下文长度 s</label>
+        <input type="range" id="bigCtx" min="13" max="20" step="1" value="16">
+        <span class="rk-val" id="bigCtxV">64K</span></div>
+      <div class="svgbox" id="bigSvg"></div>
+      <div class="dotread" id="bigCards"></div>
+      <div class="hp-note" id="bigNote"></div>
+    </div>
+
+    <details class="dig">
+      <summary>压缩支路读的数为什么还随长度增长?</summary>
+      <div class="dig-body">
+        压缩支路给每块留一个摘要,块数 = 上下文长度 / 步长。所以它读的量是 <code>s/16</code>(论文配置)或 <code>t/8</code>(本关配置),
+        和上下文长度成正比,只是除掉了一个常数。挑选和滑窗两条支路读的量是固定的(1024 与 512)。
+        上下文到 1M 时,压缩摘要有 65,536 个,占 NSA 读取量的 98% 左右;这也是后来 DeepSeek-V3.2、V4 和 Qwen3.8 换用更轻的打分器、或把压缩率拉大的原因之一(STEP 5)。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>三条支路的读数加起来,会不会重复算了同一个 token?</summary>
+      <div class="dig-body">
+        会。<code>tokens_read</code> 的注释写的是"去重之前的上界":当前块同时在滑窗和挑选里,最近的几块也可能被挑中。
+        上面的格子图在 t 有真实挑选记录时(t = 15, 31, 47 … 255)会额外给出去重后的原始 token 数。
+        三条支路各有自己的 K/V 投影,所以即使位置重复,读到的向量也不同,按支路分开计数也说得通。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:只读几十个 key,前提是知道该读哪几块。先给每块做一个便宜的摘要。</div>
+  </section>
+
+  <!-- ============ STEP 2 ============ -->
+  <section class="panel" id="panel1">
+    <h2>② 压缩:把一块 token 压成一个摘要</h2>
+    <p class="lead">
+      下面是验证集里一段真实的 256 个字符(NSA 那组训练脚本存下的 <code>sample_text</code>),按
+      <span class="d d-blen">8<i>block_len</i></span> 切成 32 块。
+      拖 query 位置:<b>已经写满的块</b>才有摘要可看(橙框),query 所在的块还没写完(紫色虚框),后面的块看不见。
+      <b>点任意一块</b>,看 8 个 key 怎么变成 1 个摘要 key:
+    </p>
+
+    <div class="lab">
+      <div class="rk-row"><label>query 位置 t</label>
+        <input type="range" id="cmpT" min="0" max="255" step="1" value="100">
+        <span class="rk-val" id="cmpTV">100</span></div>
+      <div class="hp-note" id="cmpInfo"></div>
+      <div class="blkgrid" id="cmpGrid"></div>
+      <div class="legend">
+        <span><i class="sw" style="background:#fff;border:2px solid var(--amber)"></i>已写满 · 摘要可见</span>
+        <span><i class="sw" style="background:#fff;border:2px dashed var(--e3)"></i>query 所在块 · 摘要不可见</span>
+        <span><i class="sw" style="background:var(--accent)"></i>query 自己</span>
+        <span>· 空格 ↵ 换行</span>
+      </div>
+      <div class="cmpflow" id="cmpFlow"></div>
+      <div class="note" id="cmpNote"></div>
+    </div>
+
+    <div class="codepath">↳ 代码:<b>12_sparse_attn.py</b> 的 <code>SparseAttention.forward</code>「支路 1:压缩」· <code>blk_pos</code> / <code>cmp_k</code> / <code>cmp_v</code> / <code>sink_kv</code></div>
+
+    <details class="dig">
+      <summary>为什么摘要要等块写满才能看?</summary>
+      <div class="dig-body">
+        摘要是把块里 8 个 key 拼起来再过线性层,它混进了这 8 个位置的全部信息。
+        如果 query 在块中间就去看这个摘要,等于偷看了自己后面的 token,训练时就泄漏了答案。
+        所以代码用 <code>BLOCK_DONE</code> 做掩码:块的最后一个位置 ≤ t,这块的摘要才对 t 可见。
+        query 所在的那块没有摘要可看,它的内容交给挑选支路(当前块必选)和滑窗支路。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>开头 7 个位置一块完整的都没有,压缩支路怎么算?</summary>
+      <div class="dig-body">
+        全部被掩掉时 softmax 的分母是 0,会算出 NaN。代码加了一个永远可见的"空槽" <code>sink_kv</code>(可学习参数,初值为 0),
+        拼在所有摘要的最前面。于是 t = 0…6 的 query 至少能看见这一格,读数公式里压缩支路那一项也因此多了 <code>+1</code>。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>论文里的压缩和这里有哪些不同?</summary>
+      <div class="dig-body">
+        NSA 论文(§3.3.1 式 (7))的压缩函数 φ 是一个带块内位置编码的 MLP,块长 <code>l=32</code>、步长 <code>d=16</code>,
+        相邻块有一半重叠,论文的解释是减轻信息被切碎。本关用一个 <code>Linear</code> 加可学习的 <code>blk_pos</code> 代替 MLP,
+        步长等于块长(不重叠),这样挑选块和压缩块能共用同一套切分,打分可以直接复用(下一步)。
+        另外,摘要 key 没有加 RoPE,块内先后顺序由 <code>blk_pos</code> 和拼接的顺序表达。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:query 对 32 个摘要打完分,分数最高的几块就值得逐字细看。</div>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="panel" id="panel2">
+    <h2>③ 挑选:只细看分数最高的 top-n 块</h2>
+    <p class="lead">
+      压缩支路算注意力时已经有了 query 对每个摘要的分数。挑选支路直接复用这组分数,取最高的
+      <b>top_n = 4</b> 块(query 所在的当前块强制入选),把这几块里的原始 token 逐个拿来做注意力。
+      下面是训练结束后<b>最后一层</b>真实挑中的块。点一个 query 位置:
+    </p>
+
+    <div class="lab">
+      <div class="btn-row" id="selData">
+        <button class="btn primary">tiny shakespeare 样本</button>
+        <button class="btn">远处找钥匙样本</button>
+      </div>
+      <div class="hp-note" id="selDesc" style="margin:4px 0 6px"></div>
+      <div class="btn-row small" id="selProbe"></div>
+      <div id="selView"></div>
+      <div class="legend" id="selLegend"></div>
+      <div class="note" id="selNote"></div>
+    </div>
+
+    <div class="codepath">↳ 代码:<b>12_sparse_attn.py</b> 的 <code>SparseAttention.forward</code>「支路 2:挑选」· <code>score.topk</code> · 记录在 <code>self.last["chosen"]</code></div>
+
+    <details class="dig">
+      <summary>挑选的分数怎么算?topk 不可导,挑选能学吗?</summary>
+      <div class="dig-body">
+        分数 = <code>softmax(q·摘要key / √head_size)</code>,和 NSA 论文 §3.3.2 式 (8) 一致。
+        同一组 K/V 的两个 query 头把分数相加后一起挑(论文式 (10)),这样一组只需要加载一份被选中的 K/V。
+        当前块的分数被直接设成 <code>1e4</code>,保证入选。
+        <br><br>
+        整个挑选过程在 <code>torch.no_grad()</code> 里,挑哪几块这件事本身不产生梯度。
+        摘要 key 通过压缩支路的输出拿到梯度,越训越能反映块的内容,挑选复用它的分数,也就跟着变准。
+        挑中之后,块里 token 的注意力计算是正常可导的。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>找钥匙准确率 99.85%,为什么图里挑中的块只有一半左右盖住钥匙?</summary>
+      <div class="dig-body">
+        脚本只保存了<b>最后一层、第 0 组 K/V 头</b>的挑选结果(<code>chosen[0, t]</code>)。
+        每层有 2 组 K/V 头,第 1 组挑了什么没有存;前三层挑了什么也没有存。
+        答案要从值 token 那里取,取的动作可以发生在更早的层,之后再由残差流一路带到最后一层,
+        所以最后一层这一组不一定还需要回头看钥匙。
+        门控数据也和这一点对得上:找钥匙模型第 2、3 层挑选门的均值是 0.609 与 0.565,最后一层是 0.458(STEP 4 可切换查看)。
+        这张图能说明的是:挑选确实会越过 64 个噪声位置跳回前面的钥匙区,但不能说明检索具体发生在哪一层。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>为什么当前块一定要选?</summary>
+      <div class="dig-body">
+        当前块还没写满,压缩支路里没有它的摘要,而紧挨着 query 的几个 token 对预测下一个字最重要。
+        NSA 论文的做法类似:16 个挑选块里固定包含开头 1 块和本地 2 块(§4.1)。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:挑中的块是跳着的,最近的几十个字不一定都在里面。所以还要一条滑窗支路,并决定三条支路各听几成。</div>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="panel" id="panel3">
+    <h2>④ 滑窗兜底,门控分配权重</h2>
+    <p class="lead">
+      第三条支路是
+      <span class="term" data-term="滑窗注意力 · sliding window attention" data-key="sliding-window" data-def="每个 query 只看最近 w 个 token。读取量固定为 w,看不到窗口以外的内容。">滑窗注意力</span>:
+      最近 32 个 token 必看。三条支路各算出一个输出,再各乘一个门值相加。门是
+      <code>sigmoid(Linear(x))</code>,<b>每个头、每个位置、每条支路各一个</b>,三个门互不约束。
+      开关下面三条支路,看读数怎么变;对应组合真训练过的,会画出每层的平均门值:
+    </p>
+
+    <div class="lab">
+      <div class="btn-row" id="brToggle">
+        <button class="btn primary">压缩 cmp</button>
+        <button class="btn primary">挑选 sel</button>
+        <button class="btn primary">滑窗 win</button>
+      </div>
+      <div class="btn-row" id="gateData">
+        <button class="btn primary">语言建模(tiny shakespeare)</button>
+        <button class="btn">远处找钥匙</button>
+      </div>
+      <div class="formula" id="gateFormula"></div>
+      <div class="dotread" id="gateCards"></div>
+      <div class="svgbox" id="gateSvg"></div>
+      <div class="note" id="gateNote"></div>
+    </div>
+
+    <div class="codepath">↳ 代码:<b>12_sparse_attn.py</b> 的 <code>SparseAttention.forward</code>「支路 3:滑窗」与「门控加权」· <code>self.gate = nn.Linear(n_embd, 3 * n_head)</code></div>
+
+    <details class="dig">
+      <summary>为什么用三个独立的 sigmoid,不用一个 softmax?</summary>
+      <div class="dig-body">
+        NSA 论文 §3.2 写的就是 sigmoid:<code>g ∈ [0,1]</code>,由输入特征经 MLP 和 sigmoid 得到。
+        softmax 会强迫三个门加起来等于 1,一条支路变重,另外两条必须变轻;sigmoid 允许三条同时开大或同时关小,
+        等于顺带学了一个整体缩放。图里语言建模 NSA 每层三个门之和从 0.65 到 1.03,找钥匙 NSA 在 1.08 到 1.26 之间,用的就是这个自由度。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>图里最后一层的数和 json 里的 gate_mean_last_layer 为什么差一点?</summary>
+      <div class="dig-body">
+        两个数取自不同的前向:<code>gate_mean_last_layer</code> 只喂了 1 条验证样本(语言建模 NSA:cmp 0.145、sel 0.232、win 0.652),
+        图里的 <code>gate_mean_per_layer</code> 喂的是整批(语言建模 32 条,找钥匙 128 条),最后一层是 cmp 0.14、sel 0.255、win 0.637。
+        样本不同,平均值略有差别,两者给出的排序一致。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>三条支路为什么各有一套 K/V 投影?</summary>
+      <div class="dig-body">
+        NSA 论文的理由是防止一条支路的梯度通过共享投影去影响另一条:滑窗支路学局部模式最快,
+        共用投影时它会主导 K/V 的学习,压缩和挑选支路就学不起来。代价是参数变多:
+        本关每层每条支路一个 <code>Linear(128 → 2×2×32)</code>,NSA 那组总参数 0.947M,全注意力 0.743M。STEP 5 比 loss 时要算上这一点。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:机制拆完了。把四组语言建模、三组找钥匙的真实结果摆在一起算总账,再看工业版怎么做。</div>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="panel" id="panel4">
+    <h2>⑤ 真实对照与工业版</h2>
+    <p class="lead">
+      同一份代码、同一个种子,只换 <code>--branches</code>。两套实验在<b>不同硬件</b>上跑:
+      语言建模 4 组在 <b>Mac MPS</b>(各 4000 步),远处找钥匙 3 组在 <b>RTX 4090 · CUDA · PyTorch 2.4.1</b>(各 6000 步,batch 128)。
+      两套之间的训练秒数不能互相比较。切换指标,点行看细节:
+    </p>
+
+    <div class="btn-row" id="abMetric">
+      <button class="btn primary">val loss(语言建模)</button>
+      <button class="btn">val 曲线</button>
+      <button class="btn">找钥匙准确率</button>
+      <button class="btn">平均每 query 读几个 key</button>
+      <button class="btn">训练秒数</button>
+    </div>
+    <div class="ablab" id="abLab"></div>
+    <div class="note" id="abNote"></div>
+
+    <details class="dig">
+      <summary>NSA 的 val loss 最低,能说它比全注意力好吗?</summary>
+      <div class="dig-body">
+        不能直接这么说。三个原因:
+        <b>① 参数不一样多</b>:NSA 0.947M,全注意力 0.743M,多 27.5%,多出来的主要是三套 K/V 投影和压缩器;
+        <b>② 单种子</b>:每组只跑了一次;
+        <b>③ 评测本身有抖动</b>:全注意力最后三次评测是 1.4946 → 1.4998 → 1.5038,相邻两次差到 0.005,NSA 是 1.4820 → 1.4970 → 1.4825,差到 0.015。
+        <br><br>
+        按这个抖动量级看:只滑窗 1.5052 与全注意力 1.5038 差 0.0014,是噪声;压缩+挑选(不带滑窗)1.5321,高出 0.028,更可能是真的,
+        说明去掉滑窗之后局部信息不够。NSA 低 0.021,方向和论文一致(论文 Figure 4:27B 模型上 NSA 的预训练 loss 低于全注意力),但这组数据不足以给出幅度。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>只滑窗在语言建模上几乎不掉点,为什么找钥匙会掉到 3.1%?</summary>
+      <div class="dig-body">
+        tiny shakespeare 是字符级文本,预测下一个字符主要靠最近几十个字符,32 的窗口基本够用。
+        找钥匙任务是专门反过来设计的:128 个位置里,钥匙和值放在 1–32,中间 33–96 是噪声,提问在 97–127。
+        滑窗在提问区往回最远看到位置 66,碰不到任何一把钥匙。值有 32 种,乱猜的准确率是 1/32 = 3.125%,只滑窗那组 3.11% 就是乱猜。
+        全注意力 100%,NSA 99.85%:挑选支路把前面的块找了回来。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>教学版为什么没有变快,反而更慢?</summary>
+      <div class="dig-body">
+        教学版是在稠密的 256×256 注意力矩阵上加掩码来"模拟"稀疏:<code>F.scaled_dot_product_attention</code> 照样把整张矩阵算完,
+        被掩掉的位置只是不参与 softmax。三条支路就是三次完整的注意力,再加压缩和打分,所以 MPS 上 NSA 那组训练 2756 秒,全注意力 801 秒。
+        算出来的数值和真稀疏实现一致,速度不一致。
+        <br><br>
+        真正变快要靠只取被选中块的 kernel。NSA 论文用 Triton 实现,在 8×A100 上 64K 长度训练前向快 9.0 倍、反向快 6.0 倍;
+        解码每步的访存量从 65,536 个 token 降到 5,632 个,按访存量估计的加速是 11.6 倍(表 4)。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>稀疏注意力和第 13 章的线性注意力,各省的是什么?</summary>
+      <div class="dig-body">
+        <b>稀疏注意力省"读"</b>:K/V 全部保存,每个 query 只读其中一部分,所以精确检索能力保留(本关找钥匙 99.85%),但 KV cache 照样随上下文增长。
+        <b>线性注意力省"存"</b>:历史压进固定大小的状态,KV cache 不增长,代价是很难从状态里精确取回很久以前的某个 token。
+        <br><br>
+        两者可以叠加。Qwen3.8-Flash-Next 是 <code>12 × (3 × Gated DeltaNet + 1 × QSA)</code>:四层里三层用线性注意力省存储,剩下一层用稀疏注意力省读取。
+        DeepSeek-V4 在稀疏之外还做了 KV 压缩(CSA 每 4 个 token 压成一条,HCA 每 128 个压成一条),
+        论文报告 V4-Pro 的 KV cache 是 V3.2 的 10%。
+      </div>
+    </details>
+
+    <div class="sub-h"><span class="badge">工业版</span>四种真实模型怎么挑</div>
+    <div class="indgrid">
+      <div class="ind">
+        <h4>NSA</h4>
+        <div class="src">DeepSeek · arXiv 2502.11089</div>
+        <ul>
+          <li>三支路 + sigmoid 门,和本关同一结构</li>
+          <li>压缩 <code>l=32</code> 步长 <code>d=16</code>;挑 <code>n=16</code> 块 × <code>l′=64</code>(含开头 1 块、本地 2 块);滑窗 <code>w=512</code></li>
+          <li>挑选分数复用压缩支路的注意力分数</li>
+          <li>用 <b>27B 总参 / 3B 激活</b>的 MoE 模型从预训练开始按稀疏方式训练(260B token)</li>
+        </ul>
+      </div>
+      <div class="ind">
+        <h4>DSA</h4>
+        <div class="src">DeepSeek-V3.2 · arXiv 2512.02556 §2.1</div>
+        <ul>
+          <li>单独一个
+            <span class="term" data-term="lightning indexer · 闪电索引器" data-key="lightning-indexer" data-def="DeepSeek-V3.2 DSA 里给 (query, 历史 token) 打分的小模块:头数少、可用 FP8 实现,每个 query 按分数选 2048 个 token 做注意力。">lightning indexer</span>
+            打分:<code>I = Σⱼ wⱼ · ReLU(qⱼ · k)</code></li>
+          <li>按 token 挑,不按块:每个 query 选 <b>2048</b> 个 token</li>
+          <li>indexer 头数少,可用 <b>FP8</b> 实现</li>
+          <li>基于 MLA 的 MQA 模式实例化;先稠密预热 1000 步,再稀疏训练 15000 步</li>
+        </ul>
+      </div>
+      <div class="ind">
+        <h4>CSA + HCA</h4>
+        <div class="src">DeepSeek-V4 · arXiv 2606.19348(2026 preview)</div>
+        <ul>
+          <li><b>CSA</b>:每 <b>4</b> 个 token 的 KV 压成 1 条,再用 indexer 挑 top-k 条:Flash <b>512</b>,Pro <b>1024</b></li>
+          <li><b>HCA</b>:每 <b>128</b> 个 token 压成 1 条,对压缩条目做稠密注意力</li>
+          <li>另有滑窗支路 <code>n_win=128</code>;CSA、HCA 逐层交错</li>
+          <li>indexer 的注意力计算用 <b>FP4</b></li>
+        </ul>
+      </div>
+      <div class="ind">
+        <h4>QSA</h4>
+        <div class="src">Qwen3.8-Flash-Next 技术报告 §2.1.2</div>
+        <ul>
+          <li>indexer 是 MQA:<b>4</b> 个 query 头 + <b>1</b> 个共享 key 头</li>
+          <li>key 每 <b>4</b> 个 token 平均池化成一块,只给已写满的块打分</li>
+          <li>预算 <b>2048</b> token,即最多 <b>512</b> 块,再加上最后未写满块的尾部 token</li>
+          <li>48 层 = <code>12 × (3 GDN + 1 QSA)</code>;在 256K 长度的持续预训练阶段把全注意力层换成 QSA</li>
+        </ul>
+      </div>
+    </div>
+    <div class="note">四家共同点:K/V 全存,每个 query 先用便宜的方式给历史打分,再只对高分部分做完整注意力。差别在打分器(复用压缩分数 / 独立 indexer)和挑的单位(块 / token / 压缩条目)。</div>
+
+    <div class="sub-h"><span class="badge">达标</span>本关实测</div>
+    <ul class="checklist" id="okList"></ul>
+
+    <div class="codepath">↳ 跑法:<code>python 12_sparse_attn.py --branches full | win | cmp,sel | cmp,sel,win</code> · 加 <code>--task recall</code> 换成找钥匙</div>
+
+    <div class="congrats" id="congrats">
+      <div class="ct">🎉 稀疏注意力 · 通关</div>
+      <div class="cs">你亲手拆开了 NSA 的三条支路:压缩给每块留摘要,挑选只细看几块,滑窗兜住最近的字,门控决定各听几成。K/V 全存、只读一部分,找钥匙照样答对。</div>
+    </div>
+  </section>
+
+  <div class="nav">
+    <button class="btn" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<canvas id="confetti"></canvas>
+
+<script>
+/* ================================================================
+   REAL-DATA:全部来自 phase4-efficiency/12_sparse_attn.py 的真实训练
+   ① 语言建模(Mac MPS · 各 4000 步 · tiny shakespeare 字符级 · seed 1337)
+      runs/queue_sparse.sh:
+      python 12_sparse_attn.py --branches full|win|cmp,sel|cmp,sel,win --json runs/ch14_lm_<tag>.json
+   ② 远处找钥匙(RTX 4090 · CUDA · PyTorch 2.4.1 · 各 6000 步 · batch 128)
+      runs/cuda/run_4090.sh:
+      python 12_sparse_attn.py --branches full|win|cmp,sel,win --task recall --json runs/ch14_recall_<tag>.json
+      (文件在 runs/cuda/)
+   ================================================================ */
+const BLOCK_SIZE=256, BLOCK_LEN=8, TOP_N=4, WINDOW=32, NB=BLOCK_SIZE/BLOCK_LEN;
+
+// curve 每行 [step, train, val](recall 多一列 val_acc);这里只取需要的列
+const STEPS=[0,500,1000,1500,2000,2500,3000,3500,3999];
+const LM={
+  // runs/ch14_lm_full.json
+  full:{name:'全注意力', branches:'full', params:742849, read_last:256, read_avg:128.5, sec:801,
+    train:1.2011, val:1.5038, curve:[4.268,1.7186,1.5985,1.5445,1.5269,1.5273,1.4946,1.4998,1.5038]},
+  // runs/ch14_lm_win.json
+  win:{name:'只滑窗', branches:'win', params:749041, read_last:32, read_avg:30.1, sec:920,
+    train:1.2034, val:1.5052, curve:[4.3647,1.7004,1.6105,1.5462,1.54,1.5216,1.5133,1.5184,1.5052]},
+  // runs/ch14_lm_cmp-sel.json
+  cmpsel:{name:'压缩+挑选', branches:'cmp+sel', params:881649, read_last:65, read_avg:46.7, sec:1315,
+    train:1.2674, val:1.5321, curve:[4.38,1.8396,1.7423,1.669,1.6048,1.5655,1.543,1.5439,1.5321],
+    gates:[{cmp:0.235,sel:0.252},{cmp:0.07,sel:0.574},{cmp:0.122,sel:0.536},{cmp:0.196,sel:0.515}],
+    gate_last:{cmp:0.191,sel:0.538}},
+  // runs/ch14_lm_cmp-sel-win.json
+  nsa:{name:'NSA 三支路', branches:'cmp+sel+win', params:947185, read_last:97, read_avg:76.8, sec:2756,
+    train:1.1921, val:1.4825, curve:[4.3673,1.7087,1.5858,1.5357,1.5297,1.5032,1.482,1.497,1.4825],
+    gates:[{cmp:0.076,sel:0.149,win:0.424},{cmp:0.057,sel:0.134,win:0.516},{cmp:0.127,sel:0.207,win:0.598},{cmp:0.14,sel:0.255,win:0.637}],
+    gate_last:{cmp:0.145,sel:0.232,win:0.652}},
+};
+// runs/ch14_lm_cmp-sel-win.json:最后一层、第 0 组 K/V 头在一条验证样本上挑中的块
+const LM_PROBES=[15,31,47,63,79,95,111,127,143,159,175,191,207,223,239,255];
+const LM_CHOSEN=[[0,1],[0,1,2,3],[1,2,3,5],[1,2,3,7],[5,6,7,9],[0,1,5,11],[5,10,12,13],[10,11,12,15],[11,12,14,17],[5,11,12,19],[9,11,12,21],[5,14,17,23],[11,12,14,25],[5,20,24,27],[9,11,12,29],[9,12,30,31]];
+const LM_TEXT="e!\nDid I not bid thee meet me in the park,\nAnd bring along these rascal knaves with thee?\n\nGRUMIO:\nNathaniel's coat, sir, was not fully made,\nAnd Gabriel's pumps were all unpink'd i' the heel;\nThere was no link to colour Peter's hat,\nAnd Walter's dagger wa";
+
+const RC={
+  // runs/cuda/ch14_recall_full.json(curve 最后一行 step 5999)
+  full:{name:'全注意力', params:750816, sec:1041, acc:1.0, val:0.0},
+  // runs/cuda/ch14_recall_win.json
+  win:{name:'只滑窗', params:757008, sec:1452, acc:0.0311, val:3.4671},
+  // runs/cuda/ch14_recall_cmp-sel-win.json
+  nsa:{name:'NSA 三支路', params:955152, sec:2458, acc:0.9985, val:0.0058,
+    gates:[{cmp:0.377,sel:0.294,win:0.411},{cmp:0.295,sel:0.609,win:0.356},{cmp:0.254,sel:0.565,win:0.38},{cmp:0.316,sel:0.458,win:0.437}],
+    gate_last:{cmp:0.302,sel:0.468,win:0.452}},
+};
+// runs/cuda/ch14_recall_cmp-sel-win.json:第 i 个提问在位置 RC_PROBES[i],它问的钥匙在 RC_KEYS[i],值在 RC_KEYS[i]+1
+const RC_T=128;
+const RC_PROBES=[97,99,101,103,105,107,109,111,113,115,117,119,121,123,125,127];
+const RC_KEYS=[15,29,27,17,25,19,11,3,5,1,7,21,23,13,31,9];
+const RC_CHOSEN=[[0,2,3,12],[0,2,3,12],[1,5,6,12],[0,3,8,12],[2,3,7,13],[1,2,9,13],[1,2,3,13],[1,9,10,13],[0,3,13,14],[7,9,13,14],[1,11,12,14],[1,6,7,14],[2,9,12,15],[0,5,8,15],[1,7,9,15],[0,2,11,15]];
+
+/* 和 12_sparse_attn.py 的 tokens_read 同一公式(去重之前的上界) */
+function tokensRead(t,br){
+  if(br==='full') return t+1;
+  let n=0;
+  if(br.win) n+=Math.min(t+1,WINDOW);
+  if(br.sel) n+=Math.min(t+1,TOP_N*BLOCK_LEN);
+  if(br.cmp) n+=Math.floor((t+1)/BLOCK_LEN)+1;
+  return n;
+}
+function readAvg(br){ let s=0; for(let t=0;t<BLOCK_SIZE;t++) s+=tokensRead(t,br); return s/BLOCK_SIZE; }
+
+function setActiveBtn(containerId,n){
+  document.querySelectorAll('#'+containerId+' .btn').forEach((b,i)=>b.classList.toggle('primary',i===n));
+}
+const COL={full:'#D97757', win:'#3f7d63', sel:'#3a63c0', cmp:'#a87b1f', cur:'#a3548c', unread:'#E9E6DC', future:'#fff'};
+const showCh=c=> c===' '?'·':(c==='\n'?'↵':c);
+const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+/* ============ 步骤切换 ============ */
+const NSTEP=5;
+const tabs=document.querySelectorAll('.step-tab');
+const panels=[];for(let i=0;i<NSTEP;i++)panels.push(document.getElementById('panel'+i));
+let cur=0;
+function goto(i){
+  cur=Math.max(0,Math.min(NSTEP-1,i));
+  tabs.forEach(t=>t.classList.toggle('active',+t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active',idx===cur));
+  document.getElementById('prevBtn').disabled = cur===0;
+  document.getElementById('nextBtn').textContent = cur===NSTEP-1 ? '完成 🎉' : '下一步 →';
+  const hash='#step-'+(cur+1);
+  if(location.hash!==hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+document.getElementById('prevBtn').addEventListener('click',()=>goto(cur-1));
+document.getElementById('nextBtn').addEventListener('click',()=>{ if(cur===NSTEP-1) celebrate(); else goto(cur+1); });
+
+/* ============ STEP 1:读取掩码 ============ */
+let readMode=2;
+function drawStrip(t,mode,picked){
+  // 4 行 × 64 格,每 8 格一块,块间留缝;每块下方一条细线 = 这块的压缩摘要
+  const CW=9, CH=16, GAP=3, ROWH=34, LX=30, TOP=6;
+  const W=LX+64*CW+7*GAP+4, H=TOP+4*ROWH;
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="${W}" role="img" aria-label="位置 ${t} 的 query 读取掩码">`;
+  const xOf=p=>{const col=p%64;return LX+col*CW+Math.floor(col/8)*GAP;};
+  const yOf=p=>TOP+Math.floor(p/64)*ROWH;
+  for(let r=0;r<4;r++) s+=`<text x="${LX-5}" y="${TOP+r*ROWH+12}" text-anchor="end" font-size="9" font-family="ui-monospace,monospace" fill="#6B6B68">${r*64}</text>`;
+  const pickSet=new Set(picked||[]);
+  for(let p=0;p<BLOCK_SIZE;p++){
+    const b=Math.floor(p/BLOCK_LEN);
+    let fill=COL.unread, op=1;
+    if(p>t){ fill=COL.future; }
+    else if(mode===0){ fill=COL.full; }
+    else if(mode===1){ if(t-p<WINDOW) fill=COL.win; }
+    else{
+      if(t-p<WINDOW) fill=COL.win;
+      else if(pickSet.has(b)) { fill=COL.sel; op=.75; }
+    }
+    s+=`<rect x="${xOf(p)}" y="${yOf(p)}" width="${CW-1}" height="${CH}" rx="1.5" fill="${fill}" fill-opacity="${op}" stroke="${p>t?'#E5E2D9':'none'}" stroke-width=".8"/>`;
+  }
+  if(mode===2){
+    for(let b=0;b<NB;b++){
+      const p0=b*BLOCK_LEN, x=xOf(p0), y=yOf(p0), w=8*CW-1;
+      if(pickSet.has(b)) s+=`<rect x="${x-1.2}" y="${y-1.2}" width="${w+2.4}" height="${CH+2.4}" rx="3" fill="none" stroke="${b===Math.floor(t/BLOCK_LEN)?COL.cur:COL.sel}" stroke-width="1.8"/>`;
+      if((b+1)*BLOCK_LEN-1<=t) s+=`<rect x="${x}" y="${y+CH+4}" width="${w}" height="4" rx="2" fill="${COL.cmp}"/>`;
+    }
+  }
+  s+=`<rect x="${xOf(t)-1}" y="${yOf(t)-3}" width="${CW+1}" height="${CH+6}" rx="2" fill="none" stroke="#1A1A18" stroke-width="1.6"/>`;
+  return s+'</svg>';
+}
+function renderRead(){
+  const t=+document.getElementById('readT').value;
+  document.getElementById('readTV').textContent=t;
+  setActiveBtn('readMode',readMode);
+  const pi=LM_PROBES.indexOf(t);
+  const curB=Math.floor(t/BLOCK_LEN);
+  const picked = readMode===2 ? (pi>=0 ? LM_CHOSEN[pi] : [curB]) : null;
+  document.getElementById('readSvg').innerHTML=drawStrip(t,readMode,picked);
+  const lg=[];
+  if(readMode===0) lg.push(['full','读取']);
+  if(readMode>=1) lg.push(['win','滑窗读取']);
+  if(readMode===2){ lg.push(['sel','挑中块里的 token']); lg.push(['cmp','已写满块的摘要(每块 1 个)']); }
+  lg.push(['unread','不读']); lg.push(['future','未来位置']);
+  document.getElementById('readLegend').innerHTML=lg.map(([k,l])=>`<span><i class="sw" style="background:${COL[k]}"></i>${l}</span>`).join('')
+    +(readMode===2?`<span><i class="sw" style="background:#fff;border:2px solid ${COL.cur}"></i>当前块(必选)</span>`:'');
+  const NSA={cmp:1,sel:1,win:1};
+  let cards;
+  if(readMode===0) cards=[[t+1,'读取的 key 数 = t+1','var(--accent)']];
+  else if(readMode===1) cards=[[tokensRead(t,{win:1}),'读取的 key 数 = min(t+1, 32)','var(--good)'],[t+1,'全注意力会读','var(--ink2)']];
+  else{
+    const w=Math.min(t+1,WINDOW), se=Math.min(t+1,TOP_N*BLOCK_LEN), c=Math.floor((t+1)/BLOCK_LEN)+1;
+    cards=[[w,'滑窗 min(t+1, 32)','var(--good)'],[se,'挑选 min(t+1, 4×8)','var(--e1)'],[c,'压缩 ⌊(t+1)/8⌋ + 1 空槽','var(--amber)'],
+      [tokensRead(t,NSA),'合计(去重前上界)','var(--accent)'],[t+1,'全注意力会读','var(--ink2)']];
+  }
+  document.getElementById('readCards').innerHTML=cards.map(([v,l,c])=>`<div class="dr"><div class="drv" style="color:${c}">${v}</div><div class="drl">${l}</div></div>`).join('');
+  let note='';
+  if(readMode===2){
+    if(pi>=0){
+      const u=new Set();
+      for(let p=Math.max(0,t-WINDOW+1);p<=t;p++) u.add(p);
+      picked.forEach(b=>{for(let p=b*BLOCK_LEN;p<Math.min((b+1)*BLOCK_LEN,t+1);p++) u.add(p);});
+      note=`t=${t} 有真实挑选记录(NSA 语言建模模型最后一层):挑中块 <b>[${picked.join(', ')}]</b>。滑窗和挑选块合起来,去重后读 <b>${u.size}</b> 个原始 token,外加 <b>${Math.floor((t+1)/BLOCK_LEN)+1}</b> 个摘要。`;
+    }else{
+      note=`t=${t} 没有保存挑选结果,图里只画了必选的当前块;另外 ${Math.min(TOP_N-1,curB)} 块由打分决定。拨到 15、31、47 … 255(每 16 个位置一次)可以看真实挑中的块。`;
+    }
+  }else if(readMode===1){
+    note= t>=WINDOW ? `位置 0–${t-WINDOW} 的 ${t-WINDOW+1} 个 token 完全读不到。` : `t 还没超过窗口长度,滑窗和全注意力读的一样多。`;
+  }else note=`读取量随 t 线性增长;生成第 256 个 token 时要读满 256 个。`;
+  const avgAll=`全部 256 个位置平均:全注意力 <b>${readAvg('full').toFixed(1)}</b> · 只滑窗 <b>${readAvg({win:1}).toFixed(1)}</b> · NSA <b>${readAvg(NSA).toFixed(1)}</b>(和训练 json 里的 <code>tokens_read_avg</code> 相同)。`;
+  document.getElementById('readNote').innerHTML=note+'<br>'+avgAll;
+}
+document.querySelectorAll('#readMode .btn').forEach((b,i)=>b.addEventListener('click',()=>{readMode=i;renderRead();}));
+document.getElementById('readT').addEventListener('input',renderRead);
+renderRead();
+
+/* NSA 论文默认配置:l=32, d=16, l′=64, n=16, w=512;
+   每步读 s/d 个压缩 token + n·l′ 个挑选 token + w 个邻近 token(arXiv 2502.11089 §5.2 与表 4:
+   8192→2048, 16384→2560, 32768→3584, 65536→5632) */
+const CTX_LBL={13:'8K',14:'16K',15:'32K',16:'64K',17:'128K',18:'256K',19:'512K',20:'1M'};
+function renderBig(){
+  const e=+document.getElementById('bigCtx').value, s=2**e;
+  document.getElementById('bigCtxV').textContent=CTX_LBL[e];
+  const c=s/16, se=16*64, w=512, tot=c+se+w;
+  const W=620, H=78, LX=86, BW=W-LX-10;
+  const px=v=>Math.max(1.5,BW*v/s);
+  let svg=`<svg viewBox="0 0 ${W} ${H}" width="${W}" role="img" aria-label="全注意力与 NSA 每步读取量">`;
+  svg+=`<text x="${LX-8}" y="23" text-anchor="end" font-size="11" font-family="ui-monospace,monospace" fill="#6B6B68">全注意力</text>`;
+  svg+=`<rect x="${LX}" y="10" width="${BW}" height="20" rx="4" fill="${COL.full}"/>`;
+  svg+=`<text x="${LX-8}" y="61" text-anchor="end" font-size="11" font-family="ui-monospace,monospace" fill="#6B6B68">NSA</text>`;
+  svg+=`<rect x="${LX}" y="48" width="${BW}" height="20" rx="4" fill="#F4F2EA" stroke="#E5E2D9"/>`;
+  let x=LX;
+  [[c,COL.cmp],[se,COL.sel],[w,COL.win]].forEach(([v,col])=>{ svg+=`<rect x="${x}" y="48" width="${px(v)}" height="20" fill="${col}"/>`; x+=px(v); });
+  svg+=`<text x="${Math.min(x+6,W-120)}" y="62" font-size="11" font-weight="700" font-family="ui-monospace,monospace" fill="#1A1A18">${(100*tot/s).toFixed(1)}%</text>`;
+  document.getElementById('bigSvg').innerHTML=svg+'</svg>';
+  const en=v=>v.toLocaleString('en-US');
+  document.getElementById('bigCards').innerHTML=[
+    [en(s),'全注意力每步读','var(--accent)'],[en(c),'压缩 s/16','var(--amber)'],[en(se),'挑选 16×64','var(--e1)'],
+    [en(w),'滑窗 512','var(--good)'],[en(tot),'NSA 合计','var(--ink)'],[(s/tot).toFixed(1)+'×','访存量之比','var(--good)']
+  ].map(([v,l,col])=>`<div class="dr"><div class="drv" style="color:${col};font-size:18px">${v}</div><div class="drl">${l}</div></div>`).join('');
+  document.getElementById('bigNote').innerHTML= e<=16
+    ? `8K–64K 四档与 NSA 论文表 4 的"每步访存 token 数"一致;论文说解码是访存瓶颈,预期加速约等于这个比值。`
+    : `超过 64K 的档位是按同一公式外推的,论文表 4 只列到 64K。压缩那一段随长度线性增长,占比越来越大。`;
+}
+document.getElementById('bigCtx').addEventListener('input',renderBig);
+renderBig();
+
+/* ============ STEP 2:压缩 ============ */
+let cmpFocus=12;
+function blockCard(b,o){
+  // o: {t, text, pick:Set, mark:'done'|..., showWin}
+  const t=o.t, p0=b*BLOCK_LEN, end=p0+BLOCK_LEN-1, curB=Math.floor(t/BLOCK_LEN);
+  let cls='blk', tag='';
+  if(o.pick && o.pick.has(b)){ cls+=' pick'; tag= b===curB?'当前·必选':'挑中'; }
+  else if(end<=t){ cls+=' done'; tag=o.pick?'':'摘要 ✓'; }
+  else if(b===curB){ cls+=' cur'; tag='进行中'; }
+  else cls+=' future';
+  if(o.focus===b) cls+=' focus';
+  if(b===curB && !(o.pick&&o.pick.has(b))) cls=cls.replace(' done','');
+  let chars='';
+  for(let p=p0;p<=end;p++){
+    const ch=o.text[p]||' ';
+    let cc='c'+((ch===' '||ch==='\n')?' ws':'');
+    if(o.showWin && p<=t && t-p<WINDOW) cc+=' win';
+    if(p===t) cc+=' now';
+    chars+=`<span class="${cc}">${esc(showCh(ch))}</span>`;
+  }
+  return `<div class="${cls}" data-b="${b}"><div class="bh"><span>块 ${b}</span><span class="bt">${tag}</span></div><div class="chars">${chars}</div></div>`;
+}
+function renderCmp(){
+  const t=+document.getElementById('cmpT').value;
+  document.getElementById('cmpTV').textContent=t;
+  const curB=Math.floor(t/BLOCK_LEN), nDone=Math.floor((t+1)/BLOCK_LEN);
+  let html=''; for(let b=0;b<NB;b++) html+=blockCard(b,{t,text:LM_TEXT,focus:cmpFocus});
+  const g=document.getElementById('cmpGrid'); g.innerHTML=html;
+  g.querySelectorAll('.blk').forEach(el=>el.addEventListener('click',()=>{cmpFocus=+el.dataset.b;renderCmp();}));
+  document.getElementById('cmpInfo').innerHTML=`query 在位置 <b>${t}</b>(块 ${curB}),可见摘要 <b>${nDone}</b> 个 + 1 个空槽。`;
+  const b=cmpFocus, p0=b*BLOCK_LEN, visible=(p0+BLOCK_LEN-1)<=t;
+  let vecs='';
+  for(let i=0;i<BLOCK_LEN;i++){ const ch=LM_TEXT[p0+i]||' '; vecs+=`<div class="vec"><div class="vl">${esc(showCh(ch))}</div><div class="vb"></div><div class="vl">+pos${i}</div></div>`; }
+  document.getElementById('cmpFlow').innerHTML=
+    `<div><div class="hp-note" style="margin-bottom:3px">块 ${b} 的 8 个 key(各 <span class="d d-head">32<i>head_size</i></span> 维)+ <code>blk_pos</code></div><div class="vecs">${vecs}</div></div>
+     <div class="arrow">拼接<br>→</div>
+     <div><div class="hp-note" style="margin-bottom:3px"><span class="d d-blen">8<i>block_len</i></span> × <span class="d d-head">32<i>head_size</i></span> = 256 维</div><div class="longbar"></div></div>
+     <div class="arrow"><code>cmp_k</code><br>Linear(256→32)<br>→</div>
+     <div style="text-align:center"><div class="hp-note" style="margin-bottom:3px">摘要 key</div><div class="sumvec" style="margin:0 auto"></div><div class="vl" style="font-family:var(--mono);font-size:10.5px;color:var(--ink2)">32 维</div></div>`;
+  document.getElementById('cmpNote').innerHTML=
+    `块 ${b} 覆盖位置 ${p0}–${p0+BLOCK_LEN-1}。对 t=${t} 的 query,这个摘要${visible?'<b>可见</b>:块已写满':'<b>不可见</b>:块的最后一个位置还在 t 之后'}。
+     value 那一侧同样处理(<code>cmp_v</code>),每块得到一对摘要 key/value。256 个 key 最终压成 32 对摘要,query 对它们做一次普通注意力,就是压缩支路的输出。`;
+}
+document.getElementById('cmpT').addEventListener('input',renderCmp);
+renderCmp();
+
+/* ============ STEP 3:挑选 ============ */
+let selDs=0, selIdx=[8,0];
+function renderSelProbes(){
+  const probes= selDs===0?LM_PROBES:RC_PROBES;
+  const box=document.getElementById('selProbe');
+  box.innerHTML=probes.map(p=>`<button class="btn">t=${p}</button>`).join('');
+  box.querySelectorAll('.btn').forEach((b,i)=>b.addEventListener('click',()=>{selIdx[selDs]=i;renderSel();}));
+}
+function recallStats(){
+  let k=0,v=0,any=0,far=0,farKey=0;
+  RC_PROBES.forEach((t,i)=>{
+    const ch=RC_CHOSEN[i], kb=Math.floor(RC_KEYS[i]/BLOCK_LEN), vb=Math.floor((RC_KEYS[i]+1)/BLOCK_LEN), cb=Math.floor(t/BLOCK_LEN);
+    const hk=ch.includes(kb), hv=ch.includes(vb);
+    k+=hk; v+=hv; any+=(hk||hv);
+    ch.forEach(b=>{ if(b!==cb){ far++; if(b<=3) farKey++; } });
+  });
+  return {k,v,any,far,farKey};
+}
+function drawRecall(i){
+  const t=RC_PROBES[i], key=RC_KEYS[i], val=key+1, ch=new Set(RC_CHOSEN[i]), cb=Math.floor(t/BLOCK_LEN);
+  const CW=9, CH=18, GAP=4, ROWH=42, LX=30, TOP=16;
+  const W=LX+64*CW+7*GAP+6, H=TOP+2*ROWH+4;
+  const xOf=p=>{const col=p%64;return LX+col*CW+Math.floor(col/8)*GAP;};
+  const yOf=p=>TOP+Math.floor(p/64)*ROWH;
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="${W}" role="img" aria-label="找钥匙样本的挑选结果">`;
+  for(let r=0;r<2;r++) s+=`<text x="${LX-5}" y="${TOP+r*ROWH+13}" text-anchor="end" font-size="9" font-family="ui-monospace,monospace" fill="#6B6B68">${r*64}</text>`;
+  for(let b=0;b<RC_T/BLOCK_LEN;b++){
+    const p0=b*BLOCK_LEN, x=xOf(p0), y=yOf(p0);
+    s+=`<text x="${x+4*CW}" y="${y-4}" text-anchor="middle" font-size="8.5" font-family="ui-monospace,monospace" fill="${ch.has(b)?(b===cb?COL.cur:COL.sel):'#9a978d'}" font-weight="${ch.has(b)?700:400}">块${b}</text>`;
+  }
+  for(let p=0;p<RC_T;p++){
+    let fill='#E9E6DC';
+    if(p>=1&&p<=32) fill= p%2===1 ? '#b9c7ea' : '#b7d6c6';
+    else if(p>=97) fill= p%2===1 ? '#e2c3d8' : '#efdfe9';
+    if(p>t) fill='#fff';
+    s+=`<rect x="${xOf(p)}" y="${yOf(p)}" width="${CW-1}" height="${CH}" rx="1.5" fill="${fill}" stroke="${p>t?'#E5E2D9':'none'}" stroke-width=".8"/>`;
+  }
+  ch.forEach(b=>{
+    const p0=b*BLOCK_LEN;
+    s+=`<rect x="${xOf(p0)-1.5}" y="${yOf(p0)-1.5}" width="${8*CW-1+3}" height="${CH+3}" rx="3" fill="${b===cb?COL.cur:COL.sel}" fill-opacity=".18" stroke="${b===cb?COL.cur:COL.sel}" stroke-width="2"/>`;
+  });
+  const ring=(p,col,lbl)=>`<rect x="${xOf(p)-1.5}" y="${yOf(p)-1.5}" width="${CW+2}" height="${CH+3}" rx="2" fill="none" stroke="${col}" stroke-width="2.2"/><text x="${xOf(p)+CW/2}" y="${yOf(p)+CH+11}" text-anchor="middle" font-size="9" font-weight="700" font-family="ui-monospace,monospace" fill="${col}">${lbl}</text>`;
+  s+=ring(key,'#3a63c0','钥匙')+ring(val,'#3f7d63','值')+ring(t,'#1A1A18','提问');
+  return s+'</svg>';
+}
+function renderSel(){
+  setActiveBtn('selData',selDs);
+  const i=selIdx[selDs];
+  setActiveBtn('selProbe',i);
+  if(selDs===0){
+    const t=LM_PROBES[i], ch=LM_CHOSEN[i], pick=new Set(ch), curB=Math.floor(t/BLOCK_LEN);
+    document.getElementById('selDesc').innerHTML=`语言建模 NSA 模型 · 验证集一段 256 字符 · 每 16 个位置记录一次挑选(json 的 <code>probe_positions</code> / <code>chosen_blocks</code>)`;
+    let html='<div class="blkgrid">'; for(let b=0;b<NB;b++) html+=blockCard(b,{t,text:LM_TEXT,pick,showWin:true}); html+='</div>';
+    document.getElementById('selView').innerHTML=html;
+    document.getElementById('selLegend').innerHTML=
+      `<span><i class="sw" style="background:var(--e1s);border:2px solid var(--e1)"></i>挑中的块</span>
+       <span><i class="sw" style="background:#fff;border:2px solid var(--amber)"></i>已写满、没挑中</span>
+       <span><i class="sw" style="background:#F4F2EA;border-bottom:3px solid var(--good)"></i>在滑窗内(最近 32 个)</span>
+       <span><i class="sw" style="background:var(--accent)"></i>query</span>`;
+    const outside=ch.filter(b=>(b+1)*BLOCK_LEN-1 < t-WINDOW+1);
+    const avail=Math.floor((t+1)/BLOCK_LEN);
+    document.getElementById('selNote').innerHTML=
+      `query 在 t=${t}(字符 “${esc(showCh(LM_TEXT[t]))}”),可挑的已写满块有 ${avail} 个,挑中 <b>[${ch.join(', ')}]</b>,其中 <b>${outside.length}</b> 块完全在滑窗之外${outside.length?'(块 '+outside.join('、')+')':''}。
+       挑选支路逐个读这 ${ch.length} 块里 ≤ t 的 token,共 ${ch.reduce((a,b)=>a+Math.max(0,Math.min(BLOCK_LEN,t+1-b*BLOCK_LEN)),0)} 个。`;
+  }else{
+    const t=RC_PROBES[i], key=RC_KEYS[i], ch=RC_CHOSEN[i], kb=Math.floor(key/BLOCK_LEN), vb=Math.floor((key+1)/BLOCK_LEN);
+    document.getElementById('selDesc').innerHTML=`找钥匙 NSA 模型(RTX 4090)· 128 个位置:1–32 放 16 对钥匙和值,33–96 噪声,97–127 把 16 把钥匙打乱再问一遍 · 只记录了最后一层第 0 组 K/V 头`;
+    document.getElementById('selView').innerHTML=`<div class="svgbox">${drawRecall(i)}</div>`;
+    document.getElementById('selLegend').innerHTML=
+      `<span><i class="sw" style="background:#b9c7ea"></i>钥匙</span><span><i class="sw" style="background:#b7d6c6"></i>值</span>
+       <span><i class="sw" style="background:#E9E6DC"></i>噪声</span><span><i class="sw" style="background:#e2c3d8"></i>提问区</span>
+       <span><i class="sw" style="background:rgba(58,99,192,.18);border:2px solid var(--e1)"></i>挑中的块</span>
+       <span><i class="sw" style="background:rgba(163,84,140,.18);border:2px solid var(--e3)"></i>当前块</span>`;
+    const st=recallStats(), hk=ch.includes(kb), hv=ch.includes(vb);
+    document.getElementById('selNote').innerHTML=
+      `提问在 t=${t},问的钥匙在位置 ${key}(块 ${kb}),答案值在位置 ${key+1}(块 ${vb})。这一次挑中 <b>[${ch.join(', ')}]</b>:
+       钥匙块 ${hk?'<b>在内</b>':'不在内'},值块 ${hv?'<b>在内</b>':'不在内'}。滑窗此时最远只到位置 ${t-WINDOW+1}。<br>
+       16 个提问合计:挑中钥匙块 <b>${st.k}/16</b>,挑中值块 <b>${st.v}/16</b>,至少挑中其一 <b>${st.any}/16</b>;
+       除当前块外共挑 ${st.far} 块,其中 <b>${st.farKey}</b> 块落在钥匙区(块 0–3)。原因见下方第二个折叠问题。`;
+  }
+}
+document.querySelectorAll('#selData .btn').forEach((b,i)=>b.addEventListener('click',()=>{selDs=i;renderSelProbes();renderSel();}));
+renderSelProbes(); renderSel();
+
+/* ============ STEP 4:门控 ============ */
+const brOn={cmp:true,sel:true,win:true};
+let gateDs=0;
+const BR_KEYS=['cmp','sel','win'], BR_NAME={cmp:'压缩',sel:'挑选',win:'滑窗'};
+function runFor(){
+  const k=BR_KEYS.filter(b=>brOn[b]).join('+');
+  if(gateDs===0) return {'cmp+sel+win':LM.nsa,'cmp+sel':LM.cmpsel,'win':LM.win}[k]||null;
+  return {'cmp+sel+win':RC.nsa,'win':RC.win}[k]||null;
+}
+function renderGate(){
+  document.querySelectorAll('#brToggle .btn').forEach((b,i)=>b.classList.toggle('primary',brOn[BR_KEYS[i]]));
+  setActiveBtn('gateData',gateDs);
+  const on=BR_KEYS.filter(b=>brOn[b]);
+  document.getElementById('gateFormula').innerHTML='out = '+BR_KEYS.map(b=>
+    `<span class="${brOn[b]?'hl':'off'}">g<sub>${b}</sub>·o<sub>${b}</sub></span>`).join(' + ')
+    +`<br><span style="color:var(--ink2)">g = sigmoid(Linear(x)) → 形状 (batch, n_head=4, T, 3),每个头、每个位置、每条支路一个数</span>`;
+  const run=runFor();
+  const cards=[];
+  if(on.length){
+    cards.push([tokensRead(BLOCK_SIZE-1,brOn),'最后一个 query 读几个','var(--accent)']);
+    cards.push([readAvg(brOn).toFixed(1),'256 个位置平均','var(--accent)']);
+  }
+  if(run){
+    if(gateDs===0) cards.push([run.val.toFixed(4),'val loss(MPS)','var(--ink)']);
+    else cards.push([(100*run.acc).toFixed(2)+'%','找钥匙准确率(4090)','var(--ink)']);
+    cards.push([(run.params/1e6).toFixed(3)+'M','总参数','var(--ink2)']);
+  }
+  document.getElementById('gateCards').innerHTML=cards.map(([v,l,c])=>`<div class="dr"><div class="drv" style="color:${c}">${v}</div><div class="drl">${l}</div></div>`).join('');
+  let note='', svg='';
+  if(!on.length){ note='三条支路全关就没有注意力输出了。对照组"全注意力"在 STEP 5。'; }
+  else if(!run){ note=`这个组合(${on.map(b=>BR_NAME[b]).join(' + ')})${gateDs===1?'在找钥匙任务上':''}没有训练过,只能给出读数公式算出的数。训练过的组合:${gateDs===0?'只滑窗、压缩+挑选、三支路':'只滑窗、三支路'}。`; }
+  else if(!run.gates){ note=`这组训练过(${gateDs===0?'val loss '+run.val.toFixed(4):'准确率 '+(100*run.acc).toFixed(2)+'%'}),但脚本只在含挑选支路时记录门值,只有滑窗时没有门的数据。`; }
+  else{
+    const layers=run.gates, W=600, H=190, LX=36, BOT=H-26, TOPY=14, gw=(W-LX-10)/4;
+    svg=`<svg viewBox="0 0 ${W} ${H}" width="${W}" role="img" aria-label="每层三条支路的平均门值">`;
+    [0,0.25,0.5,0.75].forEach(v=>{ const y=BOT-(BOT-TOPY)*v/0.75;
+      svg+=`<line x1="${LX}" x2="${W-6}" y1="${y}" y2="${y}" stroke="#E5E2D9" stroke-width="1"/><text x="${LX-5}" y="${y+3}" text-anchor="end" font-size="9" font-family="ui-monospace,monospace" fill="#6B6B68">${v}</text>`; });
+    layers.forEach((g,li)=>{
+      const keys=BR_KEYS.filter(b=>g[b]!==undefined), bw=Math.min(34,(gw-24)/keys.length);
+      const x0=LX+li*gw+(gw-bw*keys.length)/2;
+      keys.forEach((b,ki)=>{ const h=(BOT-TOPY)*g[b]/0.75, x=x0+ki*bw;
+        svg+=`<rect x="${x+2}" y="${BOT-h}" width="${bw-4}" height="${h}" rx="3" fill="${COL[b]}"/><text x="${x+bw/2}" y="${BOT-h-3}" text-anchor="middle" font-size="9" font-weight="700" font-family="ui-monospace,monospace" fill="${COL[b]}">${g[b]}</text>`; });
+      const sum=keys.reduce((a,b)=>a+g[b],0);
+      svg+=`<text x="${LX+li*gw+gw/2}" y="${H-10}" text-anchor="middle" font-size="10.5" font-family="ui-monospace,monospace" fill="#1A1A18">第 ${li+1} 层 · 和 ${sum.toFixed(2)}</text>`;
+    });
+    svg+='</svg>';
+    const legend=BR_KEYS.filter(b=>layers[0][b]!==undefined).map(b=>`<span style="color:${COL[b]};font-weight:700">■ ${BR_NAME[b]}</span>`).join(' ');
+    if(gateDs===0 && run===LM.nsa) note=`${legend}<br>语言建模里<b>每一层滑窗门都最大</b>(0.424 → 0.637),越往后越大;挑选门第二,压缩门最小。预测下一个字符主要靠最近的字。`;
+    else if(gateDs===0) note=`${legend}<br>去掉滑窗后,<b>挑选门在每一层都大于压缩门</b>,第 2–4 层在 0.5 以上:当前块必选,局部信息只能从挑选支路拿。`;
+    else note=`${legend}<br>找钥匙任务里<b>第 2–4 层挑选门最大</b>(0.609、0.565、0.458),和语言建模的排序不同:答案在滑窗够不到的地方,模型更依赖挑选支路。第 1 层仍是滑窗门最大(0.411)。`;
+  }
+  document.getElementById('gateSvg').innerHTML=svg;
+  document.getElementById('gateNote').innerHTML=note;
+}
+document.querySelectorAll('#brToggle .btn').forEach((b,i)=>b.addEventListener('click',()=>{brOn[BR_KEYS[i]]=!brOn[BR_KEYS[i]];renderGate();}));
+document.querySelectorAll('#gateData .btn').forEach((b,i)=>b.addEventListener('click',()=>{gateDs=i;renderGate();}));
+renderGate();
+
+/* ============ STEP 5:真实对照 ============ */
+const LM_ORDER=['full','win','cmpsel','nsa'], RC_ORDER=['full','win','nsa'];
+const SER_COL={full:'#8C8A83',win:'#3f7d63',cmpsel:'#3a63c0',nsa:'#D97757'};
+let abMetric=0, abSel={lm:'nsa',rc:'nsa'};
+function barRows(order,src,valFn,fmt,widthFn,group){
+  return order.map(k=>{
+    const r=src[k], v=valFn(r);
+    return `<div class="abrow${abSel[group]===k?' sel':''}" data-k="${k}" data-g="${group}">
+      <div class="an">${r.name}</div>
+      <div class="at"><div class="af" style="width:${widthFn(v).toFixed(1)}%;background:${SER_COL[k]}"></div></div>
+      <div class="av">${fmt(v)}</div></div>`;
+  }).join('');
+}
+function lmNote(k){
+  const r=LM[k], f=LM.full, d=r.val-f.val;
+  return `<b>${r.name}</b>(<code>--branches ${r.branches==='cmp+sel+win'?'cmp,sel,win':(r.branches==='cmp+sel'?'cmp,sel':r.branches)}</code>,Mac MPS,4000 步)·
+    val loss <b>${r.val.toFixed(4)}</b>${k==='full'?'':`(比全注意力${d<=0?'低 '+(-d).toFixed(4):'高 '+d.toFixed(4)}${Math.abs(d)<0.01?',小于 0.01,单种子下算噪声':''})`}
+    · train ${r.train.toFixed(4)} · 参数 <b>${(r.params/1e6).toFixed(3)}M</b>${k==='full'?'':`(${r.params>f.params?'+':''}${(100*(r.params/f.params-1)).toFixed(1)}%)`}
+    · 最后一个 query 读 ${r.read_last} 个 · 平均 ${r.read_avg} 个 · 训练 ${r.sec} 秒`;
+}
+function rcNote(k){
+  const r=RC[k];
+  return `<b>${r.name}</b>(找钥匙,RTX 4090 · CUDA · PyTorch 2.4.1,6000 步)· 准确率 <b>${(100*r.acc).toFixed(2)}%</b> · val loss ${r.val.toFixed(4)}
+    · 参数 <b>${(r.params/1e6).toFixed(3)}M</b> · 训练 ${r.sec} 秒${k==='win'?' · 值有 32 种,乱猜是 3.125%':''}`;
+}
+function renderAB(){
+  setActiveBtn('abMetric',abMetric);
+  const lab=document.getElementById('abLab');
+  let html='', note='';
+  if(abMetric===0){
+    const vs=LM_ORDER.map(k=>LM[k].val), mx=Math.max(...vs), mn=Math.min(...vs);
+    html=`<div class="abgroup">语言建模 · 最终 val loss · Mac MPS(条越长 loss 越低,按组内最高与最低拉开)</div>`
+      +barRows(LM_ORDER,LM,r=>r.val,v=>v.toFixed(4),v=>22+78*(mx-v)/(mx-mn),'lm');
+    note=lmNote(abSel.lm);
+  }else if(abMetric===1){
+    const W=620,H=250,LX=46,RX=12,TOPY=12,BOT=H-40, y0=1.45,y1=1.85;
+    const xs=s=>LX+(W-LX-RX)*s/4000, ys=v=>BOT-(BOT-TOPY)*(Math.min(v,y1)-y0)/(y1-y0);
+    let s=`<svg viewBox="0 0 ${W} ${H}" width="${W}" role="img" aria-label="四组 val loss 曲线">`;
+    [1.45,1.55,1.65,1.75,1.85].forEach(v=>{ s+=`<line x1="${LX}" x2="${W-RX}" y1="${ys(v)}" y2="${ys(v)}" stroke="#E5E2D9"/><text x="${LX-5}" y="${ys(v)+3}" text-anchor="end" font-size="9" font-family="ui-monospace,monospace" fill="#6B6B68">${v.toFixed(2)}</text>`; });
+    [500,1000,2000,3000,4000].forEach(st=>{ s+=`<text x="${xs(st)}" y="${BOT+14}" text-anchor="middle" font-size="9" font-family="ui-monospace,monospace" fill="#6B6B68">${st}</text>`; });
+    s+=`<text x="${(W+LX)/2}" y="${H-8}" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#6B6B68">训练步数(step 0 的 4.3 左右不画)</text>`;
+    LM_ORDER.forEach(k=>{
+      const r=LM[k], pts=STEPS.map((st,i)=>[st,r.curve[i]]).filter(([st])=>st>0);
+      const sel=abSel.lm===k;
+      s+=`<polyline points="${pts.map(([st,v])=>xs(st).toFixed(1)+','+ys(v).toFixed(1)).join(' ')}" fill="none" stroke="${SER_COL[k]}" stroke-width="${sel?3:1.6}" opacity="${sel?1:.7}"/>`;
+      pts.forEach(([st,v])=>{ s+=`<circle cx="${xs(st).toFixed(1)}" cy="${ys(v).toFixed(1)}" r="${sel?3:2}" fill="${SER_COL[k]}"/>`; });
+    });
+    s+='</svg>';
+    html=`<div class="abgroup">语言建模 · 每 500 步评测一次的 val loss · Mac MPS</div><div class="svgbox">${s}</div>
+      <div class="legend">${LM_ORDER.map(k=>`<span data-k="${k}" data-g="lm" class="abrow" style="margin:0;cursor:pointer"><i class="sw" style="background:${SER_COL[k]}"></i>${LM[k].name}</span>`).join('')}</div>`;
+    note=lmNote(abSel.lm)+'<br>压缩+挑选(蓝)在前 2500 步明显落后,另外三条在 2500 步以后交错,相邻两次评测能上下跳 0.005–0.015。';
+  }else if(abMetric===2){
+    html=`<div class="abgroup">远处找钥匙 · 最终准确率 · RTX 4090 · CUDA · PyTorch 2.4.1</div>`
+      +barRows(RC_ORDER,RC,r=>r.acc,v=>(100*v).toFixed(2)+'%',v=>Math.max(2,100*v),'rc');
+    note=rcNote(abSel.rc);
+  }else if(abMetric===3){
+    html=`<div class="abgroup">语言建模 4 组 · 256 个位置平均每个 query 读几个 key(json 的 tokens_read_avg,去重前上界)</div>`
+      +barRows(LM_ORDER,LM,r=>r.read_avg,v=>v.toFixed(1),v=>100*v/128.5,'lm');
+    note=lmNote(abSel.lm)+'<br>找钥匙序列只有 128 个位置,脚本的 <code>tokens_read_avg</code> 仍按 256 算,所以这里只列语言建模 4 组。';
+  }else{
+    const mx1=Math.max(...LM_ORDER.map(k=>LM[k].sec)), mx2=Math.max(...RC_ORDER.map(k=>RC[k].sec));
+    html=`<div class="abgroup">语言建模 · Mac MPS · 4000 步</div>`
+      +barRows(LM_ORDER,LM,r=>r.sec,v=>v+' 秒',v=>100*v/mx1,'lm')
+      +`<div class="abgroup">远处找钥匙 · RTX 4090 · 6000 步 · batch 128(硬件不同,不和上面比)</div>`
+      +barRows(RC_ORDER,RC,r=>r.sec,v=>v+' 秒',v=>100*v/mx2,'rc');
+    note=`用 mask 模拟稀疏不会变快:MPS 上 NSA 三支路 ${LM.nsa.sec} 秒,是全注意力 ${LM.full.sec} 秒的 ${(LM.nsa.sec/LM.full.sec).toFixed(1)} 倍;4090 上是 ${(RC.nsa.sec/RC.full.sec).toFixed(1)} 倍。原因见下方折叠问题。`;
+  }
+  lab.innerHTML=html;
+  lab.querySelectorAll('[data-k]').forEach(el=>el.addEventListener('click',()=>{abSel[el.dataset.g]=el.dataset.k;renderAB();}));
+  document.getElementById('abNote').innerHTML=note;
+}
+document.querySelectorAll('#abMetric .btn').forEach((b,i)=>b.addEventListener('click',()=>{abMetric=i;renderAB();}));
+renderAB();
+(function(){
+  const f=LM.full, n=LM.nsa, st=recallStats();
+  document.getElementById('okList').innerHTML=[
+    `平均每个 query 读的 key:全注意力 <b>${f.read_avg}</b>,NSA <b>${n.read_avg}</b>(${(100*n.read_avg/f.read_avg).toFixed(1)}%);最后一个 query 从 <b>256</b> 降到 <b>97</b>。换成论文配置,64K 上下文每步只读 5,632 个(8.6%)。`,
+    `语言建模 val loss:全注意力 <b>${f.val}</b> · 只滑窗 <b>${LM.win.val}</b> · 压缩+挑选 <b>${LM.cmpsel.val}</b> · NSA <b>${n.val}</b>。NSA 最低,但参数多 ${(100*(n.params/f.params-1)).toFixed(1)}%(${(n.params/1e6).toFixed(3)}M 对 ${(f.params/1e6).toFixed(3)}M),单种子。`,
+    `远处找钥匙(RTX 4090):全注意力 <b>${(100*RC.full.acc).toFixed(0)}%</b>,只滑窗 <b>${(100*RC.win.acc).toFixed(1)}%</b>(乱猜水平),NSA <b>${(100*RC.nsa.acc).toFixed(2)}%</b>:K/V 全存、只读一部分,检索能力没丢。`,
+    `门控学出了任务差异:语言建模 NSA 每层滑窗门最大,找钥匙 NSA 第 2–4 层挑选门最大。`,
+    `最后一层第 0 组 K/V 头的挑选,在 16 个提问里有 <b>${st.any}</b> 个盖住了钥匙块或值块;除当前块外挑中的 ${st.far} 块里 <b>${st.farKey}</b> 块在钥匙区。`,
+  ].map(t=>`<li><span class="ck">✓</span><div>${t}</div></li>`).join('');
+})();
+
+/* ============ 名词气泡 ============ */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent, def=el.dataset.def||'', key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def+(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8; if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw; if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el)); el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* ============ 通关庆祝 ============ */
+function celebrate(){
+  document.getElementById('congrats').classList.add('show');
+  const cv=document.getElementById('confetti'); cv.style.display='block';
+  const ctx=cv.getContext('2d'); cv.width=innerWidth; cv.height=innerHeight;
+  const COLS=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const ps=[];for(let i=0;i<150;i++)ps.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    vx:(Math.random()-0.5)*3,vy:2+Math.random()*4,s:5+Math.random()*7,c:COLS[i%COLS.length],a:Math.random()*6.28,va:(Math.random()-0.5)*0.3});
+  let t0=null;
+  function frame(ts){ if(!t0)t0=ts; const el=ts-t0;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.04;p.a+=p.va;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.a);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.6);ctx.restore();});
+    if(el<3400) requestAnimationFrame(frame); else { ctx.clearRect(0,0,cv.width,cv.height); cv.style.display='none'; }
+  }
+  requestAnimationFrame(frame);
+  document.getElementById('congrats').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ============ 初始化:深链 ============ */
+const m=/^#step-(\d+)$/.exec(location.hash);
+goto(m?parseInt(m[1],10)-1:0);
+window.addEventListener('hashchange',()=>{const mm=/^#step-(\d+)$/.exec(location.hash);goto(mm?parseInt(mm[1],10)-1:0);});
+
+</script>
+<!--site-copyright-->
+<footer style="max-width:960px;margin:56px auto 0;padding:18px 24px 44px;border-top:1px solid var(--border);text-align:center;font-size:12px;color:var(--ink2);line-height:1.7">
+  © 2026 <a href="https://fim.ai" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">FIM Labs</a> · 从零手写大语言模型 · MIT License
+</footer>
+</body>
+</html>

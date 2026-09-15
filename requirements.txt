@@ -1,5 +1,6 @@
-# 全仓依赖。装这些就能跑通全部 9 个脚本:
-# bigram → attention → transformer → GPT-2 124M 预训练/推理 → SFT / LoRA / DPO → MoE。
+# 全仓依赖。装这些就能跑通全部脚本:
+# bigram → attention → transformer → GPT-2 124M 预训练/推理 → SFT / LoRA / DPO → MoE / LLaMA
+# → 线性注意力 / 稀疏注意力 / N-gram 查表 / 投机解码 / 量化(phase4-efficiency)。
 # 建议 Python 3.10+。装 torch 请按你的平台到 https://pytorch.org 选对应命令：
 #   - NVIDIA 显卡(Windows/Linux)：选 CUDA 版
 #   - Mac(Apple Silicon)：默认 pip 版即自带 MPS
