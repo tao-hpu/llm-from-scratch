@@ -38,7 +38,7 @@ from torch.nn import functional as F
 HERE = os.path.dirname(os.path.abspath(__file__))
 p = argparse.ArgumentParser()
 p.add_argument("--ckpt", type=str, default=os.path.join(HERE, "..", "phase1-124m", "ckpt10b", "latest.pt"))
-p.add_argument("--data", type=str, default=os.path.join(HERE, "data", "edufineweb_val_000000.npy"))
+p.add_argument("--data", type=str, default=None, help="默认依次找 phase4-efficiency/data/ 与 phase1-124m/data/ 下的 edufineweb_val_000000.npy")
 p.add_argument("--tokens", type=int, default=131072, help="评测用多少个 val token(按 1024 一段切)")
 p.add_argument("--batch", type=int, default=8)
 p.add_argument("--json", type=str, default="")
@@ -122,7 +122,16 @@ QKEYS = [k for k, v in ORIG.items() if k.startswith("transformer.h.") and k.ends
 EMB_KEY = "transformer.wte.weight"
 
 # ---- 评测数据:FineWeb-Edu val shard 开头的若干段 1024 token ----
-tokens = np.load(args.data, mmap_mode="r")
+def find_val_shard():
+    """FineWeb-Edu 验证片:先找本目录 data/,再找第 6 章 prepare_fineweb.py 的默认输出 phase1-124m/data/。"""
+    for d in (os.path.join(HERE, "data"), os.path.join(HERE, "..", "phase1-124m", "data")):
+        f = os.path.join(d, "edufineweb_val_000000.npy")
+        if os.path.exists(f):
+            return f
+    raise SystemExit("找不到 edufineweb_val_000000.npy:先在 phase1-124m/ 下跑 prepare_fineweb.py,"
+                     "或把这一片放进 phase4-efficiency/data/")
+
+tokens = np.load(args.data or find_val_shard(), mmap_mode="r")
 n_seq = args.tokens // cfg.block_size
 buf = torch.from_numpy(np.array(tokens[: n_seq * cfg.block_size + 1], dtype=np.int64))
 X = buf[:-1].view(n_seq, cfg.block_size)

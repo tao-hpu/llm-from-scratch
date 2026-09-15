@@ -17,10 +17,10 @@
 出处:DeepSeek Engram(arXiv 2601.07372)、N-Grammer(arXiv 2207.06366);
 Qwen3.8-Flash-Next 技术报告里的 N-gram Embedding 层也是这个做法。
 
-跑法:
+跑法(默认读 FineWeb-Edu 验证片 edufineweb_val_000000.npy,见 find_val_shard;--data shakespeare 换成字符级反例):
     python 13_engram.py --table 0              # 不挂表(= 第 12 章四件齐上,对照组)
     python 13_engram.py --table 4096           # 每个哈希头 4096 行
-    python 13_engram.py --table 32768          # 每个哈希头 32768 行(表参数是主干的 5 倍多)
+    python 13_engram.py --table 32768          # 每个哈希头 32768 行(表 4.19M 参数,FineWeb 默认配置下主干 7.24M)
     python 13_engram.py --table 32768 --orders 2        # 只查 2-gram
     python 13_engram.py --table 32768 --table-device cpu # 表放 CPU,只把取出来的行送进 GPU
 """
@@ -76,6 +76,16 @@ torch.manual_seed(1337)
 print(f"[{TAG}] device = {device} | 表设备 = {args.table_device}")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+def find_val_shard():
+    """FineWeb-Edu 验证片:先找本目录 data/,再找第 6 章 prepare_fineweb.py 的默认输出 phase1-124m/data/。"""
+    for d in (os.path.join(HERE, "data"), os.path.join(HERE, "..", "phase1-124m", "data")):
+        f = os.path.join(d, "edufineweb_val_000000.npy")
+        if os.path.exists(f):
+            return f
+    raise SystemExit("找不到 edufineweb_val_000000.npy:先在 phase1-124m/ 下跑 prepare_fineweb.py,"
+                     "或把这一片放进 phase4-efficiency/data/")
+
 if args.data == "shakespeare":
     with open(os.path.join(HERE, "..", "phase1-nanogpt", "data", "tinyshakespeare.txt"), "r", encoding="utf-8") as f:
         text = f.read()
@@ -92,7 +102,7 @@ else:
     # 记忆表要在这种"数据远多于参数"的条件下才有意义:tiny shakespeare 只有 1M 字符,表会把训练集背下来。
     import numpy as np
     import tiktoken
-    arr = np.load(os.path.join(HERE, "data", "edufineweb_val_000000.npy"), mmap_mode="r")
+    arr = np.load(find_val_shard(), mmap_mode="r")
     data = torch.from_numpy(np.array(arr, dtype=np.int64))
     vocab_size, stoi = 50257, {}
     enc = tiktoken.get_encoding("gpt2")
@@ -183,6 +193,7 @@ class Block(nn.Module):
 # ===========================================================================
 N_HEADS = heads_per_order * len(ORDERS)
 ROW_DIM = n_embd // max(N_HEADS, 1)
+MEM_DIM = N_HEADS * ROW_DIM          # 查表拼出的维数,由 w_k / w_v 投影回 n_embd
 
 def hash_multipliers():
     """每个哈希头的随机奇数乘子(固定种子,每次运行都一样;页面上的哈希演示用的就是这组数)。"""
@@ -214,18 +225,18 @@ MULTS = [torch.tensor(m) for m in hash_multipliers()]
 class NgramMemory(nn.Module):
     def __init__(self):
         super().__init__()
-        # 【零件 2】N_HEADS 张表,每张 TABLE 行、每行 ROW_DIM 维;拼起来正好 n_embd 维
+        # 【零件 2】N_HEADS 张表,每张 TABLE 行、每行 ROW_DIM 维;拼起来 MEM_DIM 维(n_embd 除不尽时略小于 n_embd)
         self.tables = nn.Parameter(torch.randn(N_HEADS, TABLE, ROW_DIM) * 0.02)
         # 【零件 3】门控:h 当 query,记忆当 key,点积过 sigmoid
-        self.w_k = nn.Linear(n_embd, n_embd, bias=False)
-        self.w_v = nn.Linear(n_embd, n_embd, bias=False)
+        self.w_k = nn.Linear(MEM_DIM, n_embd, bias=False)
+        self.w_v = nn.Linear(MEM_DIM, n_embd, bias=False)
         self.norm_h, self.norm_k = RMSNorm(n_embd), RMSNorm(n_embd)
         # 【零件 4】短卷积(kernel=4,因果)
         self.conv = nn.Conv1d(n_embd, n_embd, kernel_size=4, groups=n_embd, padding=3, bias=False)
         self.last_gate = None
 
     def lookup(self, rows):
-        """rows (B,T,N_HEADS) → e (B,T,n_embd)。每个 token 只读 N_HEADS 行。"""
+        """rows (B,T,N_HEADS) → e (B,T,MEM_DIM)。每个 token 只读 N_HEADS 行。"""
         head_ids = torch.arange(N_HEADS, device=self.tables.device)
         e = self.tables[head_ids, rows.to(self.tables.device)]            # (B,T,N_HEADS,ROW_DIM)
         return e.flatten(-2)

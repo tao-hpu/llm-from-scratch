@@ -1100,7 +1100,7 @@ function renderAB(){
   }else if(abMetric===3){
     html=`<div class="abgroup">语言建模 4 组 · 256 个位置平均每个 query 读几个 key(json 的 tokens_read_avg,去重前上界)</div>`
       +barRows(LM_ORDER,LM,r=>r.read_avg,v=>v.toFixed(1),v=>100*v/128.5,'lm');
-    note=lmNote(abSel.lm)+'<br>找钥匙序列只有 128 个位置,脚本的 <code>tokens_read_avg</code> 仍按 256 算,所以这里只列语言建模 4 组。';
+    note=lmNote(abSel.lm)+'<br>找钥匙序列只有 128 个位置,那 3 组 json 由旧版脚本写出,<code>tokens_read_avg</code> 按 256 个位置算;脚本已改成按实际序列长度统计,这 3 组没有重跑,所以这里只列语言建模 4 组。';
   }else{
     const mx1=Math.max(...LM_ORDER.map(k=>LM[k].sec)), mx2=Math.max(...RC_ORDER.map(k=>RC[k].sec));
     html=`<div class="abgroup">语言建模 · Mac MPS · 4000 步</div>`

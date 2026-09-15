@@ -86,7 +86,7 @@ phase4-efficiency/   长上下文与推理效率（11/12/14 用 tiny shakespeare
   13_engram.py         N-gram 查表：哈希 2/3-gram → 查表 → 门控注入第 2 层，--table 调表大小，--table-device cpu 表留 CPU
   14_mtp.py            投机解码：小草稿模型与 MTP 头两种草稿员，验证贪心逐字一致、采样分布一致
   15_quant.py          量化：加载 124M 权重，对比 int8/int4 各种 scale 粒度、Q4_K、NVFP4、MXFP4 的 val loss
-                       （需要 ../phase1-124m 的 10B 权重和一份 FineWeb-Edu val shard，放在 phase4-efficiency/data/）
+                       （15 需要 ../phase1-124m 的 10B 权重；13 与 15 读 FineWeb-Edu 验证片 edufineweb_val_000000.npy，依次在 phase4-efficiency/data/、phase1-124m/data/ 里找）
 ```
 
 ---

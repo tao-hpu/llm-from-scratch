@@ -98,7 +98,7 @@ if args.task == "recall":
     dropout = 0.0   # 合成任务数据无限,不会过拟合,dropout 只会拖慢学会检索
 EVAL_LENS = [int(x) for x in args.eval_lens.split(",")] if TASK == "lm" else []
 RECALL_NS = [int(x) for x in args.recall_ns.split(",")]
-MAX_T = max([block_size] + EVAL_LENS + ([4 * max(RECALL_NS)] if TASK == "recall" else []))
+MAX_T = max([block_size] + EVAL_LENS + ([4 * max(RECALL_NS + [args.train_n])] if TASK == "recall" else []))
 
 device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
 torch.manual_seed(1337)
