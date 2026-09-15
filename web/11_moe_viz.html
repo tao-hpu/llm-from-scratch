@@ -201,6 +201,35 @@
   .checklist li .ck{color:#3f7d63;font-weight:700;flex-shrink:0;}
   .checklist li b{color:var(--accent);}
 
+  /* ===== STEP 6:细粒度 / 共享专家 / 偏置均衡 ===== */
+  .laylab,.runlab{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin:8px 0 4px;}
+  .lay-cap{font-family:var(--mono);font-size:11.5px;color:var(--ink2);margin:12px 0 4px;}
+  .lay-row{display:flex;height:34px;}
+  .lay-cell{flex:none;height:100%;border:2px solid #fff;border-radius:7px;background:#EAE7DD;transition:background .25s ease;
+    font-family:var(--mono);font-size:10.5px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;
+    overflow:hidden;white-space:nowrap;}
+  .lay-cell.on{background:var(--accent);}
+  .lay-cell.sh{background:var(--good);}
+  .fcard{font-family:var(--mono);font-size:13px;background:#FBF1EA;border:1px solid #F0DDD0;border-radius:10px;
+    padding:10px 14px;margin:8px 0 10px;line-height:2;overflow-x:auto;white-space:nowrap;}
+  .fcard .fk{display:inline-block;min-width:3.6em;color:var(--accent);font-weight:700;}
+  .fcard .fc{font-size:11.5px;color:var(--ink2);margin-left:8px;}
+  .rb-bias{height:100%;background:repeating-linear-gradient(45deg,#E8B04B 0 4px,#FAEFD6 4px 8px);}
+  .vrow{display:flex;align-items:center;gap:10px;margin:7px 0;cursor:pointer;}
+  .vrow .vname{font-family:var(--mono);font-size:12px;font-weight:700;min-width:104px;color:var(--ink2);}
+  .vrow .vtrack{flex:1;height:20px;background:#F4F2EA;border-radius:6px;overflow:hidden;border:1px solid var(--border);}
+  .vrow .vfill{height:100%;background:#CFC9BA;border-radius:5px 0 0 5px;transition:background .2s ease;}
+  .vrow .vnum{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:56px;text-align:right;color:var(--ink2);}
+  .vrow.sel .vname,.vrow.sel .vnum{color:var(--accent);}
+  .vrow.sel .vfill{background:var(--accent);}
+  .ucols{position:relative;display:flex;align-items:flex-end;gap:3px;height:150px;border-bottom:1px solid var(--border);margin-top:12px;}
+  .ucol{flex:1;min-width:0;background:var(--accent);border-radius:4px 4px 0 0;transition:height .35s ease;}
+  .ucol.max{background:var(--bad);}
+  .ucol.min{background:var(--e1);}
+  .uline{position:absolute;left:0;right:0;top:50%;border-top:1.5px dashed var(--ink2);opacity:.5;pointer-events:none;}
+  .ulabels{display:flex;gap:3px;margin-top:3px;}
+  .ulabels span{flex:1;min-width:0;text-align:center;font-family:var(--mono);font-size:9.5px;color:var(--ink2);overflow:hidden;}
+
   .nav{display:flex;justify-content:space-between;margin-top:22px;gap:10px;}
 
   /* 名词气泡 */
@@ -238,6 +267,7 @@
       + 一个<span class="term" data-term="路由器 · router" data-key="router" data-def="一个线性层,给每个 token 对每个专家打分,决定这个 token 派给哪 top-k 个专家。">路由器</span>,
       每个 token 只走最对口的 2 个专家。这是 Mixtral / DeepSeek 这代模型"参数千亿、激活百亿"的核心机关。
       本关用 <b>1.35M</b> 参数把它完整跑通 —— 大概算<b>全球最小的 MoE 之一</b>,但路由、分工、塌缩,和 671B 的 DeepSeek 是同一套机制。
+      最后一步再看 DeepSeek 系的三处改法:细粒度专家、共享专家、偏置均衡。
       配套代码 <code>phase3-moe/09_moe.py</code>。
     </p>
   </header>
@@ -248,6 +278,7 @@
     <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">分工是训出来的</div></div>
     <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">偏心与塌缩</div></div>
     <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">算账 & 落到代码</div></div>
+    <div class="step-tab" data-step="5"><div class="num">STEP 6</div><div class="label">细粒度 · 共享专家 · 偏置均衡</div></div>
   </div>
 
   <div class="hp-bar">
@@ -257,6 +288,7 @@
     <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">expert_hidden <b>256</b> <i>=2·n_embd·单个专家隐层</i></span>
     <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">aux <b>0.01</b> <i>负载均衡系数</i></span>
     <span class="hp-chip" style="color:#6b6b68;background:#ECE9E0">底座 <b>03 的 GPT</b> <i>4 层·n_embd=128</i></span>
+    <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">STEP 6 <b>16×64</b> <i>另一套配置:16 个窄专家,见该步</i></span>
   </div>
 
   <!-- ============ STEP 1 ============ -->
@@ -398,7 +430,7 @@
         实测(同 5000 步):<b>top-2 + 4 专家</b>就算 <code>--aux 0</code>,最终负载也只是 20/24/27/29% 的轻微偏,
         val loss 1.549 和开 aux 打平。原因:top-2 下<b>每个 token 同时养 2 个专家</b>,4 选 2 让谁都分得到梯度,天生抗塌。
         专家越多、top_k 越小,饿死人的风险越大 —— 所以 top-1 的 Switch 最先撞上这个问题,
-        而 64 选 8 的细粒度 MoE 全都标配负载均衡。上面的 top-1 实验里,偏载对 val loss 的伤害也很小
+        每层 256 选 8 的 DeepSeek-V3 也在做负载均衡(STEP 6 另有一组 16 选 6 + 共享专家、完全不做均衡的实测)。上面的 top-1 实验里,偏载对 val loss 的伤害也很小
         (1.545 开 / 1.560 关,4 层玩具上差 0.015)—— 塌缩真正的代价是<b>买了的容量白买</b>,
         以及大规模多机训练时忙闲不均拖慢整批,这两笔账在大模型上才要命。
       </div>
@@ -485,12 +517,12 @@
     <details class="dig">
       <summary>现在的 MoE 还是"4 选 2"这么糙吗?</summary>
       <div class="dig-body">
-        本页教的是 Mixtral 同款的经典配方(少量大专家 + top-2),机制上够用,但前沿已经演进了一步:
-        <b>细粒度专家 + 共享专家</b>(DeepSeekMoE 提出,DeepSeek-V2/V3、Qwen 系 MoE 都在用)。
-        做法是把专家切得更碎(比如 64 个小专家选 top-8,而不是 8 个大专家选 2),
-        组合方式从 C(8,2)=28 种暴涨到 C(64,8)≈44 亿种,分工可以更精细;
-        再留 1~几个<b>共享专家</b>,所有 token 必走,兜底"人人都需要的通用加工",
-        让路由出去的部分专攻差异化。原理和本页完全一致,只是"切多碎、留不留必选项"这两个旋钮拧得更讲究。
+        前五步教的是 Mixtral 同款的经典配方(少量大专家 + top-2)。DeepSeekMoE(arXiv 2401.06066)在它上面加了两个旋钮:
+        <b>细粒度专家</b>,把每个专家切窄,个数和每 token 选中的个数同比放大(例如 16 选 2 → 64 选 8,激活的隐层总宽不变,
+        组合数从 C(16,2)=120 变成 C(64,8)≈44 亿);<b>共享专家</b>,留出几个不经路由器、每个 token 必走的专家。
+        DeepSeek-V3 每层 256 个路由专家选 8 个,外加 1 个共享专家(arXiv 2412.19437 §4.2);
+        Qwen3-Next-80B-A3B 每层 512 个专家激活 10 个,另有 1 个共享专家(模型卡)。
+        STEP 6 把这两个旋钮和 V3 的偏置均衡放到本关的 4 层模型上各跑了一遍。
       </div>
     </details>
     <details class="dig">
@@ -504,9 +536,151 @@
 
     <div class="codepath">↳ 跑法:<code>python 09_moe.py</code> · 对照塌缩 <code>python 09_moe.py --aux 0</code> · 训完自动打印负载 + 分工报告</div>
 
+    <div class="next-hint">↳ 下一步:DeepSeek 系把专家切得更碎、留一个人人都过的共享专家,还换了一种不进 loss 的均衡办法。放到这台 1.35M 的小模型上,它们赢过 4 选 2 了吗?</div>
+  </section>
+
+  <!-- ============ STEP 6 ============ -->
+  <section class="panel" id="panel5">
+    <h2>⑥ 切碎专家、留一个常驻专家、换一种均衡</h2>
+    <p class="lead">
+      DeepSeek 系 MoE 在经典配方上改了三处:<span class="term" data-term="细粒度专家 / 共享专家 · fine-grained / shared experts" data-key="shared-expert" data-def="细粒度:把专家切窄,个数和每 token 选中的个数同比放大,激活的隐层总宽不变。共享专家:不经路由器、每个 token 必走的专家。出自 DeepSeekMoE(arXiv 2401.06066)。">细粒度专家与共享专家</span>(DeepSeekMoE,arXiv 2401.06066),
+      以及<span class="term" data-term="无辅助损失的负载均衡 · auxiliary-loss-free balancing" data-key="aux-free-balancing" data-def="每个专家一个偏置 b,只在挑 top-k 时加到分数上;门控权重仍用原始分数,偏置不进 loss。每个训练步按负载把 b 加减 γ。DeepSeek-V3 采用(arXiv 2412.19437 §2.1.2)。">偏置均衡</span>(DeepSeek-V3,arXiv 2412.19437)。
+      三处都不改每 token 激活的 FFN 隐层总宽。<b>点下面的布局</b>,看 dense FFN 的 512 个隐层神经元怎么分出去:
+    </p>
+
+    <div class="sub-h"><span class="badge">布局</span>每 token 激活的隐层都是 512</div>
+    <div class="laylab">
+      <div class="btn-row" id="layoutBtns">
+        <button class="btn">dense FFN</button>
+        <button class="btn">经典 4×256 · 选 2</button>
+        <button class="btn">细粒度 16×64 · 选 8</button>
+        <button class="btn primary">16×64 · 选 6 + 1 个共享专家</button>
+      </div>
+      <div class="lay-cap">全部专家(格子宽度 ∝ 隐层宽度 · 橙 = 这个 token 选中 · 绿 = 共享专家,每个 token 必走)</div>
+      <div class="lay-row" id="layAll"></div>
+      <div class="lay-cap">这个 token 实际用到的隐层</div>
+      <div class="lay-row" id="layAct"></div>
+      <div class="routeout" id="layOut"></div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn" id="layShuffle">换一个 token</button>
+        <span class="hp-note">选中哪几个是随机示意;真实训练里由路由器打分决定</span>
+      </div>
+    </div>
+    <div class="hp-note">四种布局的每 token 激活参数相差不到 1.2 万个:路由器从每层 128×4 变成 128×16,专家的偏置项也多了一些。</div>
+
+    <div class="sub-h"><span class="badge">均衡</span>偏置只管挑谁,不改权重</div>
+    <div class="fcard">
+      <div><span class="fk">挑选</span>选中的 k 个 = TopK( p<sub>e</sub> + b<sub>e</sub> )</div>
+      <div><span class="fk">权重</span>w<sub>e</sub> = p<sub>e</sub> / Σ<sub>选中</sub> p<sub>j</sub><span class="fc">← 用原始概率 p,不含 b</span></div>
+      <div><span class="fk">更新</span>b<sub>e</sub> ← b<sub>e</sub> − γ · sign( load<sub>e</sub> − mean(load) )<span class="fc">每个训练步一次 · γ = 0.001 · 不进 loss</span></div>
+    </div>
+    <div class="routebox">
+      <div class="rk-row"><label>E2 的偏置 b</label><input type="range" id="toyB" min="0" max="25" step="1" value="0"><span class="rk-val" id="toyBV">0.00</span></div>
+      <div id="toyRows"></div>
+      <div class="routeout" id="toyOut"></div>
+    </div>
+    <div class="hp-note">占位数字:4 个专家选 2,概率 p = 0.40 / 0.30 / 0.20 / 0.10 只为上屏;下面的真实训练是 16 个专家选 6。</div>
+    <details class="dig">
+      <summary>DeepSeek-V3 论文原文怎么写这条规则?</summary>
+      <div class="dig-body">
+        挑选:<code>s_{i,t} + b_i ∈ Topk({s_{j,t} + b_j}, K_r)</code>。原句:"the bias term is only used for routing. The gating value, which will be multiplied with the FFN output, is still derived from the original affinity score s_{i,t}"(arXiv 2412.19437 §2.1.2)。<br>
+        更新:"At the end of each step, we will decrease the bias term by γ if its corresponding expert is overloaded, and increase it by γ if its corresponding expert is underloaded"。<br>
+        V3 前 14.3T token 用 γ = 0.001,最后 500B token 设为 0,另保留一个系数 0.0001 的序列级均衡 loss(§4.2)。方法最早出自 arXiv 2408.15664。
+        本页代码拿 softmax 概率 p 当分数,对应论文里的亲和度 s。
+      </div>
+    </details>
+
+    <div class="sub-h"><span class="badge">实测</span>五次训练 · 同一份 09_moe.py · 各 5000 步</div>
+    <div class="hp-note">RTX 4090 · CUDA · PyTorch 2.4.1,每组一个种子。STEP 1–5 的数字来自早先 Mac MPS 上的训练,硬件不同,两边不逐位比较(STEP 5 的 1.549 和下面经典组的 1.5392 是两台机器各跑一次的结果)。</div>
+    <div class="runlab">
+      <div class="btn-row" id="runBtns">
+        <button class="btn primary">经典 4×256 · 选 2</button>
+        <button class="btn">细粒度 16×64 · 选 8</button>
+        <button class="btn">共享 · aux</button>
+        <button class="btn">共享 · bias</button>
+        <button class="btn">共享 · 不均衡</button>
+      </div>
+      <div id="valBars" style="margin-top:10px"></div>
+      <div class="ideal-line">val loss @ step 4999(越短越低)· 横轴从 1.52 起,差距被放大 · 点柱子也能切换</div>
+      <div class="load-read" style="margin-top:14px">
+        <div class="ro"><div class="rv" id="rdTotal" style="color:var(--accent)">–</div><div class="rl">总参数</div></div>
+        <div class="ro"><div class="rv" id="rdActive" style="color:var(--good)">–</div><div class="rl">每 token 激活</div></div>
+        <div class="ro"><div class="rv" id="rdVal" style="color:var(--accent)">–</div><div class="rl">val loss</div></div>
+      </div>
+      <div class="note" id="runNote" style="margin-top:8px"></div>
+      <div class="btn-row" id="viewBtns" style="margin-top:14px">
+        <button class="btn primary">各层终局负载</button>
+        <button class="btn">layer 0 训练过程</button>
+      </div>
+      <div class="btn-row" id="layerBtns">
+        <button class="btn primary">layer 0</button>
+        <button class="btn">layer 1</button>
+        <button class="btn">layer 2</button>
+        <button class="btn">layer 3</button>
+      </div>
+      <div class="rk-row" id="stepRow" style="display:none"><label>训练步</label><input type="range" id="curveS" min="0" max="10" step="1" value="10"><span class="rk-val" id="curveV">4999</span></div>
+      <div class="ucols" id="usageCols"></div>
+      <div class="ulabels" id="usageLabels"></div>
+      <div class="ideal-line" id="usageNote"></div>
+      <div class="ideal-line">红 = 最忙 · 蓝 = 最闲 · 虚线 = 均匀负载 · 纵轴上限 = 均匀值的 2 倍</div>
+    </div>
+
+    <div class="note">
+      <b>结论:</b>在 1.35M 参数、tiny shakespeare 字符级、5000 步这个规模上,细粒度切分和共享专家都没有赢过经典 4 选 2
+      (纯细粒度高 0.023,加共享专家的三组高 0.005–0.011);三种均衡方式之间差不到 0.006,在单种子噪声的量级内。
+    </div>
+    <details class="dig">
+      <summary>差 0.006 能说明哪种均衡方式更好吗?</summary>
+      <div class="dig-body">
+        不能。每组只跑了一个种子,val 在同一次训练里也不是单调下降:细粒度组 step 4500 是 1.5604,step 4999 反而是 1.5625。
+        三个共享专家组的初始化完全相同(step 0 的 val 都是 4.3544,layer 0 负载逐位相同),差别来自均衡方式加上训练中的随机性。
+        要分出高下,得每组多跑几个种子取平均。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>完全不做均衡,为什么没塌?</summary>
+      <div class="dig-body">
+        STEP 4 的 top-1 + 4 专家关掉 aux 后,最深一层有一个专家吃掉 72% 的单。这里是 16 个路由专家选 6 个、外加 1 个共享专家,
+        关掉所有均衡,四层终局负载仍在 <b>3.1–9.2%</b>(均匀 6.25%);layer 0 的训练过程里,偏载在 step 2000 前后成形,之后最忙的专家从 8.1% 缓慢升到 8.9%。<br>
+        和 STEP 4 比,条件差在三处:每个 token 同时选 6 个专家;有共享专家;只有 4 层、5000 步。这组实验没有把三处拆开测,
+        说不清是哪一处起的作用,<b>只能说在这个设定、这个训练长度下没塌</b>。每层 256 选 8 的 DeepSeek-V3 仍然做均衡。
+        另外,终局负载取自最后一个训练 batch,是一次快照。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>偏置都学成了正数,是把所有专家一起抬高了吗?</summary>
+      <div class="dig-body">
+        top-k 只比较 p + b 的相对大小:给所有专家加同一个常数,选中的专家不变。所以要看的是<b>同一层内偏置之间的差</b>。
+        更新规则每步给每个专家 +γ 或 −γ,欠载的专家多于过载的专家时,整层偏置就一起往上漂,绝对值本身不带信息。偏置均衡组的终局:
+        <div class="tbl-scroll"><table class="minitbl">
+          <tr><th>layer</th><th>b 最小</th><th>b 最大</th><th>差</th><th>终局负载</th></tr>
+          <tr><td>0</td><td>0.038</td><td>0.065</td><td>0.027</td><td>6.0–6.6%</td></tr>
+          <tr><td>1</td><td>0.498</td><td>0.501</td><td>0.003</td><td>3.4–8.7%</td></tr>
+          <tr><td>2</td><td>0.552</td><td>0.555</td><td>0.003</td><td>3.1–9.1%</td></tr>
+          <tr><td>3</td><td>0.197</td><td>0.204</td><td>0.007</td><td>3.3–8.4%</td></tr>
+        </table></div>
+        layer 0 的偏置差 0.027,和平均概率 1/16 ≈ 0.0625 同一量级,这一层的负载也是 16 专家四组里最整齐的;
+        layer 1–3 的偏置差只有 0.003–0.007,终局负载也没有比 aux 组(4.3–8.0%)更齐。这组数据判断不了原因。
+        一个没有验证过的猜测:固定步长的 sign 更新让这几层的专家在过载和欠载之间来回翻,偏置差攒不起来。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>DeepSeek 在多大的规模上用这套配方?</summary>
+      <div class="dig-body">
+        <b>本页</b>:4 层,每层 16 个路由专家(隐层 64),训练约 2048 万个字符 token(5000 步 × batch 64 × block 64)。<br>
+        <b>DeepSeek-V3</b>:61 层、hidden 7168,前 3 层之外全换成 MoE,每层 1 个共享专家 + 256 个路由专家(隐层 2048)选 8 个,
+        预训练 14.3T + 500B token(arXiv 2412.19437 §4.2)。<br>
+        <b>无 aux 均衡的方法论文</b>:实验最大 3B 参数、200B token(arXiv 2408.15664)。<br>
+        <b>Qwen3-Next-80B-A3B</b>:每层 512 个专家激活 10 个,另有 1 个共享专家(HF 模型卡)。<br>
+        光 token 数就差五个数量级以上。这些模型报告的收益,本页的小实验既验证不了,也否定不了。
+      </div>
+    </details>
+
+    <div class="codepath">↳ 代码:<b>09_moe.py</b> 的 <b>MoELayer.forward</b>:<code>sel_bias</code> 只进 topk 挑选,权重用 <code>probs.gather</code> 取原始概率,训练时按负载加减 γ · 复现(在 phase3-moe/ 下):<code>python 09_moe.py --n-expert 16 --expert-hidden 64 --top-k 6 --shared 1 --shared-hidden 128 --balance bias</code>,把 bias 换成 aux / none 得另两组;细粒度组是 <code>--n-expert 16 --expert-hidden 64 --top-k 8</code></div>
+
     <div class="congrats" id="congrats">
       <div class="ct">🎉 手搓 MoE · 通关</div>
-      <div class="cs">你已经亲手把 dense GPT 的 FFN 换成"路由器 + 4 专家",看到了分工的涌现、塌缩的风险、和"参数翻倍算力不变"的账本。下次再看 Mixtral / DeepSeek 的参数表,你知道那两个数字是怎么来的了。</div>
+      <div class="cs">你已经亲手把 dense GPT 的 FFN 换成"路由器 + 专家",看到了分工的涌现、塌缩的风险、"参数翻倍算力不变"的账本,也在同一台小模型上试了细粒度专家、共享专家和偏置均衡。下次再看 DeepSeek-V3 的"256 选 8 + 1 个共享专家",你知道每个数字管什么了。</div>
     </div>
   </section>
 
@@ -543,7 +717,7 @@ const ECOL  = ['#b8512f','#3a63c0','#3f7d63','#a3548c'];
 const ECOLS = ['#F7E6DE','#E5EBF9','#E4EFE9','#F6E6F0'];
 
 /* ============ 步骤切换 ============ */
-const NSTEP=5;
+const NSTEP=6;
 const tabs=document.querySelectorAll('.step-tab');
 const panels=[];for(let i=0;i<NSTEP;i++)panels.push(document.getElementById('panel'+i));
 let cur=0;
@@ -715,6 +889,150 @@ function renderCalc(){
 document.getElementById('neS').addEventListener('input',renderCalc);
 document.getElementById('tkS').addEventListener('input',renderCalc);
 document.getElementById('fLossMoe').textContent=FINAL_MOE_LOSS;
+
+/* ============ STEP 6:细粒度 / 共享专家 / 偏置均衡 ============ */
+function setActiveBtn(containerId,n){
+  document.querySelectorAll('#'+containerId+' .btn').forEach((b,i)=>b.classList.toggle('primary',i===n));
+}
+function fmtInt(n){return n.toLocaleString('en-US');}
+function comb(n,k){let r=1;for(let i=1;i<=k;i++)r=r*(n-k+i)/i;return Math.round(r);}
+
+/* 布局示意。参数量 = 09_moe.py 启动时打印的 n_param / n_active,和 runs/cuda/ch11_*.json 的 params / active 一致;
+   dense 行取 03_transformer.py 的 816,705(同 STEP 5)。 */
+const LAYOUTS=[
+  {n:1, h:512,k:1,sh:0,  params:816705, active:816705},
+  {n:4, h:256,k:2,sh:0,  params:1346625,active:819265},
+  {n:16,h:64, k:8,sh:0,  params:1358913,active:828481},
+  {n:16,h:64, k:6,sh:128,params:1491009,active:827969}];
+const LAY_UNIT=1152;   // 最宽布局的隐层总和:16×64 + 共享 128
+let layIdx=3, layPick=[];
+function layShuffle(){
+  const L=LAYOUTS[layIdx], idx=[...Array(L.n).keys()];
+  for(let i=idx.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[idx[i],idx[j]]=[idx[j],idx[i]];}
+  layPick=idx.slice(0,L.k); renderLayout();
+}
+function renderLayout(){
+  const L=LAYOUTS[layIdx], w=h=>(h/LAY_UNIT*100)+'%';
+  setActiveBtn('layoutBtns',layIdx);
+  let all='', act='';
+  if(L.sh){
+    all+='<div class="lay-cell sh" style="width:'+w(L.sh)+'" title="共享专家 · 隐层 '+L.sh+' · 每个 token 必走">共享</div>';
+    act+='<div class="lay-cell sh" style="width:'+w(L.sh)+'">'+L.sh+'</div>';
+  }
+  for(let e=0;e<L.n;e++){
+    const on=layPick.includes(e), txt=L.n===1?'FFN 隐层 512':(L.h>=128?'E'+e:'');
+    all+='<div class="lay-cell'+(on?' on':'')+'" style="width:'+w(L.h)+'" title="'+(L.n===1?'dense FFN':'路由专家 E'+e)+' · 隐层 '+L.h+'">'+txt+'</div>';
+  }
+  for(let i=0;i<L.k;i++) act+='<div class="lay-cell on" style="width:'+w(L.h)+'">'+(L.h>=128?L.h:'')+'</div>';
+  document.getElementById('layAll').innerHTML=all;
+  document.getElementById('layAct').innerHTML=act;
+  document.getElementById('layOut').innerHTML = L.n===1
+    ? '隐层 <b>512</b> 个神经元全部参与,走法只有 1 种<br>整模型 '+fmtInt(L.params)+' 个参数,每 token 全部激活'
+    : '每 token 激活隐层 = '+(L.sh?'共享 '+L.sh+' + ':'')+L.k+' × '+L.h+' = <b>512</b> · 路由专家组合 C('+L.n+','+L.k+') = <b>'+fmtInt(comb(L.n,L.k))+'</b> 种<br>'
+      +'整模型总参数 '+fmtInt(L.params)+' · 每 token 激活 '+fmtInt(L.active);
+}
+
+/* 偏置玩具:4 专家选 2,概率是占位数字(按百分数存整数,避免浮点比较出错) */
+const TOY_P=[40,30,20,10];
+function renderToy(){
+  const b=+document.getElementById('toyB').value;
+  document.getElementById('toyBV').textContent=(b/100).toFixed(2);
+  const B=[0,0,b,0], S=TOY_P.map((p,i)=>p+B[i]);
+  const pick=[0,1,2,3].sort((x,y)=>S[y]-S[x]||x-y).slice(0,2);
+  const psum=TOY_P[pick[0]]+TOY_P[pick[1]];
+  let html='';
+  TOY_P.forEach((p,e)=>{
+    const picked=pick.includes(e);
+    html+='<div class="rbar-row'+(picked?' picked':'')+'"><span class="rb-name" style="color:'+ECOL[e]+'">Expert '+e+'</span>'
+      +'<div class="rb-track" style="display:flex"><div class="rb-fill" style="width:'+(p/70*100)+'%;background:'+ECOL[e]+'"></div>'
+      +(B[e]?'<div class="rb-bias" style="width:'+(B[e]/70*100)+'%"></div>':'')+'</div>'
+      +'<span class="rb-num">'+(p/100).toFixed(2)+(B[e]?' + '+(B[e]/100).toFixed(2):'')
+      +(picked?'<span class="rb-tag win">选中</span>':'')+'</span></div>';
+  });
+  document.getElementById('toyRows').innerHTML=html;
+  const ws=pick.map(e=>'E'+e+' '+(TOY_P[e]/100).toFixed(2)+' / '+(psum/100).toFixed(2)
+    +' = <b style="color:'+ECOL[e]+'">'+(TOY_P[e]/psum).toFixed(2)+'</b>');
+  document.getElementById('toyOut').innerHTML='按 p + b 选中 E'+pick[0]+'、E'+pick[1]+'<br>权重只用 p:'+ws.join(' · ')
+    +(pick.includes(2)&&b>0?'<br><span style="color:var(--ink2)">E2 靠偏置挤进前 2,权重仍按 p = 0.20 算,b 不进输出</span>':'');
+}
+
+/* 真实数据:phase4-efficiency/runs/cuda/ch11_*.json(RTX 4090 · CUDA · PyTorch 2.4.1 · 各 5000 步 · 单种子 1337)。
+   命令见同目录 run_moe_4090.sh,在 phase3-moe/ 下运行:
+     classic      python 09_moe.py --json ch11_classic.json
+     fine         python 09_moe.py --n-expert 16 --expert-hidden 64 --top-k 8 --json ch11_fine.json
+     shared_aux   python 09_moe.py --n-expert 16 --expert-hidden 64 --top-k 6 --shared 1 --shared-hidden 128 --json ch11_shared_aux.json
+     shared_bias  同上 + --balance bias(--bias-gamma 默认 0.001)
+     shared_none  同上 + --balance none
+   字段原样照抄:params / active / val / final = usage_final(每层,%,最后一个训练 batch)/
+   curve = usage_layer0_curve(每 500 步,%,评估时最后一个 val batch)/ bias = sel_bias_final(只有 bias 组非零)。 */
+const CURVE_STEPS=[0,500,1000,1500,2000,2500,3000,3500,4000,4500,4999];
+const RUNS=[
+ {short:'经典 4×256',
+  note:'<b>经典 4 选 2</b>:val 1.5392,五组里最低。四层终局负载都在 18.1–30.2%(均匀 25%)。',
+  d:{"n":4,"params":1346625,"active":819265,"val":1.5392,"final":[[20.3,24.7,28.4,26.7],[27.3,24.9,18.1,29.7],[25.9,24.3,22.5,27.3],[28.0,22.2,30.2,19.7]],"curve":[[17.7,30.9,24.3,27.1],[22.6,24.7,24.6,28.2],[20.9,23.4,24.9,30.8],[21.1,23.0,26.6,29.3],[19.9,23.3,27.9,28.8],[20.7,23.5,27.6,28.3],[20.7,24.0,27.4,27.9],[21.2,23.8,26.8,28.3],[21.1,23.7,26.8,28.3],[21.3,23.6,27.6,27.5],[21.0,24.0,27.1,27.8]],"bias":null}},
+ {short:'细粒度 16×64',
+  note:'<b>纯细粒度 16 选 8</b>:激活隐层同样是 512,val 1.5625,比经典组高 0.023,五组里最高。',
+  d:{"n":16,"params":1358913,"active":828481,"val":1.5625,"final":[[6.1,6.9,5.9,5.7,5.9,5.5,6.7,5.9,7.0,7.0,6.3,6.2,6.6,5.7,7.3,5.4],[6.7,6.2,3.5,6.4,7.1,7.1,5.0,6.4,6.0,6.0,8.1,6.5,7.2,4.6,6.6,6.5],[6.6,6.2,6.7,6.3,5.9,5.6,5.3,6.5,6.6,6.5,6.9,6.2,5.7,5.6,6.7,6.4],[5.8,5.9,7.3,6.5,6.8,4.4,6.0,5.2,7.8,6.8,6.9,7.7,4.1,5.2,6.4,7.3]],"curve":[[6.1,5.7,6.0,6.2,5.3,5.7,5.0,6.0,7.6,7.3,6.0,7.2,7.4,6.1,8.1,4.4],[5.6,6.5,5.8,5.1,6.2,5.2,7.0,6.1,6.5,7.0,6.6,6.2,7.2,5.7,7.5,5.6],[6.1,6.6,5.4,5.5,6.0,5.2,6.6,6.3,7.2,6.9,6.2,6.2,6.6,5.5,7.5,6.1],[5.8,6.6,5.5,5.6,5.8,5.1,6.5,6.3,7.2,6.9,6.5,6.4,7.0,5.6,7.3,6.1],[6.0,6.4,5.6,5.6,6.4,5.1,6.3,6.4,6.9,6.8,6.6,6.8,7.0,5.5,7.2,5.4],[6.2,6.7,5.9,5.5,6.3,5.1,6.2,6.1,7.1,7.0,6.3,6.5,6.8,5.8,7.0,5.6],[6.4,7.0,5.3,5.5,6.3,5.2,6.3,6.0,7.2,7.0,6.2,6.4,6.6,5.4,7.3,5.8],[6.5,6.7,5.6,5.6,6.2,5.6,6.3,6.0,7.0,6.8,6.1,6.4,6.9,5.7,7.1,5.5],[6.5,6.6,5.6,5.4,6.7,5.3,6.5,6.0,6.8,6.7,6.5,6.6,6.7,5.5,7.0,5.7],[6.0,6.8,5.9,5.7,5.9,5.5,6.4,6.0,6.8,7.0,6.4,6.2,6.6,5.9,7.2,5.7],[5.9,6.9,5.7,5.7,5.8,5.7,6.7,5.9,6.9,6.9,6.4,6.1,6.4,5.9,7.5,5.5]],"bias":null}},
+ {short:'共享 · aux',
+  note:'<b>16 选 6 + 1 个共享专家(隐层 128),aux 均衡</b>:比细粒度组多出共享专家的 132,096 个参数,val 1.5482,比经典组高 0.009。',
+  d:{"n":16,"params":1491009,"active":827969,"val":1.5482,"final":[[5.6,5.8,5.2,7.9,5.9,4.9,5.8,5.5,6.9,8.0,6.6,6.3,7.0,7.0,5.9,5.7],[5.7,7.2,6.6,5.2,6.7,6.5,5.6,7.0,5.9,4.3,6.3,7.9,7.3,6.1,6.0,5.7],[5.8,5.6,6.2,6.4,4.6,6.8,6.3,4.9,7.1,7.0,6.1,6.5,7.4,6.6,5.4,7.4],[4.7,5.3,6.2,6.7,5.6,7.7,7.2,4.9,7.0,8.0,6.4,6.1,6.5,6.5,5.8,5.4]],"curve":[[6.4,5.5,6.3,5.9,5.2,5.0,4.9,5.7,7.6,7.6,6.5,7.1,7.5,6.0,8.8,4.0],[6.1,5.6,5.0,7.0,7.4,5.5,5.9,5.4,6.8,7.5,6.2,6.4,6.0,6.6,6.3,6.3],[5.7,5.7,5.7,7.3,6.8,5.5,5.6,5.1,6.4,7.6,6.3,6.5,6.8,6.8,6.4,5.6],[5.7,5.7,5.5,7.2,6.6,5.7,5.8,5.1,6.4,7.9,6.3,6.6,6.3,6.9,6.2,5.8],[5.9,5.7,5.0,7.8,6.1,5.1,6.1,5.5,6.8,7.9,6.3,6.6,6.9,7.3,6.1,5.0],[5.8,5.9,5.2,8.1,5.9,5.4,6.0,5.5,6.5,7.7,6.2,6.5,7.2,7.3,5.7,5.4],[5.8,6.0,5.1,7.6,6.0,5.3,5.7,5.4,6.2,7.8,6.6,6.4,6.9,7.1,6.3,5.7],[6.2,5.7,5.2,7.3,6.2,5.2,5.8,5.4,6.6,8.0,6.7,6.2,7.0,7.0,5.9,5.6],[6.2,6.1,5.0,7.2,6.3,4.9,5.6,5.5,6.6,7.7,6.5,6.3,7.2,7.2,5.7,6.0],[6.1,5.9,5.4,7.0,5.8,4.8,6.2,5.8,6.8,7.9,6.6,6.4,7.0,7.0,5.9,5.6],[5.8,6.2,5.2,7.3,5.9,4.7,5.8,5.4,6.8,7.9,6.6,6.4,7.2,7.0,5.9,5.9]],"bias":null}},
+ {short:'共享 · bias',
+  note:'<b>同上,换成偏置均衡(γ = 0.001)</b>:val 1.5501。layer 0 负载最整齐(6.0–6.6%),layer 1–3 的终局快照却散在 3.1–9.1%,切到这几层看看。',
+  d:{"n":16,"params":1491009,"active":827969,"val":1.5501,"final":[[6.3,6.2,6.5,6.6,6.1,6.3,6.4,6.1,6.3,6.3,6.4,6.3,6.0,6.2,6.1,6.0],[3.4,6.9,4.9,7.3,5.4,5.4,5.1,6.6,8.5,6.0,8.2,6.0,5.5,8.7,7.8,4.1],[8.5,4.4,3.1,9.1,4.5,8.9,4.3,4.4,6.2,6.0,6.0,5.2,9.0,6.3,6.1,7.9],[8.4,6.0,5.9,6.1,5.7,6.5,7.8,5.1,5.9,6.2,5.4,7.0,6.7,6.2,3.3,7.7]],"curve":[[6.4,5.5,6.3,5.9,5.2,5.0,4.9,5.7,7.6,7.6,6.5,7.1,7.5,6.0,8.8,4.0],[6.2,6.8,6.4,6.0,6.2,6.3,6.6,6.2,6.0,6.0,6.3,6.0,6.0,6.3,6.0,6.7],[6.2,6.2,6.3,6.1,5.8,6.2,6.2,6.4,6.1,6.3,6.4,6.3,6.0,6.1,6.7,6.6],[6.0,6.3,6.1,6.4,6.2,6.0,6.3,6.7,6.0,6.1,6.4,6.5,6.5,6.0,6.0,6.6],[6.2,6.3,6.2,6.2,5.9,6.0,6.3,6.7,6.2,6.0,6.3,6.0,6.2,6.5,6.3,6.6],[7.0,6.1,6.2,6.5,6.0,5.5,6.2,5.9,6.1,6.3,6.4,6.4,6.6,6.1,6.4,6.3],[6.0,6.0,6.6,6.2,5.9,6.4,6.4,6.2,6.3,6.1,6.4,6.5,6.3,6.4,6.2,6.2],[6.4,6.2,6.4,6.1,6.4,6.0,6.3,6.4,6.2,6.2,6.3,6.0,6.6,6.4,6.1,6.1],[6.7,5.8,6.1,6.4,5.9,6.3,6.3,6.6,6.3,6.0,6.3,6.3,6.3,6.0,5.9,6.7],[6.7,5.7,6.1,6.0,6.0,6.5,6.7,6.6,6.1,6.0,6.4,6.0,6.0,6.4,6.0,6.9],[6.7,6.2,6.6,6.1,6.0,6.1,6.2,6.0,6.3,6.0,6.4,6.4,6.2,6.3,6.0,6.3]],"bias":[[0.059,0.06,0.064,0.055,0.06,0.063,0.056,0.065,0.058,0.038,0.045,0.056,0.052,0.056,0.061,0.062],[0.5,0.498,0.5,0.499,0.499,0.499,0.5,0.498,0.499,0.501,0.499,0.498,0.5,0.499,0.499,0.5],[0.553,0.554,0.554,0.553,0.554,0.553,0.554,0.554,0.553,0.553,0.554,0.553,0.553,0.552,0.555,0.553],[0.203,0.204,0.202,0.201,0.203,0.202,0.202,0.204,0.201,0.197,0.202,0.201,0.202,0.203,0.204,0.202]]}},
+ {short:'共享 · 不均衡',
+  note:'<b>同上,完全不做均衡</b>:val 1.5445,和另两种均衡方式差不到 0.006。四层终局负载在 3.1–9.2%(均匀 6.25%),没有塌。',
+  d:{"n":16,"params":1491009,"active":827969,"val":1.5445,"final":[[5.6,5.6,4.7,8.4,7.1,4.3,6.4,4.1,5.8,9.1,6.9,6.4,8.1,6.7,6.1,4.7],[5.3,8.2,7.4,5.1,5.9,6.4,5.9,6.4,6.1,5.0,5.7,8.4,6.7,6.7,5.9,5.0],[6.0,5.2,4.7,6.2,5.2,6.8,6.3,5.0,7.4,7.6,6.7,9.1,6.5,6.1,4.3,6.8],[4.7,6.1,8.3,8.0,5.7,6.4,4.8,4.9,8.8,9.2,5.0,7.8,3.8,7.0,3.1,6.4]],"curve":[[6.4,5.5,6.3,5.9,5.2,5.0,4.9,5.7,7.6,7.6,6.5,7.1,7.5,6.0,8.8,4.0],[6.3,5.5,4.8,7.0,7.5,5.5,6.5,5.1,6.2,7.6,6.6,6.1,6.5,6.5,6.7,5.5],[5.6,6.3,5.2,7.8,6.5,5.0,6.4,4.5,6.2,7.8,6.8,6.4,6.8,6.7,6.8,5.3],[6.3,5.7,5.2,7.5,6.9,5.1,6.1,4.3,6.0,7.9,6.9,6.7,7.0,6.6,6.8,5.0],[5.7,6.1,4.9,7.7,6.7,4.6,6.6,4.2,6.4,8.1,6.7,6.5,7.7,7.0,6.5,4.7],[5.5,5.9,5.0,8.2,6.6,4.4,6.6,4.2,6.0,8.2,6.8,6.8,8.1,6.2,6.4,5.2],[5.2,6.0,4.7,8.2,6.7,4.3,6.4,4.5,6.3,8.0,6.8,6.7,7.9,6.7,6.4,5.1],[5.8,5.7,4.6,8.2,6.9,4.0,6.4,4.2,6.4,8.6,6.8,6.5,7.6,6.6,6.5,5.1],[6.1,6.0,4.8,8.3,6.4,4.4,6.6,4.4,5.9,8.4,6.7,6.6,7.8,6.4,5.8,5.3],[5.9,5.6,4.8,7.9,6.8,3.9,6.5,4.7,5.9,8.6,6.8,6.5,7.8,6.7,6.2,5.4],[5.9,5.9,4.7,8.0,6.9,4.3,6.4,4.1,5.8,8.9,6.9,6.6,8.1,6.6,6.0,5.0]],"bias":null}}
+];
+let runIdx=0, viewMode=0, layerIdx=0;
+const VAL_LO=1.52, VAL_HI=1.57;   // 柱状图横轴范围(放大差距)
+function buildValBars(){
+  const host=document.getElementById('valBars'); host.innerHTML='';
+  RUNS.forEach((R,i)=>{
+    const row=document.createElement('div'); row.className='vrow';
+    row.innerHTML='<span class="vname">'+R.short+'</span><div class="vtrack"><div class="vfill" style="width:'
+      +((R.d.val-VAL_LO)/(VAL_HI-VAL_LO)*100)+'%"></div></div><span class="vnum">'+R.d.val.toFixed(4)+'</span>';
+    row.addEventListener('click',()=>{runIdx=i;renderRuns();});
+    host.appendChild(row);
+  });
+}
+function renderRuns(){
+  const R=RUNS[runIdx], D=R.d;
+  setActiveBtn('runBtns',runIdx); setActiveBtn('viewBtns',viewMode); setActiveBtn('layerBtns',layerIdx);
+  document.querySelectorAll('#valBars .vrow').forEach((r,i)=>r.classList.toggle('sel',i===runIdx));
+  document.getElementById('rdTotal').textContent=fmtInt(D.params);
+  document.getElementById('rdActive').textContent=fmtInt(D.active);
+  document.getElementById('rdVal').textContent=D.val.toFixed(4);
+  document.getElementById('runNote').innerHTML=R.note;
+  document.getElementById('layerBtns').style.display=viewMode===0?'flex':'none';
+  document.getElementById('stepRow').style.display=viewMode===1?'flex':'none';
+  const ci=+document.getElementById('curveS').value;
+  document.getElementById('curveV').textContent=CURVE_STEPS[ci];
+  const U=viewMode===0?D.final[layerIdx]:D.curve[ci];
+  const uni=100/D.n, top=2*uni, mx=Math.max(...U), mn=Math.min(...U);
+  let cols='<div class="uline"></div>', labs='';
+  U.forEach((v,e)=>{
+    const cls=v===mx?' max':(v===mn?' min':'');
+    cols+='<div class="ucol'+cls+'" style="height:'+Math.min(100,v/top*100)+'%" title="E'+e+':'+v.toFixed(1)+'%"></div>';
+    labs+='<span>E'+e+'</span>';
+  });
+  document.getElementById('usageCols').innerHTML=cols;
+  document.getElementById('usageLabels').innerHTML=labs;
+  let note=(viewMode===0?'layer '+layerIdx+' 终局(最后一个训练 batch)':'layer 0 · step '+CURVE_STEPS[ci]+'(该次评估最后一个 val batch)')
+    +':最闲 '+mn.toFixed(1)+'% · 最忙 '+mx.toFixed(1)+'% · 均匀 '+(+uni.toFixed(2))+'%';
+  if(viewMode===0&&D.bias){
+    const b=D.bias[layerIdx], bl=Math.min(...b), bh=Math.max(...b);
+    note+=' · 这一层偏置 b 在 '+bl.toFixed(3)+' ~ '+bh.toFixed(3)+'(差 '+(bh-bl).toFixed(3)+')';
+  }
+  document.getElementById('usageNote').textContent=note;
+}
+document.querySelectorAll('#layoutBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{layIdx=i;layShuffle();}));
+document.getElementById('layShuffle').addEventListener('click',layShuffle);
+document.getElementById('toyB').addEventListener('input',renderToy);
+document.querySelectorAll('#runBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{runIdx=i;renderRuns();}));
+document.querySelectorAll('#viewBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{viewMode=i;renderRuns();}));
+document.querySelectorAll('#layerBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{layerIdx=i;renderRuns();}));
+document.getElementById('curveS').addEventListener('input',renderRuns);
+layShuffle(); renderToy(); buildValBars(); renderRuns();
 
 /* ============ 名词气泡 ============ */
 (function(){

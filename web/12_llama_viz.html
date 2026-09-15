@@ -228,6 +228,22 @@
   /* ===== STEP 5:GQA ===== */
   .gqalab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin:10px 0;
     overflow-x:auto;}
+  .kvclab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin:10px 0;}
+  .kvclab .btn-row .btn{font-size:13px;padding:7px 13px;}
+  .kvc-pool{position:relative;height:30px;background:#F4F2EA;border:1px solid var(--border);border-radius:8px;
+    overflow:hidden;margin:14px 0 4px;}
+  .kvc-pool .kvc-cap{position:absolute;top:0;bottom:0;left:0;background:var(--good-soft);border-right:2px dashed var(--good);}
+  .kvc-pool .kvc-blk{position:absolute;top:6px;bottom:6px;min-width:2px;border-radius:3px;box-shadow:inset -1px 0 0 #fff;
+    transition:all .25s ease;}
+
+  /* 折叠块里的小表格;窄屏时自己横向滚 */
+  .tbl-scroll{overflow-x:auto;margin:8px 0 2px;}
+  .minitbl{border-collapse:collapse;font-family:var(--mono);font-size:12.5px;
+    font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .minitbl th{font-size:11.5px;font-weight:700;color:var(--ink2);text-align:left;
+    padding:4px 14px 4px 0;border-bottom:1px solid var(--border);}
+  .minitbl td{padding:3px 14px 3px 0;color:var(--ink2);}
+  .minitbl td b{color:var(--accent);font-weight:700;}
 
   /* ===== STEP 6:对照 ===== */
   .ablab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin:10px 0;overflow-x:auto;}
@@ -506,6 +522,61 @@
     </div>
     <div class="note" id="gqaNote"></div>
 
+    <div class="sub-h"><span class="badge">显存</span>放大到真实模型:一张卡能装多少上下文</div>
+    <p class="lead" style="margin-bottom:10px">
+      上面的账本只有 4 层、2 份 K/V,按"个数"算。真实模型要把它乘上层数和 head_dim,再乘每个数占几个字节,
+      最后乘上下文长度和并发请求数。选一个模型,拖滑块:
+    </p>
+
+    <div class="kvclab">
+      <div class="btn-row" id="kvcPreset">
+        <button class="btn">本关玩具</button>
+        <button class="btn">LLaMA-2-7B(MHA)</button>
+        <button class="btn primary">LLaMA-3-8B(GQA)</button>
+        <button class="btn">Qwen3-Next-80B-A3B</button>
+      </div>
+      <div class="hp-note" id="kvcDesc" style="margin:4px 0 10px"></div>
+      <div class="rk-row"><label>上下文长度(token)</label>
+        <input type="range" id="kvcCtx" min="10" max="20" step="1" value="15">
+        <span class="rk-val" id="kvcCtxV">32K</span></div>
+      <div class="rk-row"><label>并发请求数</label>
+        <input type="range" id="kvcConc" min="1" max="64" step="1" value="8">
+        <span class="rk-val" id="kvcConcV">8</span></div>
+      <div class="rk-row"><label>每个数占几个字节</label>
+        <div class="btn-row" id="kvcBytes" style="margin:0">
+          <button class="btn primary">FP16 = 2 字节</button>
+          <button class="btn">FP8 = 1 字节</button>
+        </div></div>
+      <div class="rk-row"><label>给 KV 留的显存(GiB)</label>
+        <input type="range" id="kvcMem" min="4" max="80" step="1" value="24">
+        <span class="rk-val" id="kvcMemV">24</span></div>
+
+      <div class="glucalc" id="kvcFormula"></div>
+
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="kvcPer">–</div><div class="drl">每 token 的 KV cache(字节)</div></div>
+        <div class="dr"><div class="drv" id="kvcReq">–</div><div class="drl">一条请求满长时</div></div>
+        <div class="dr"><div class="drv" id="kvcAll">–</div><div class="drl">所有并发请求合计</div></div>
+        <div class="dr"><div class="drv" id="kvcCap" style="color:var(--good)">–</div><div class="drl">这块显存能装的 token 总数</div></div>
+        <div class="dr"><div class="drv" id="kvcFit" style="color:var(--accent)">–</div><div class="drl">能同时放下几条满长请求</div></div>
+      </div>
+
+      <div class="kvc-pool" id="kvcPool"></div>
+      <div class="hp-note" id="kvcPoolLbl"></div>
+    </div>
+    <div class="note" id="kvcNote"></div>
+
+    <details class="dig">
+      <summary>推理框架怎么管这个池子?</summary>
+      <div class="dig-body">
+        以 vLLM 为例,它的 <b>PagedAttention</b> 借用操作系统虚拟内存的分页做法:
+        把 KV cache 切成固定大小的<b>块</b>,每块存固定数量 token 的 K/V(默认 <code>block_size=16</code> 个 token)。
+        请求生成到哪里就申请到哪里,一块一块地要,不必按最大上下文长度预留一整段连续显存,池子里几乎没有空着的预留位。
+        块还可以在<b>同一请求内</b>和<b>不同请求之间</b>共享,比如同一段提示词采样多条回答时,提示词那部分的块只存一份。
+        论文报告吞吐提升 <b>2–4 倍</b>(Kwon et al., arXiv 2309.06180,SOSP 2023)。
+      </div>
+    </details>
+
     <div class="codepath">↳ 代码:<b>10_llama.py</b> 的 <code>Attention</code>(<code>k_proj</code>/<code>v_proj</code> 只投 <code>n_kv_head</code> 份 + <code>repeat_interleave</code>)· 开关 <code>--n-kv-head 2</code></div>
 
     <details class="dig">
@@ -587,6 +658,48 @@
         <b>MoE</b>(第 11 章那关)、更长上下文的位置插值(NTK / YaRN)、
         以及注意力实现层面的工程优化(FlashAttention、PagedAttention)。
         再加上 MoE,你手上这套已经能拼出一个相当接近现代开源模型的骨架了。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>残差连接在新模型里也在改吗?</summary>
+      <div class="dig-body">
+        在改。第 3 章的残差只有一条流:每个子层把输出加回同一根向量,<code>x = x + f(x)</code>。
+        <br><br>
+        <b>Hyper-Connections</b>(ByteDance Seed,arXiv 2409.19606)把这条流复制成 <b>n 条</b>并行的残差流,
+        子层按可学习的权重从 n 条流里读入、再写回,流与流之间还用一个矩阵相互混合。
+        论文里 <b>n=4</b> 效果最好,<b>n=8</b> 基本不再提升。
+        <br><br>
+        代价出在那个混合矩阵上:它不受约束,几十层连乘之后,残差原本"原样传过去"的恒等映射就没了,信号会被放大。
+        DeepSeek 的 <b>mHC</b>(arXiv 2512.24880)在 27B 模型上测到,HC 复合映射的增益峰值约 <b>3000</b>。
+        mHC 用 <b>Sinkhorn-Knopp</b> 迭代(<code>t_max=20</code> 次)把混合矩阵投影成<b>双随机矩阵</b>:
+        元素非负,每行之和、每列之和都是 1。这类矩阵谱范数不超过 1,相乘之后仍是双随机矩阵,
+        所以层层叠加也不会放大,增益峰值降到约 <b>1.6</b>。
+        n=4 时额外训练时间 <b>6.7%</b>,在 3B / 9B / 27B 三个规模上做了验证。
+        DeepSeek-V4 采用了 mHC(<code>n_hc=4</code>)。
+        <br><br>
+        本项目没有手搓这一件,<code>10_llama.py</code> 里的残差仍是第 3 章那一条。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>优化器也在换吗?这一关的模型换成 Muon 训会怎样?</summary>
+      <div class="dig-body">
+        在换。<span class="term" data-term="Muon · 优化器" data-key="muon" data-def="给隐藏层 2D 权重用的优化器:先做动量,再用 Newton-Schulz 迭代把更新矩阵近似正交化,各方向步长接近。嵌入、输出头、归一化仍用 AdamW。">Muon</span>(Keller Jordan 2024)只管隐藏层的 2D 权重:
+        先做动量,再用 5 步 Newton-Schulz 迭代把更新矩阵近似正交化,让它在各个方向上走的步子接近;嵌入、输出头、归一化参数仍交给 AdamW。
+        Kimi K2、DeepSeek-V4、Qwen3.8-Flash-Next 都公开用了它。
+        <br><br>
+        <code>10_llama.py --optim muon</code> 在本关四件齐上的模型上跑了三组(Mac MPS · 各 5000 步 · 同一种子):
+        <div class="tbl-scroll"><table class="minitbl">
+          <tr><th>优化器</th><th>step 500</th><th>step 1000</th><th>step 2500</th><th>结束 val loss</th></tr>
+          <tr><td>AdamW lr 1e-3</td><td>1.7777</td><td>1.6540</td><td>1.5767</td><td>1.5381</td></tr>
+          <tr><td>Muon lr 0.02</td><td>1.7099</td><td>1.6358</td><td>1.5951</td><td>1.5612</td></tr>
+          <tr><td>Muon lr 0.005</td><td>1.7202</td><td>1.6048</td><td>1.5516</td><td><b>1.5182</b></td></tr>
+        </table></div>
+        两组 Muon 前 1000 步都比 AdamW 降得快;lr 0.02 后段被 AdamW 反超,lr 0.005 全程领先,结束时低 0.020。
+        只扫了两个学习率、AdamW 的学习率没动、单种子,这组数据只说明"学习率合适时 Muon 在这个玩具上不输 AdamW",不足以给出倍数。
+        Moonshot 在大模型上的报告(arXiv 2502.16982)是:加 weight decay、按矩阵形状缩放更新后,达到同样效果约需 AdamW 52% 的算力。
+        <br><br>
+        上表 AdamW 那一行比 STEP 6 六组对照里的 1.5235 高 0.015:两次运行的 PyTorch 版本不同,同一份代码、同一个种子也不会逐位复现。
+        比较时只比同一次批量运行里的数字。
       </div>
     </details>
     <details class="dig">
@@ -881,6 +994,87 @@ function renderGQA(){
 }
 document.getElementById('gqaK').addEventListener('input',renderGQA);
 renderGQA();
+
+/* ============ STEP 5 · 放大到真实模型:KV cache 显存账 ============
+   每 token 字节 = 2(K 和 V)× 注意力层数 × kv 头数 × head_dim × 每个数的字节
+   校验:LLaMA-2-7B FP16 = 524,288 字节(0.5 MiB);LLaMA-3-8B FP16 = 131,072 字节(0.125 MiB)
+   配置出处:LLaMA config.json;Qwen3-Next 取 HF 模型卡(48 层 = 36 层 Gated DeltaNet + 12 层 Gated Attention)
+   ================================================================ */
+const KVC_PRESETS=[
+  {layers:4, kv:2, hd:32,
+   desc:'4 层 · 4 个 query 头 · n_kv_head=2 · head_size=32。和上面账本同一套配置;它训练时的 block_size 只有 64,这里借它的层数和头数放大来比。'},
+  {layers:32, kv:32, hd:128,
+   desc:'32 层 · 32 个 query 头 · 32 份 K/V(MHA,每个 query 头独占一份)· head_dim=128。'},
+  {layers:32, kv:8, hd:128,
+   desc:'32 层 · 32 个 query 头 · 8 份 K/V(GQA,每 4 个 query 头共用一份)· head_dim=128。'},
+  {layers:12, kv:2, hd:256,
+   desc:'48 层里只有 12 层是注意力(16 个 query 头 · 2 份 K/V · head_dim=256),公式只算这 12 层。另外 36 层是线性注意力,每条请求只存一份固定大小的状态,不随上下文长度增长,不计入下面的账,第 13 章讲。'},
+];
+const KVC_CTX_LBL=['1K','2K','4K','8K','16K','32K','64K','128K','256K','512K','1M'];
+const KVC_GIB=1024**3, KVC_MIB=1024**2;
+let kvcP=2, kvcB=2;
+function kvcNum(x,d){ let s=x.toFixed(d); if(s.includes('.')) s=s.replace(/0+$/,'').replace(/\.$/,''); return s; }
+function kvcFmt(b){                          // 1024 进制:KiB / MiB / GiB
+  if(b>=KVC_GIB){ const g=b/KVC_GIB; return (g>=1000?Math.round(g).toLocaleString('en-US'):kvcNum(g,g>=100?0:(g>=10?1:2)))+' GiB'; }
+  if(b>=KVC_MIB){ const m=b/KVC_MIB; return kvcNum(m,m>=100?0:(m>=10?1:2))+' MiB'; }
+  if(b>=1024){ const k=b/1024; return kvcNum(k,k>=100?0:(k>=10?1:2))+' KiB'; }
+  return b+' 字节';
+}
+function kvcSetActive(id,n){
+  document.querySelectorAll('#'+id+' .btn').forEach((b,i)=>b.classList.toggle('primary',i===n));
+}
+function renderKVC(){
+  const p=KVC_PRESETS[kvcP];
+  const ce=+document.getElementById('kvcCtx').value, ctx=2**ce;
+  const conc=+document.getElementById('kvcConc').value;
+  const memG=+document.getElementById('kvcMem').value, mem=memG*KVC_GIB;
+  document.getElementById('kvcCtxV').textContent=KVC_CTX_LBL[ce-10];
+  document.getElementById('kvcConcV').textContent=conc;
+  document.getElementById('kvcMemV').textContent=memG;
+  document.getElementById('kvcDesc').innerHTML=p.desc;
+  kvcSetActive('kvcPreset',kvcP);
+  kvcSetActive('kvcBytes',kvcB===2?0:1);
+
+  const per=2*p.layers*p.kv*p.hd*kvcB;       // 每 token 字节
+  const req=per*ctx, all=req*conc;
+  const cap=Math.floor(mem/per), fit=Math.floor(cap/ctx), need=ctx*conc;
+  const mibStr=kvcNum(Number((per/KVC_MIB).toPrecision(4)),7);
+  const en=v=>v.toLocaleString('en-US');
+
+  document.getElementById('kvcFormula').innerHTML=
+    `每 token 字节 = 2(K 和 V)× 注意力层数 × kv 头数 × head_dim × 每个数的字节<br>
+     &nbsp;&nbsp;= 2 × ${p.layers} × ${p.kv} × ${p.hd} × ${kvcB} = <span class="hl">${en(per)} 字节</span> = ${mibStr} MiB<br>
+     一条请求 = ${en(per)} 字节 × ${en(ctx)} token = <span class="hl">${kvcFmt(req)}</span>;
+     × ${conc} 条并发 = <span class="hl">${kvcFmt(all)}</span><br>
+     <span style="color:var(--ink2)">(1 MiB = 1024² 字节,1 GiB = 1024³ 字节)</span>`;
+  document.getElementById('kvcPer').textContent=en(per);
+  document.getElementById('kvcReq').textContent=kvcFmt(req);
+  document.getElementById('kvcAll').textContent=kvcFmt(all);
+  document.getElementById('kvcAll').style.color= all>mem ? 'var(--bad)' : 'var(--ink)';
+  document.getElementById('kvcCap').textContent=en(cap);
+  document.getElementById('kvcFit').textContent=en(fit)+' 条';
+
+  // 显存池:绿色底 = 留给 KV 的显存;每个小块 = 一条满长请求,超出显存的画成红色
+  const scale=Math.max(all,mem);
+  let html=`<div class="kvc-cap" style="width:${(100*mem/scale).toFixed(2)}%"></div>`;
+  for(let i=0;i<conc;i++){
+    const ok=(i+1)*req<=mem;
+    html+=`<div class="kvc-blk" style="left:${(100*i*req/scale).toFixed(3)}%;width:${(100*req/scale).toFixed(3)}%;
+      background:${ok?'var(--accent)':'var(--bad)'};opacity:${ok?1:.7}"></div>`;
+  }
+  document.getElementById('kvcPool').innerHTML=html;
+  document.getElementById('kvcPoolLbl').innerHTML=
+    `绿色底 = 留给 KV 的 ${memG} GiB 显存(虚线是上限);每个小块 = 一条 ${KVC_CTX_LBL[ce-10]} token 的满长请求(${kvcFmt(req)});
+     橙块放得下,红块超出显存。块太窄时按 2 像素画。`;
+  document.getElementById('kvcNote').innerHTML=
+    `显存里是一个<b>共享的 token 池</b>:上下文长度 × 并发数不能超过它。
+     当前需要 ${en(ctx)} × ${conc} = <b>${en(need)}</b> token,池子能装 <b>${en(cap)}</b> token,
+     ${need<=cap ? `放得下,还空着 ${en(cap-need)} token。` : `超出 ${en(need-cap)} token,${fit>0 ? `满长请求只能同时跑 ${en(fit)} 条。` : `一条满长请求也放不下。`}`}`;
+}
+document.querySelectorAll('#kvcPreset .btn').forEach((b,i)=>b.addEventListener('click',()=>{kvcP=i;renderKVC();}));
+document.querySelectorAll('#kvcBytes .btn').forEach((b,i)=>b.addEventListener('click',()=>{kvcB=i===0?2:1;renderKVC();}));
+['kvcCtx','kvcConc','kvcMem'].forEach(id=>document.getElementById(id).addEventListener('input',renderKVC));
+renderKVC();
 
 /* ============ STEP 6:六组对照 ============ */
 const AB_COLORS={gpt2:'#8C8A83',rope:'var(--e1)',rmsnorm:'var(--e2)',swiglu:'var(--e3)',gqa:'var(--e0)',llama:'var(--accent)'};

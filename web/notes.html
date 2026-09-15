@@ -4,11 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>学习札记 · 彩蛋</title>
-<meta name="description" content="正课之外的边角料:Transformer 的前世今生;12.75T token 的真实训练日志里出过什么岔子。">
+<meta name="description" content="正课之外的边角料:Transformer 的前世今生;12.75T token 的真实训练日志里出过什么岔子;Qwen3.8-Flash-Next 与 DeepSeek-V4-Flash 逐个零件对照本仓库章节。">
 <meta name="theme-color" content="#D97757">
 <!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
 <meta property="og:title" content="学习札记 · 从零手写大语言模型">
-<meta property="og:description" content="正课之外的边角料:Transformer 的前世今生;12.75T token 的真实训练日志里出过什么岔子。">
+<meta property="og:description" content="正课之外的边角料:Transformer 的前世今生;12.75T token 的真实训练日志里出过什么岔子;Qwen3.8-Flash-Next 与 DeepSeek-V4-Flash 逐个零件对照本仓库章节。">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://learn-llm.fim.ai/notes.html">
 <meta property="og:image" content="https://learn-llm.fim.ai/og.png">
@@ -17,7 +17,7 @@
 <!-- Twitter / X -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="学习札记 · 从零手写大语言模型">
-<meta name="twitter:description" content="正课之外的边角料:Transformer 的前世今生;12.75T token 的真实训练日志里出过什么岔子。">
+<meta name="twitter:description" content="正课之外的边角料:Transformer 的前世今生;12.75T token 的真实训练日志里出过什么岔子;Qwen3.8-Flash-Next 与 DeepSeek-V4-Flash 逐个零件对照本仓库章节。">
 <meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
 <style>
   /* ============ 全局基础样式(与全站共用暖色变量)============ */
@@ -79,6 +79,12 @@
   th{background:#F4F2EA;font-weight:700;}
   td.y{font-family:var(--mono);white-space:nowrap;color:var(--accent);font-weight:700;}
   .star{color:var(--accent);}
+  /* 宽表:窄屏横向滚动,不撑破页面 */
+  .tbl-wrap{overflow-x:auto;margin:14px 0;}
+  .tbl-wrap table{margin:0;min-width:720px;}
+  td.part{font-weight:700;white-space:nowrap;}
+  td.ch{min-width:150px;}
+  .src{font-family:var(--mono);font-size:11.5px;color:var(--ink2);white-space:nowrap;}
 
   /* 时间线 */
   .tl{list-style:none;margin:14px 0 4px;padding:0;border-left:2px solid var(--accent-soft);}
@@ -297,6 +303,138 @@
         <a href="https://marin.readthedocs.io/en/latest/reports/marin-32b-retro/" target="_blank" rel="noopener">32B 训练回顾 ↗</a>
         <a href="https://marin.readthedocs.io/en/latest/reports/agent-moe-experiments/" target="_blank" rel="noopener">MoE 实验摘要 ↗</a>
         <a href="https://github.com/marin-community/marin" target="_blank" rel="noopener">GitHub 仓库 ↗</a>
+      </div>
+    </div>
+  </article>
+
+  <!-- ================= 彩蛋 03 ================= -->
+  <article class="note-card" id="egg-2026-archs">
+    <span class="egg-tag">彩蛋 03 · 拆两颗新模型</span>
+    <h2>两颗 2026 年的模型,拆开对照本仓库第几章</h2>
+    <p class="deck">Qwen3.8-Flash-Next(2026-08-26 发布)与 DeepSeek-V4-Flash(2026 preview 报告)。每个零件标出出处,再标出本仓库哪一章讲过它。</p>
+
+    <h3>零件对照表</h3>
+    <p>
+      两颗都是 <span class="term" data-term="MoE · 混合专家" data-key="moe"
+        data-def="把 FFN 拆成多个专家,路由器每个 token 只派给其中 top-k 个。总参数变多,每 token 计算量不变。第 11 章手搓过一个 4 专家版。">MoE</span>,
+      表里逐行列出 MoE 之外的注意力、记忆表、残差、优化器等零件。灰色小字是出处:「报告」指各自的技术报告,「HF 卡」指 Hugging Face 模型卡。
+    </p>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th>零件</th><th>Qwen3.8-Flash-Next</th><th>DeepSeek-V4-Flash</th><th>本仓库</th></tr>
+      <tr>
+        <td class="part">MoE 专家配置</td>
+        <td>总参 125B,每 token
+          <span class="term" data-term="激活参数" data-key="active-params"
+            data-def="处理一个 token 实际参与计算的参数量。MoE 里只算 top-k 个专家,所以远小于总参数。省的是算力,不是显存。">激活</span> 6B
+          <span class="src">报告</span><br>
+          512 个专家,每 token 选 10 个,另有 1 个共享专家 <span class="src">config.json</span></td>
+        <td>总参 284B,激活 13B;256 个 routed 专家 + 1 个共享专家,每 token 选 6 个;前 3 个 MoE 层用 Hash routing
+          <span class="src">报告 §4.2.1</span></td>
+        <td class="ch"><a href="11_moe_viz.html">第 11 章 · MoE</a><br>路由器 + top-k;共享专家在该页折叠段</td>
+      </tr>
+      <tr>
+        <td class="part">注意力</td>
+        <td>48 层 = 12 × (3 层 Gated DeltaNet + 1 层 QSA),每层后接 MoE <span class="src">HF 卡</span><br>
+          QSA 在持续预训练阶段替换原来的全注意力层:key 每 r=4 个 token 平均池化成一块,每个 query 在 K=2048 token 预算内选最多 512 块;索引器是 MQA,4 个 query 头共享 1 个 key 头
+          <span class="src">报告 §2.1.2</span></td>
+        <td>CSA:每 m=4 个 token 的 KV 压成一条,再做 DeepSeek Sparse Attention,Flash 的 top-k=512;HCA:每 m′=128 个 token 压成一条,对压缩条目做稠密注意力;另有 128 token 滑窗和 attention sink
+          <span class="src">报告 §2.3、§4.2.1</span><br>
+          Flash 前两层只用滑窗,之后 CSA / HCA 交替 <span class="src">config.json</span><br>
+          索引器注意力用 FP4 计算 <span class="src">报告 §2.3</span>;KV 中带
+          <span class="term" data-term="RoPE · 旋转位置编码" data-key="rope"
+            data-def="把位置编成旋转角度,直接转进 q/k 里,注意力分数只依赖两个 token 的相对距离。第 12 章讲过。">RoPE</span>
+          的维度存 BF16,其余维度存 FP8 <span class="src">报告</span></td>
+        <td class="ch"><a href="13_linear_attention_viz.html">第 13 章 · 线性注意力</a>(Gated DeltaNet、3:1 混合)<br>
+          <a href="14_sparse_attention_viz.html">第 14 章 · 稀疏注意力</a>(NSA / DSA / CSA / QSA)<br>
+          <a href="12_llama_viz.html">第 12 章</a>(MQA 是 GQA 的极端情况;RoPE)<br>
+          <a href="17_quantization_viz.html">第 17 章 · 量化</a>(FP4 / FP8)</td>
+      </tr>
+      <tr>
+        <td class="part">额外记忆表</td>
+        <td>N-gram Embedding,只有 1 层,放在第 2 层;以每个 token 结尾的 bigram / trigram 作 key 查表;表参数 51B,放在主机内存,异步预取
+          <span class="src">报告摘要、§2.3;HF 卡</span></td>
+        <td>V4 报告全文没有出现 Engram 或 n-gram 记忆表;前 3 个 MoE 层用的 Hash routing 是专家路由方式,与记忆表是两回事
+          <span class="src">报告 §4.2.1</span></td>
+        <td class="ch"><a href="15_ngram_memory_viz.html">第 15 章 · N-gram 查表</a></td>
+      </tr>
+      <tr>
+        <td class="part">多 token 预测</td>
+        <td>附带 4B 参数的 MTP 模块 <span class="src">HF 卡</span></td>
+        <td>MTP depth = 1 <span class="src">报告 §4.2.1</span></td>
+        <td class="ch"><a href="16_speculative_decoding_viz.html">第 16 章 · MTP 与投机解码</a></td>
+      </tr>
+      <tr>
+        <td class="part">残差</td>
+        <td>Gated Residual:残差流拓宽成 4 支,读出走逐元素门控,去掉分支混合矩阵 H<sup>res</sup>;Tab.5 与 mHC 静态、动态两版做了对照
+          <span class="src">报告</span></td>
+        <td>mHC,n<sub>hc</sub> = 4,t<sub>max</sub> = 20 <span class="src">报告 §4.2.1</span><br>
+          mHC 用 Sinkhorn-Knopp 迭代 20 次,把 H<sup>res</sup> 投影成双随机矩阵(非负,行和、列和都为 1)
+          <span class="src">mHC §4.1–4.2</span></td>
+        <td class="ch">本仓库未手搓<br>本仓库用的是单支
+          <span class="term" data-term="残差连接" data-key="residual"
+            data-def="把子层的输出加回它的输入:x = x + 子层(x)。第 3 章完整 Transformer 里用过。">残差</span>
+          x + 子层(x),见 <a href="03_transformer_viz.html">第 3 章</a></td>
+      </tr>
+      <tr>
+        <td class="part">优化器</td>
+        <td>Muon:注意力 q/k/v/o、GDN 输入输出投影、专家 fc1/fc2、n-gram 层 k/v 投影<br>
+          AdamW:输入 embedding、输出头、router、GR 低秩投影;n-gram 表用 Adam,不加 weight decay<br>
+          Newton-Schulz 8 步 <span class="src">报告 §3.1</span></td>
+        <td>Muon:大多数参数;AdamW:embedding、预测头、RMSNorm 权重<br>
+          Newton-Schulz 共 10 次:前 8 次系数 (3.4445, −4.7750, 2.0315),后 2 次 (2, −1.5, 0.5)
+          <span class="src">报告 §2.4、§4.2.2</span></td>
+        <td class="ch">本仓库未手搓<br>Muon 全称 MomentUm Orthogonalized by Newton-Schulz:用 Newton-Schulz 迭代把动量矩阵近似正交化后再更新。本仓库只用
+          <span class="term" data-term="AdamW" data-key="adamw"
+            data-def="带权重衰减的 Adam 优化器,本仓库第 6 章逐个超参讲过。">AdamW</span>,见 <a href="07_pretraining_viz.html">第 6 章</a></td>
+      </tr>
+      <tr>
+        <td class="part">上下文</td>
+        <td>报告在 1M 上下文下测 QSA:kernel 级 prefill 7.6×、decode 4.9× <span class="src">报告 §2.1.2</span><br>
+          max_position_embeddings = 262,144 <span class="src">config.json</span></td>
+        <td>1M <span class="src">报告摘要</span><br>
+          同报告:V4-Pro 单 token 推理 FLOPs 为 V3.2 的 27%,KV cache 为 V3.2 的 10%</td>
+        <td class="ch"><a href="05_sampling_viz.html">第 5 章</a>(<span class="term" data-term="KV-cache" data-key="kv-cache"
+            data-def="把过去每个 token 的 K/V 缓存下来,生成新 token 时只算新的一列,避免重算整段。">KV-cache</span> 的来历)<br>
+          第 13、14 章(长上下文下的注意力代价)</td>
+      </tr>
+    </table>
+    </div>
+    <p>
+      表里的 QSA 层在 config.json 里是 24 个 query 头配 2 个 KV 头(head_dim 256),
+      也就是第 12 章的
+      <span class="term" data-term="GQA · 分组查询注意力" data-key="gqa"
+        data-def="多个 query 头共享一份 K/V。推理时 KV cache 按 kv 头数算,所以显存直接按比例省。">GQA</span>。
+    </p>
+
+    <h3>两家都把「每 token 算多少」和「一共存多少」分开了</h3>
+    <p>
+      <b>第一层拆分是 MoE,两家相同。</b>Qwen3.8-Flash-Next 每 token 激活 6B / 125B,约 4.8%;
+      DeepSeek-V4-Flash 激活 13B / 284B,约 4.6%。没被选中的专家仍占存储,只是不参与这个 token 的计算。
+    </p>
+    <p>
+      <b>Qwen 另外把一部分参数挪出加速器,并减少全注意力层。</b>51B 的 n-gram 表放在主机内存,每个 token 只按自己结尾的短 n-gram 取表项。
+      报告 Tab.8 在固定总参数下扫分配比例:n-gram 占 25% 时 loss 最低,下游指标没有随之改善。
+      注意力这边,48 层里 36 层是 Gated DeltaNet,状态矩阵的形状固定,不随上下文变长;
+      剩下 12 层 QSA 每个 query 最多看 2048 个 token。
+    </p>
+    <p>
+      <b>DeepSeek 没有挂记忆表,压缩做在 KV 上。</b>每层都保留注意力,但 CSA 把 4 个 token 的 KV 合成 1 条、HCA 把 128 个合成 1 条,
+      CSA 再只取 top-512;位宽方面,索引器用 FP4,KV 里不带 RoPE 的维度用 FP8。
+      报告给出的 Pro 版对比是 KV cache 为 V3.2 的 10%。
+      DeepSeek 在 Engram 论文里做过 n-gram 记忆表(Engram-27B 插在第 2、15 层),V4 报告里没有出现这个模块。
+    </p>
+
+    <div class="aside">
+      📚 <b>出处:</b>表中「报告」对 Qwen 指其技术报告 <i>On the Design of Qwen3.8-Next Architecture</i>,
+      对 DeepSeek 指 V4 报告(arXiv 2606.19348,2026 preview 版本);节号、表号取自原文。
+      第 13–17 章页面讲这些零件的机制。
+      <div class="links">
+        <a href="https://github.com/QwenLM/Qwen3.8-Flash-Next" target="_blank" rel="noopener">Qwen3.8-Flash-Next 技术报告(GitHub) ↗</a>
+        <a href="https://arxiv.org/abs/2606.19348" target="_blank" rel="noopener">DeepSeek-V4 · arXiv 2606.19348(2026 preview) ↗</a>
+        <a href="https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct" target="_blank" rel="noopener">Qwen3-Next-80B-A3B 模型卡 ↗</a>
+        <a href="https://arxiv.org/abs/2512.24880" target="_blank" rel="noopener">mHC · arXiv 2512.24880 ↗</a>
+        <a href="https://arxiv.org/abs/2601.07372" target="_blank" rel="noopener">Engram · arXiv 2601.07372 ↗</a>
       </div>
     </div>
   </article>

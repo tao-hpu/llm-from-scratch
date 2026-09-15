@@ -60,14 +60,31 @@ parser.add_argument("--aux", type=float, default=0.01,
 parser.add_argument("--top-k", type=int, default=top_k,
                     help="每 token 走几个专家(默认 2;top-1 是 Switch Transformer 的设定,更容易偏载)")
 parser.add_argument("--max-iters", type=int, default=max_iters)
+# ---- 进阶开关:细粒度专家 + 共享专家 + 无 aux loss 的负载均衡(DeepSeekMoE / DeepSeek-V3)----
+parser.add_argument("--n-expert", type=int, default=n_expert, help="每层路由专家个数")
+parser.add_argument("--expert-hidden", type=int, default=expert_hidden,
+                    help="每个路由专家的隐层宽度。细粒度 = 专家切得更多更窄,如 16 个 × 64")
+parser.add_argument("--shared", type=int, default=0, help="共享专家个数:每个 token 必走,不经路由器")
+parser.add_argument("--shared-hidden", type=int, default=None, help="共享专家隐层宽度(默认同路由专家)")
+parser.add_argument("--balance", type=str, default="aux", choices=["aux", "bias", "none"],
+                    help="aux = 加辅助 loss(Switch 式);bias = 每个专家一个偏置,只影响挑选、不进 loss"
+                         "(DeepSeek-V3 式);none = 不管")
+parser.add_argument("--bias-gamma", type=float, default=0.001, help="bias 模式每步调整幅度")
+parser.add_argument("--json", type=str, default="", help="把关键数字写进这个 json 文件")
 args = parser.parse_args()
-aux_coef = args.aux
+aux_coef = args.aux if args.balance == "aux" else 0.0
 top_k = args.top_k
 max_iters = args.max_iters
+n_expert = args.n_expert
+expert_hidden = args.expert_hidden
+n_shared = args.shared
+shared_hidden = args.shared_hidden or expert_hidden
+balance = args.balance
 
 device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
 torch.manual_seed(1337)
-print(f"device = {device} | n_expert = {n_expert} | top_k = {top_k} | aux_coef = {aux_coef}")
+print(f"device = {device} | n_expert = {n_expert}×{expert_hidden} | top_k = {top_k} | "
+      f"shared = {n_shared}×{shared_hidden} | balance = {balance} | aux_coef = {aux_coef}")
 
 # ---- 数据(还是 tiny shakespeare,复用 phase1 的文件)----
 # 路径按脚本所在目录算,不看你从哪儿敲的命令。
@@ -126,12 +143,13 @@ class MultiHeadAttention(nn.Module):
 class Expert(nn.Module):
     """结构和 03 的 FeedForward 一模一样,只是隐层从 4*n_embd 缩到 expert_hidden。
     一个专家单干不如 dense FFN;MoE 靠"派对专家"把它们拼回来。"""
-    def __init__(self):
+    def __init__(self, hidden=None):
         super().__init__()
+        hidden = hidden or expert_hidden
         self.net = nn.Sequential(
-            nn.Linear(n_embd, expert_hidden),
+            nn.Linear(n_embd, hidden),
             nn.ReLU(),
-            nn.Linear(expert_hidden, n_embd),
+            nn.Linear(hidden, n_embd),
             nn.Dropout(dropout),
         )
 
@@ -146,6 +164,10 @@ class MoELayer(nn.Module):
         super().__init__()
         self.experts = nn.ModuleList([Expert() for _ in range(n_expert)])
         self.router = nn.Linear(n_embd, n_expert, bias=False)  # 路由器就一个线性层
+        # 共享专家:不参与路由,每个 token 都过(DeepSeekMoE 的 shared expert)
+        self.shared = nn.ModuleList([Expert(shared_hidden) for _ in range(n_shared)])
+        # bias 模式的偏置:只在"挑谁"时加上,不改门控权重,也不进 loss(DeepSeek-V3 的做法)
+        self.register_buffer("sel_bias", torch.zeros(n_expert), persistent=False)
         # 统计用:训练外也能看每个专家接了多少 token
         self.register_buffer("usage", torch.zeros(n_expert), persistent=False)
 
@@ -155,7 +177,12 @@ class MoELayer(nn.Module):
 
         logits = self.router(flat)                    # (B*T, n_expert) 每个 token 给每个专家打分
         probs = F.softmax(logits, dim=-1)             # 变成"该派给谁"的概率
-        topv, topi = probs.topk(top_k, dim=-1)        # 只留分数最高的 top_k 个专家
+        if balance == "bias":
+            # 挑选看"概率 + 偏置",权重仍取原始概率 —— 偏置只管派单,不扭曲输出
+            _, topi = (probs + self.sel_bias).topk(top_k, dim=-1)
+            topv = probs.gather(-1, topi)
+        else:
+            topv, topi = probs.topk(top_k, dim=-1)    # 只留分数最高的 top_k 个专家
         if top_k > 1:
             # 在选中的 k 个里重新归一化,权重和=1(Mixtral 的做法)。
             # ⚠️ 只在 k>1 时做:k=1 归一化后权重恒等于 1,门控值被抹平,
@@ -179,6 +206,16 @@ class MoELayer(nn.Module):
         f = mask_load = topi.view(-1).bincount(minlength=n_expert).float() / topi.numel()
         P = probs.mean(dim=0)
         self.aux_loss = n_expert * (f * P).sum()
+
+        # ---- 无 aux loss 的负载均衡(bias 模式)----
+        # 每步看一眼负载:接单高于平均的专家,偏置减 γ;低于平均的,加 γ。
+        # 不需要梯度,也不往 loss 里掺东西,所以不会和语言模型的目标"抢方向"。
+        if balance == "bias" and self.training:
+            with torch.no_grad():
+                self.sel_bias -= args.bias_gamma * torch.sign(mask_load - mask_load.mean())
+
+        for s in self.shared:                         # 共享专家:人人都过,权重 1
+            out = out + s(flat)
 
         self.usage = mask_load.detach()               # 留给训练结尾打印
         return out.view(B, T, C)
@@ -237,7 +274,7 @@ class MoEGPT(nn.Module):
 
 model = MoEGPT().to(device)
 n_param = sum(p.numel() for p in model.parameters())
-# 激活参数:非 FFN 部分全算 + 每层只走 top_k 个专家
+# 激活参数:非路由专家部分全算(含共享专家)+ 每层只走 top_k 个路由专家
 n_ffn_total = sum(p.numel() for b in model.blocks for p in b.ffwd.experts.parameters())
 n_active = n_param - n_ffn_total + n_ffn_total // n_expert * top_k
 print(f"总参数 = {n_param/1e6:.2f} M | 每 token 激活 ≈ {n_active/1e6:.2f} M"
@@ -267,6 +304,7 @@ def usage_report():
         print(f"  layer {li}: {bars}")
 
 print("===== 训练 MoE Transformer =====")
+curve, usage_curve = [], []
 for it in range(max_iters):
     if it % eval_interval == 0 or it == max_iters - 1:
         l = estimate_loss()
@@ -274,6 +312,8 @@ for it in range(max_iters):
         ub = "/".join(f"{v*100:.0f}" for v in u)
         print(f"step {it:4d} | train loss {l['train']:.4f} | val loss {l['val']:.4f}"
               f" | layer0 负载 {ub}%")
+        curve.append([it, round(l["train"], 4), round(l["val"], 4)])
+        usage_curve.append([round(v * 100, 1) for v in u.tolist()])
     xb, yb = get_batch("train")
     _, ce, aux = model(xb, yb)
     loss = ce + aux_coef * aux            # aux_coef=0 时路由器放飞自我 → 专家塌缩
@@ -323,6 +363,17 @@ def specialization_report():
     model.train()
 
 specialization_report()
+
+if args.json:
+    import json
+    final_usage = [[round(v * 100, 1) for v in b.ffwd.usage.tolist()] for b in model.blocks]
+    with open(args.json, "w") as f:
+        json.dump({"n_expert": n_expert, "expert_hidden": expert_hidden, "top_k": top_k,
+                   "shared": n_shared, "shared_hidden": shared_hidden, "balance": balance,
+                   "params": n_param, "active": n_active, "curve": curve,
+                   "val": curve[-1][2], "usage_layer0_curve": usage_curve, "usage_final": final_usage,
+                   "sel_bias_final": [[round(v, 4) for v in b.ffwd.sel_bias.tolist()] for b in model.blocks]},
+                  f, ensure_ascii=False, indent=1)
 
 print("\n----- 采样结果(生成 500 字)-----")
 start = torch.zeros((1, 1), dtype=torch.long, device=device)

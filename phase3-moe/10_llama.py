@@ -69,6 +69,10 @@ p.add_argument("--n-kv-head", type=int, default=None,
                help="K/V 头数:=n_head 就是普通 MHA;<n_head 是 GQA;=1 是 MQA")
 p.add_argument("--max-iters", type=int, default=max_iters)
 p.add_argument("--tag", type=str, default="", help="打印用的标签,方便多组对照")
+p.add_argument("--optim", type=str, default="adamw", choices=["adamw", "muon"],
+               help="muon = 隐藏层的 2D 权重用 Muon,嵌入/输出头/归一化仍用 AdamW")
+p.add_argument("--muon-lr", type=float, default=0.02)
+p.add_argument("--json", type=str, default="", help="把 loss 曲线写进这个 json 文件")
 args = p.parse_args()
 
 USE_ROPE, USE_RMS, USE_SWIGLU, N_KV_HEAD = PRESETS[args.preset]
@@ -282,7 +286,55 @@ print(f"[{name}] 总参数 = {n_param/1e6:.3f} M | 每 token 的 KV cache = {kv_
       f"(MHA 是 {kv_dense},省 {100*(1-kv_per_token/kv_dense):.0f}%)")
 
 # ---- 训练(和第 3 章同一个循环)----
-optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+# ===========================================================================
+# 可选:Muon 优化器(Keller Jordan 2024)
+# AdamW 对每个数各自调步长;Muon 把一个 2D 权重的更新当成整体,先做动量,
+# 再用 Newton-Schulz 迭代把更新矩阵"正交化"(奇异值都推到 1 附近),
+# 这样每个方向走的步子差不多大,不会被少数几个大奇异值方向主导。
+# ===========================================================================
+def newton_schulz(G, steps=5, eps=1e-7):
+    a, b, c = (3.4445, -4.7750, 2.0315)      # 五次多项式系数,出自 Keller Jordan 的博客
+    X = G / (G.norm() + eps)
+    tall = X.size(0) > X.size(1)
+    if tall:
+        X = X.T
+    for _ in range(steps):
+        A = X @ X.T
+        X = a * X + (b * A + c * A @ A) @ X
+    return X.T if tall else X
+
+class Muon(torch.optim.Optimizer):
+    def __init__(self, params, lr=0.02, momentum=0.95):
+        super().__init__(params, dict(lr=lr, momentum=momentum))
+
+    @torch.no_grad()
+    def step(self):
+        for g in self.param_groups:
+            for p_ in g["params"]:
+                if p_.grad is None:
+                    continue
+                buf = self.state[p_].setdefault("buf", torch.zeros_like(p_))
+                buf.mul_(g["momentum"]).add_(p_.grad)
+                u = newton_schulz(p_.grad.add(buf, alpha=g["momentum"]))     # Nesterov 动量后正交化
+                p_.add_(u, alpha=-g["lr"] * max(1, p_.size(0) / p_.size(1)) ** 0.5)
+
+if args.optim == "muon":
+    hidden_2d = [q for n_, q in model.named_parameters() if n_.startswith("blocks.") and q.dim() == 2]
+    others = [q for n_, q in model.named_parameters() if not (n_.startswith("blocks.") and q.dim() == 2)]
+    muon = Muon(hidden_2d, lr=args.muon_lr)
+    adamw = torch.optim.AdamW(others, lr=lr)
+
+    class Both:
+        def zero_grad(self, set_to_none=True):
+            muon.zero_grad(set_to_none=set_to_none); adamw.zero_grad(set_to_none=set_to_none)
+
+        def step(self):
+            muon.step(); adamw.step()
+    optimizer = Both()
+    print(f"[{name}] Muon 管 {sum(q.numel() for q in hidden_2d)/1e6:.3f} M 个隐藏层权重,"
+          f"AdamW 管其余 {sum(q.numel() for q in others)/1e6:.3f} M")
+else:
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 
 @torch.no_grad()
 def estimate_loss():
@@ -300,10 +352,12 @@ def estimate_loss():
 print(f"===== 训练 [{name}] =====")
 t_start = time.time()
 tokens_done = 0
+curve = []
 for it in range(max_iters):
     if it % eval_interval == 0 or it == max_iters - 1:
         l = estimate_loss()
         el = time.time() - t_start
+        curve.append([it, round(l["train"], 4), round(l["val"], 4)])
         print(f"step {it:4d} | train loss {l['train']:.4f} | val loss {l['val']:.4f}"
               f" | {tokens_done/max(el,1e-9):,.0f} tok/s")
     xb, yb = get_batch("train")
@@ -316,7 +370,13 @@ for it in range(max_iters):
 final = estimate_loss()
 print(f"[{name}] 训练结束 | val loss {final['val']:.4f} | 参数 {n_param/1e6:.3f} M "
       f"| KV/token {kv_per_token} | 用时 {time.time()-t_start:.0f}s")
+if args.json:
+    import json
+    with open(args.json, "w") as f:
+        json.dump({"name": name, "optim": args.optim, "curve": curve, "val": round(final["val"], 4),
+                   "params": n_param, "seconds": round(time.time() - t_start)}, f, ensure_ascii=False, indent=1)
 
 print(f"\n----- 采样结果([{name}],生成 400 字)-----")
+model.eval()   # 生成时关掉 dropout(新版 PyTorch 的 MPS 后端也不支持带 dropout 的 SDPA)
 start = torch.zeros((1, 1), dtype=torch.long, device=device)
 print(decode(model.generate(start, max_new_tokens=400)[0].tolist()))
