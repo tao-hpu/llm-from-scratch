@@ -179,7 +179,7 @@ if orphan:
 
 # ------------------------------------------- 5. 规范文件表 vs 真实 web/ 目录
 spec = read(SPEC)
-for p in chapters + ["index.html", "glossary.html", "notes.html"]:
+for p in chapters + ["index.html", "glossary.html", "notes.html", "about.html"]:
     if p not in spec:
         bad(f"可视化规范.md: 文件表里没有 {p}，新增页忘了登记")
 

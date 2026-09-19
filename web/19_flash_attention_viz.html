@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>手写 FlashAttention · 拆开 SDPA</title>
+<meta name="description" content="把第 6 章起一直在调的 F.scaled_dot_product_attention 拆开:T×T 分数矩阵有多大、online softmax 怎样分段算出精确结果、分块后哪些数留在片上,再用 Triton 写一个前向 kernel,在 RTX 4090 上和朴素写法、PyTorch SDPA 比时间与显存,并换进 124M 核对 loss。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 19 章 · 手写 FlashAttention · 从零手写大语言模型">
+<meta property="og:description" content="把第 6 章起一直在调的 F.scaled_dot_product_attention 拆开:T×T 分数矩阵有多大、online softmax 怎样分段算出精确结果、分块后哪些数留在片上,再用 Triton 写一个前向 kernel,在 RTX 4090 上和朴素写法、PyTorch SDPA 比时间与显存,并换进 124M 核对 loss。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/19_flash_attention_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 19 章 · 手写 FlashAttention · 从零手写大语言模型">
+<meta name="twitter:description" content="把第 6 章起一直在调的 F.scaled_dot_product_attention 拆开:T×T 分数矩阵有多大、online softmax 怎样分段算出精确结果、分块后哪些数留在片上,再用 Triton 写一个前向 kernel,在 RTX 4090 上和朴素写法、PyTorch SDPA 比时间与显存,并换进 124M 核对 loss。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
+<style>
+
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --good:#3f7d63; --good-soft:#D7EBE0; --bad:#9a3a22; --bad-soft:#F3D9CE;
+    --e0:#b8512f; --e0s:#F7E6DE; --e1:#3a63c0; --e1s:#E5EBF9;
+    --e2:#3f7d63; --e2s:#E4EFE9; --e3:#a3548c; --e3s:#F6E6F0;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 24px 90px;}
+
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:790px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  .steps-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:26px 0 18px;}
+  .step-tab{background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 14px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13.5px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 20px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:10px;padding:10px 14px;}
+
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;align-items:center;}
+  .btn-row.small .btn{font-size:13px;padding:7px 13px;}
+
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:24px 0 6px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  .codepath{font-family:var(--mono);font-size:11.5px;color:var(--ink2);background:#F4F2EA;
+    border:1px solid var(--border);border-radius:8px;padding:5px 10px;display:inline-block;margin-top:10px;}
+  .codepath b{color:var(--accent);}
+
+  /* 名词气泡 */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:280px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;font-family:system-ui,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* 庆祝 */
+  .congrats{display:none;text-align:center;background:linear-gradient(135deg,#FBF1EA,#F6E6F0);
+    border:1px solid var(--accent-soft);border-radius:16px;padding:22px;margin-top:18px;}
+  .congrats.show{display:block;animation:fade .5s ease;}
+  .congrats .ct{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--accent);}
+  .congrats .cs{font-size:13.5px;color:var(--ink2);margin-top:6px;}
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;}
+
+  .nav{display:flex;justify-content:space-between;margin-top:22px;gap:10px;}
+  .checklist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:8px;}
+  .checklist li{display:flex;gap:10px;align-items:flex-start;font-size:13px;background:#fff;border:1px solid var(--border);
+    border-radius:10px;padding:10px 13px;}
+  .checklist li .ck{color:#3f7d63;font-weight:700;flex-shrink:0;}
+  .checklist li b{color:var(--accent);}
+  .rk-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0;}
+  .rk-row label{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:150px;}
+  .rk-val{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent);min-width:64px;text-align:center;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:8px;padding:2px 6px;}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;background:var(--accent-soft);
+    flex:1;min-width:150px;max-width:340px;outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.18);}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid #fff;}
+  .dotread{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:12px 0 4px;}
+  .dr{background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 13px;text-align:center;}
+  .dr .drv{font-family:var(--mono);font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .dr .drl{font-size:11.5px;color:var(--ink2);margin-top:2px;}
+  .lab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin:10px 0;}
+  .scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin:4px 0;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;}
+  .mini-h{font-family:var(--mono);font-size:11.5px;color:var(--ink2);font-weight:700;margin:4px 0;}
+
+  /* ===== 本页 ===== */
+  .mbar{display:flex;align-items:center;gap:10px;margin:7px 0;}
+  .mbar .mn{font-family:var(--mono);font-size:12px;width:150px;flex-shrink:0;color:var(--ink2);}
+  .mbar .mt{flex:1;min-width:120px;height:22px;background:#F4F2EA;border:1px solid var(--border);border-radius:7px;overflow:hidden;position:relative;}
+  .mbar .mf{height:100%;transition:width .35s ease;}
+  .mbar .mv{font-family:var(--mono);font-size:12.5px;font-weight:700;width:120px;text-align:right;flex-shrink:0;}
+  @media (max-width:640px){ .mbar{flex-wrap:wrap;row-gap:3px;} .mbar .mn{width:100%;} .mbar .mt{min-width:0;} }
+  .osm{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin:10px 0;}
+  .osm .c{background:#fff;border:1px solid var(--border);border-radius:9px;padding:6px 4px;text-align:center;font-family:var(--mono);transition:all .25s ease;}
+  .osm .c .v{font-size:16px;font-weight:700;}
+  .osm .c .p{font-size:10.5px;color:var(--ink2);}
+  .osm .c.read{background:var(--e1s);border-color:#cfdaf3;}
+  .osm .c.now{background:#FBF1EA;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
+  .osm .c.max{outline:2px dashed var(--accent);outline-offset:1px;}
+  table.tb{border-collapse:collapse;width:100%;font-size:12.5px;min-width:560px;}
+  table.tb th{font-family:var(--mono);font-size:11px;color:var(--ink2);text-align:right;font-weight:700;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap;}
+  table.tb th:first-child,table.tb td:first-child{text-align:left;}
+  table.tb td{padding:6px 8px;border-bottom:1px solid #EFECE3;font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  table.tb tr.hl td{background:#FBF1EA;}
+  .code{font-family:var(--mono);font-size:12px;line-height:1.65;background:#fff;border:1px solid var(--border);border-radius:12px;
+    padding:10px 0;overflow-x:auto;white-space:pre;}
+  .code div{padding:0 14px;border-left:3px solid transparent;}
+  .code div.on{background:#FBF1EA;border-left-color:var(--accent);}
+  .code .cm{color:#8a8a84;}
+  .grid-wrap{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start;}
+  .mem-col{flex:1;min-width:220px;}
+  .memrow{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:12.5px;}
+  .memrow .tag{font-family:var(--mono);font-size:11px;font-weight:700;border-radius:6px;padding:2px 7px;color:#fff;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <header>
+    <span class="filename">19_flash_attention_viz.html</span>
+    <h1>手写 FlashAttention:拆开 SDPA 这个黑盒</h1>
+    <p class="subtitle">
+      从第 6 章起,注意力一直是一行 <code>F.scaled_dot_product_attention</code>。它和第 2 章手写的注意力算的是同一个数,
+      差别在 T×T 的分数矩阵放在哪。
+      <span class="term" data-term="FlashAttention" data-key="flash-attention" data-def="把 Q、K、V 切成小块,在片上 SRAM 里算完一块就累加进输出,T×T 的分数矩阵不写回显存。靠 online softmax 保证结果精确,不是近似。">FlashAttention</span>
+      把 Q、K、V 切块,每块在片上算完就累加进输出,用
+      <span class="term" data-term="online softmax" data-key="online-softmax" data-def="分段读一行数时,只记到目前为止的最大值 m 和指数和 l;遇到更大的最大值,把之前累加的结果乘 exp(m_旧 − m_新) 缩回去。读完一整行,结果与一次算完的 softmax 相同。">online softmax</span>
+      保证结果精确。配套代码 <code>phase5-fullstack/17_flash_attn.py</code> 写了三层:朴素写法、纯 PyTorch 分块、Triton kernel,
+      在 <span id="gpuName">RTX 4090</span> 上比时间和显存,再换进第 6 章的 124M 核对 loss。
+    </p>
+  </header>
+
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">T×T 矩阵有多大</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">online softmax</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">分块:哪些数留在片上</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">写成 Triton kernel</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">实测与换进 124M</div></div>
+  </div>
+
+  <div class="hp-bar">
+    <span class="hp-label">这一关</span>
+    <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">batch <b>4</b> <i>测速用</i></span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">heads <b>12</b> <i>同 124M</i></span>
+    <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">head_dim <b>64</b> <i>同 124M</i></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">T <b>512 … 16,384</b> <i>序列长度</i></span>
+    <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">块 <b>64 × 64</b> <i>BLOCK_M × BLOCK_N</i></span>
+    <span class="hp-chip" style="color:#6B6B68;background:#ECEAE2">dtype <b>bf16</b> <i>kernel 内部累加用 fp32</i></span>
+    <span class="hp-note">heads 12 和 head_dim 64 与第 6 章相同;124M 的上下文是 1024,更长的 T 只用来测速</span>
+  </div>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>① T×T 的分数矩阵有多大</h2>
+    <p class="lead">
+      朴素写法 <code>S = QKᵀ/√d → softmax → P·V</code>:每个头都要一张 T×T 的 S,再来一张同样大的 P。
+      Q、K、V、输出只随 T 线性增长,S 随 T² 增长。拖 T 看两者在显存里各占多少(batch 4、12 个头、bf16):
+    </p>
+    <div class="lab">
+      <div class="rk-row"><label>序列长度 T</label>
+        <input type="range" id="tR" min="0" max="5" step="1" value="2">
+        <span class="rk-val" id="tV">2,048</span></div>
+      <div id="memBars"></div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s1Ratio" style="color:var(--accent)">–</div><div class="drl">一张 S 是 Q+K+V+O 的几倍</div></div>
+        <div class="dr"><div class="drv" id="s1Naive" style="color:var(--bad)">–</div><div class="drl">朴素写法实测多占的显存</div></div>
+        <div class="dr"><div class="drv" id="s1Sdpa" style="color:var(--good)">–</div><div class="drl">SDPA 实测多占的显存</div></div>
+      </div>
+    </div>
+    <div class="note" id="s1Note"></div>
+    <div class="codepath">↳ 代码:<b>17_flash_attn.py</b> 的 <code>naive_attention</code>(第 2 章的写法)</div>
+
+    <details class="dig">
+      <summary>显存够的时候,朴素写法慢在哪?</summary>
+      <div class="dig-body">
+        慢在读写显存。GPU 的矩阵乘单元很快,片上 SRAM 也快,但显存(HBM)带宽有限。朴素写法把 S 写回显存、softmax 再整张读出来、写出 P、P·V 再读一遍,
+        T² 规模的数据来回搬了好几趟,算术单元大部分时间在等数据。FlashAttention 论文 §2.2 把注意力归为受显存带宽限制的操作,
+        §3.2 的定理 2 给出分块版的显存访问量是 Θ(T²d²/M)(M 是 SRAM 大小),朴素版是 Θ(Td + T²)。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>第 5 章的 KV cache 也和 T 有关,是同一回事吗?</summary>
+      <div class="dig-body">
+        不是。KV cache 存的是每个 token 的 K 和 V,随 T <b>线性</b>增长,生成时一直占着;第 12 章 STEP 5 算过它的账。
+        本页的 S 是一次前向里的<b>临时</b>中间结果,随 T <b>平方</b>增长,算完就可以扔。FlashAttention 省的是后者,KV cache 一个字节也不省。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:不存 S,就得分块算。可 softmax 要先知道整行的最大值和总和,分块时一行被切成好几段,怎么办?</div>
+  </section>
+
+  <!-- ============ STEP 2 ============ -->
+  <section class="panel" id="panel1">
+    <h2>② online softmax:分段读,结果不变</h2>
+    <p class="lead">
+      一行 8 个分数,每次只读 2 个(一块)。只记两个数:到目前为止的最大值 <b>m</b>,以及按 m 算的指数和 <b>l</b>。
+      新一块带来更大的最大值时,旧的 l 乘上 <code>exp(m_旧 − m_新)</code> 缩回去。点「读下一块」:
+    </p>
+    <div class="btn-row" id="osBtns">
+      <button class="btn primary">读下一块</button>
+      <button class="btn">一次读完</button>
+      <button class="btn">重来</button>
+    </div>
+    <div class="lab">
+      <div class="osm" id="osCells"></div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="osRead">–</div><div class="drl">已读几个数</div></div>
+        <div class="dr"><div class="drv" id="osM" style="color:var(--accent)">–</div><div class="drl">m:目前的最大值</div></div>
+        <div class="dr"><div class="drv" id="osL" style="color:var(--e1)">–</div><div class="drl">l:Σ exp(x − m)</div></div>
+        <div class="dr"><div class="drv" id="osA">–</div><div class="drl">这一块的缩放系数 exp(m_旧 − m_新)</div></div>
+      </div>
+      <div class="note" id="osNote" style="margin-top:8px"></div>
+    </div>
+    <div class="codepath">↳ 代码:<b>17_flash_attn.py</b> 的 <code>online_softmax_trace</code>;同一组 8 个数脚本里算出的最大误差 <b id="osErr">–</b></div>
+
+    <details class="dig">
+      <summary>输出 P·V 也是分段累加的,也要跟着缩放吗?</summary>
+      <div class="dig-body">
+        要。累加器 <code>acc</code> 存的是 Σ exp(x − m)·v,用的是当时的 m;最大值变大后,acc 和 l 乘同一个系数 <code>alpha = exp(m_旧 − m_新)</code>。
+        读完所有块,<code>acc / l</code> 就是 softmax(x)·V。<code>blocked_attention</code> 里是这三行:
+        <code>l = l * alpha + p.sum(-1)</code>、<code>acc = acc * alpha + p @ v</code>、最后 <code>acc / l</code>。
+        FlashAttention-2(arXiv 2307.08691)§3.1 的改动之一就是把 ÷l 从每块挪到最后只做一次。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>为什么要减去最大值,不直接求 Σ exp(x)?</summary>
+      <div class="dig-body">
+        防溢出。fp16 最大只到 65504,exp(12) 就超出;fp32 和 bf16 在 exp(89) 附近上溢。softmax 分子分母同乘 exp(−m) 结果不变,
+        减去最大值后每个指数都 ≤ 1。online softmax 在此基础上只多了一步:最大值中途变了,就把之前的和按新最大值重新缩放。
+        递推出自 Milakov & Gimelshein,<b>Online normalizer calculation for softmax</b>(arXiv 1805.02867)。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:一行能分段,整张注意力就能切成块。看一个 Q 块怎样扫过 K/V 块,哪些数一直留在片上。</div>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="panel" id="panel2">
+    <h2>③ 分块:哪些数留在片上</h2>
+    <p class="lead">
+      把 T×T 的注意力切成 BLOCK_M × BLOCK_N 的格子。一个 Q 块(一行格子)由一个 program 负责:把这块 Q 读进片上,
+      依次读 K/V 块,每块在片上算出小块 S、更新 m / l / acc,不写回显存。因果掩码下右上方的格子全被遮住,直接跳过。
+      选一个 Q 块,点「下一格」看它的扫描顺序:
+    </p>
+    <div class="btn-row small" id="qbBtns"></div>
+    <div class="btn-row" id="scanBtns">
+      <button class="btn primary">下一格</button>
+      <button class="btn">扫完这一行</button>
+      <button class="btn">重来</button>
+    </div>
+    <div class="lab">
+      <div class="grid-wrap">
+        <div id="blkSvg"></div>
+        <div class="mem-col">
+          <div class="mini-h">片上 SRAM(每个 program 自己的)</div>
+          <div id="sramList"></div>
+          <div class="mini-h" style="margin-top:12px">显存 HBM</div>
+          <div id="hbmList"></div>
+        </div>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>正在算的格子</span>
+        <span><i style="background:#F2D9CE"></i>这一行已算完</span>
+        <span><i style="background:#E5EBF9"></i>对角线格(块内还要逐元素遮)</span>
+        <span><i style="background:#ECEAE2"></i>因果掩码全遮,跳过</span>
+      </div>
+    </div>
+    <div class="note" id="s3Note"></div>
+    <div class="codepath">↳ 代码:<b>17_flash_attn.py</b> 的 <code>blocked_attention</code>(外循环 Q 块、内循环只走到对角线)</div>
+
+    <details class="dig">
+      <summary>块为什么取 64 × 64?</summary>
+      <div class="dig-body">
+        受片上存储限制。一个 program 同时要放 Q 块(64×64)、K 块、V 块、S 块(64×64,fp32)和 acc(64×64,fp32),
+        bf16 下合计几十 KB,落在一个 SM 的共享内存和寄存器容量内。块再大,单个 program 放不下或并发的 program 变少;块太小,矩阵乘单元吃不饱。
+        FlashAttention 论文 Algorithm 1 按 SRAM 大小 M 取 B_c = ⌈M/4d⌉。实际 kernel 一般对几组块大小做自动调优,本脚本固定 64 × 64,没有调。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>不同的 Q 块之间要不要通信?</summary>
+      <div class="dig-body">
+        不用。每个 Q 块的输出只依赖它自己的 m、l、acc,和别的 Q 块无关。所以 Triton 里 <code>grid = (Q 块数, batch × heads)</code>,
+        每个 program 各干各的,4 × 12 个头、T = 4096 时一次发出 64 × 48 = 3072 个 program。
+        按 Q 块并行是 FlashAttention-2 的做法;第一版的外循环是 K/V 块,需要把中间结果写回显存再合并。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:同一个算法,用 Triton 写成 GPU kernel。</div>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="panel" id="panel3">
+    <h2>④ 写成 Triton kernel</h2>
+    <p class="lead">
+      <span class="term" data-term="Triton" data-key="triton" data-def="OpenAI 开源的 GPU kernel 语言,写在 Python 里。以块为单位描述计算(tl.load 一块、tl.dot 一次矩阵乘),线程分配、共享内存由编译器处理。">Triton</span>
+      以"块"为单位写 GPU 程序:<code>tl.load</code> 读一块到片上,<code>tl.dot</code> 做块间矩阵乘,线程怎么分由编译器处理。
+      下面是 <code>_flash_fwd</code> 的主体,点按钮高亮对应的几行:
+    </p>
+    <div class="btn-row small" id="codeBtns">
+      <button class="btn primary">读一块 Q</button>
+      <button class="btn">算一块 S</button>
+      <button class="btn">因果掩码</button>
+      <button class="btn">更新 m、l</button>
+      <button class="btn">累加 acc</button>
+      <button class="btn">除以 l、写回</button>
+    </div>
+    <div class="code" id="codeBox"></div>
+    <div class="note" id="codeNote"></div>
+
+    <div class="sub-h"><span class="badge">对数</span>四种实现和 fp32 SDPA 的最大绝对误差</div>
+    <p class="lead" style="margin-bottom:10px">输入是 bf16 的随机 q/k/v(batch 2、12 个头),参考答案用 fp32 算。T = 1000 不是 64 的整数倍,用来检查边界:</p>
+    <div class="lab scroll-x"><table class="tb" id="chkTable"></table></div>
+    <div class="note" id="chkNote"></div>
+    <div class="codepath">↳ 代码:<b>17_flash_attn.py</b> 的 <code>_flash_fwd</code> / <code>flash_attn_triton</code></div>
+
+    <details class="dig">
+      <summary>exp2 和 1.4427 是做什么的?</summary>
+      <div class="dig-body">
+        exp(x) = 2<sup>x · log₂e</sup>,log₂e ≈ 1.4427。GPU 上以 2 为底的指数有专门的快速指令,
+        所以 kernel 把 softmax 缩放系数 1/√d 和 log₂e 乘在一起,整个 kernel 里用 <code>tl.math.exp2</code>。
+        m 和 l 也就都是按 2 为底记的,最后 acc / l 时底数抵消,结果不变。Triton 官方 fused attention 教程也是这样写的。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>这个 kernel 能拿来训练吗?</summary>
+      <div class="dig-body">
+        不能,只有前向。训练还要反向:需要 S 和 P 才能求梯度,而前向没存它们。
+        FlashAttention 论文 §3.1 的办法是前向只额外存每行的 m 和 l(logsumexp),反向时按块重算 S 和 P,多算一遍矩阵乘,换来不存 T² 的中间结果。
+        本页只做前向,换进 124M 也只做推理评测(第 5 步)。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:三种实现在 <span id="gpuName2">4090</span> 上比时间和显存,再把 kernel 换进第 6 章的 124M。</div>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="panel" id="panel4">
+    <h2>⑤ 实测:时间、显存,换进 124M</h2>
+    <p class="lead">
+      batch 4、12 个头、head_dim 64、bf16,因果注意力前向,每组取 10 次的中位数。切换看时间或显存,
+      「显存不够」表示朴素写法在这块卡上直接报 OOM(测试时卡上另有一个常驻进程占着约 10 GB,可用约 13 GB):
+    </p>
+    <div class="btn-row small" id="benchBtns">
+      <button class="btn primary">时间(毫秒)</button>
+      <button class="btn">多占的显存(MB)</button>
+      <button class="btn">有效算力(TFLOPS)</button>
+    </div>
+    <div class="lab scroll-x"><table class="tb" id="benchTable"></table></div>
+    <div class="note" id="benchNote"></div>
+
+    <div class="sub-h"><span class="badge">124M</span>把第 6 章模型的注意力换成三种实现</div>
+    <p class="lead" style="margin-bottom:10px">同一份权重(10B token,step 19072)、同样 65,536 个 FineWeb-Edu val token,只换注意力函数:</p>
+    <div class="lab" id="lossBars"></div>
+    <div class="note" id="lossNote"></div>
+
+    <details class="dig">
+      <summary>自己写的 kernel 和 SDPA 差不多快,SDPA 还多做了什么?</summary>
+      <div class="dig-body">
+        PyTorch 的 SDPA 在 CUDA 上会按输入选后端(FlashAttention-2、memory-efficient、朴素数学实现),本页的 bf16、head_dim 64 走的是 FlashAttention-2 后端。
+        它另有反向 kernel、dropout、各种 head_dim 和掩码,对角线块单独处理(本脚本对每一块都逐元素判断掩码),块大小按硬件调过。
+        在这组规模上两者接近,说明性能主要来自"不落地 T×T"这个算法本身;更长的 T 或别的显卡上差距可能不同。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>三种实现的 loss 为什么差在小数点后第四位?</summary>
+      <div class="dig-body">
+        bf16 下每种实现的累加顺序不同:朴素写法先整行 softmax 再乘 V,分块写法按块累加、中途缩放,舍入误差落在不同的位置。
+        第 4 步用随机输入测过,单个输出元素的误差在 10<sup>−2</sup> 量级(bf16 的尾数只有 7 位),经过 12 层、再平均到 65,536 个 token 上,loss 差在 10<sup>−4</sup> 量级。
+        三者算的是同一个数学式,没有近似。
+      </div>
+    </details>
+
+    <div class="sub-h"><span class="badge">达标</span>本关实测</div>
+    <ul class="checklist" id="okList"></ul>
+    <div class="codepath">↳ 跑法:<code>python 17_flash_attn.py --json runs/ch19_flash.json</code>(Triton 需要 NVIDIA GPU;MPS / CPU 只跑朴素与分块的对数)</div>
+
+    <div class="congrats" id="congrats">
+      <div class="ct">🎉 手写 FlashAttention · 通关</div>
+      <div class="cs">你把 SDPA 拆成了三层:online softmax 让一行可以分段算出精确结果,分块让 T×T 的 S 从不落地,Triton kernel 把同一个算法跑在 GPU 上,换进 124M 后 loss 与原来一致。下一关回到训练:用十几个小模型预测 124M 的 loss。</div>
+    </div>
+  </section>
+
+  <div class="nav">
+    <button class="btn" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<canvas id="confetti"></canvas>
+
+<script>
+/* ================================================================
+   REAL-DATA:全部来自 phase5-fullstack/runs/ch19_flash.json
+   命令:cd phase5-fullstack && python 17_flash_attn.py --json runs/ch19_flash.json
+   bench:每个 T 下 naive / sdpa / triton 的中位毫秒、注意力调用本身多占的峰值显存(MB)、有效 TFLOPS(因果 2·B·H·T²·d)
+   check:与 fp32 SDPA 的最大绝对误差;model_loss:124M 换注意力后在 65,536 个 val token 上的 loss
+   ================================================================ */
+const D={"device": "cuda", "gpu": "NVIDIA GeForce RTX 4090", "triton": true, "config": {"ckpt": "/home/ubuntu/llm-from-scratch/phase5-fullstack/../phase1-124m/ckpt10b/latest.pt", "data": null, "lengths": "512,1024,2048,4096,8192,16384", "batch": 4, "heads": 12, "head_dim": 64, "json": "runs/ch19_flash.json"}, "online_softmax": {"x": [1.0, 3.0, 0.5, 2.0, 6.0, 1.5, 4.0, 0.0], "block": 2, "trace": [{"read": 2, "m": 3.0, "l": 1.1353352832366128}, {"read": 4, "m": 3.0, "l": 1.5852997230319539}, {"read": 6, "m": 6.0, "l": 1.09003642223239}, {"read": 8, "m": 6.0, "l": 1.227850457645669}], "max_err": 0.0}, "check": {"256": {"naive": 0.010351181030273438, "blocked": 0.0077631473541259766, "triton": 0.0077631473541259766, "sdpa": 0.0077631473541259766}, "1000": {"naive": 0.013013601303100586, "blocked": 0.007642269134521484, "triton": 0.008311748504638672, "sdpa": 0.008311748504638672}}, "bench": [{"T": 512, "S_MB": 24.0, "qkvo_MB": 12.0, "naive": {"ms": 0.293, "mem_MB": 120.0, "tflops": 5.5}, "sdpa": {"ms": 0.039, "mem_MB": 3.1, "tflops": 41.3}, "triton": {"ms": 0.041, "mem_MB": 3.0, "tflops": 39.3}}, {"T": 1024, "S_MB": 96.0, "qkvo_MB": 24.0, "naive": {"ms": 2.056, "mem_MB": 480.0, "tflops": 3.1}, "sdpa": {"ms": 0.085, "mem_MB": 6.2, "tflops": 75.8}, "triton": {"ms": 0.084, "mem_MB": 6.0, "tflops": 76.7}}, {"T": 2048, "S_MB": 384.0, "qkvo_MB": 48.0, "naive": {"ms": 8.277, "mem_MB": 1920.0, "tflops": 3.1}, "sdpa": {"ms": 0.241, "mem_MB": 12.4, "tflops": 106.9}, "triton": {"ms": 0.242, "mem_MB": 12.0, "tflops": 106.5}}, {"T": 4096, "S_MB": 1536.0, "qkvo_MB": 96.0, "naive": {"ms": 31.763, "mem_MB": 7680.0, "tflops": 3.2}, "sdpa": {"ms": 0.761, "mem_MB": 24.8, "tflops": 135.5}, "triton": {"ms": 0.768, "mem_MB": 24.0, "tflops": 134.2}}, {"T": 8192, "S_MB": 6144.0, "qkvo_MB": 192.0, "naive": null, "sdpa": {"ms": 2.717, "mem_MB": 49.5, "tflops": 151.8}, "triton": {"ms": 2.843, "mem_MB": 48.0, "tflops": 145.0}}, {"T": 16384, "S_MB": 24576.0, "qkvo_MB": 384.0, "naive": null, "sdpa": {"ms": 10.333, "mem_MB": 99.0, "tflops": 159.6}, "triton": {"ms": 10.925, "mem_MB": 96.0, "tflops": 151.0}}], "model_loss": {"tokens": 65536, "loss": {"sdpa": 3.01783, "naive": 3.01801, "triton": 3.01764}}};
+
+const $=id=>document.getElementById(id);
+function setActiveBtn(containerId,n){
+  document.querySelectorAll('#'+containerId+' .btn').forEach((b,i)=>b.classList.toggle('primary',i===n));
+}
+const en=v=>v.toLocaleString('en-US');
+const fmtMB=v=>v>=1024?(v/1024).toFixed(v>=10240?0:1)+' GB':(v>=10?Math.round(v):v.toFixed(1))+' MB';
+if(D.gpu){ const g=D.gpu.replace('NVIDIA GeForce ',''); $('gpuName').textContent=g; $('gpuName2').textContent=g; }
+
+/* ============ 步骤切换 ============ */
+const NSTEP=5;
+const tabs=document.querySelectorAll('.step-tab');
+const panels=[];for(let i=0;i<NSTEP;i++)panels.push($('panel'+i));
+let cur=0;
+function goto(i){
+  cur=Math.max(0,Math.min(NSTEP-1,i));
+  tabs.forEach(t=>t.classList.toggle('active',+t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active',idx===cur));
+  $('prevBtn').disabled = cur===0;
+  $('nextBtn').textContent = cur===NSTEP-1 ? '完成 🎉' : '下一步 →';
+  const hash='#step-'+(cur+1);
+  if(location.hash!==hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+$('prevBtn').addEventListener('click',()=>goto(cur-1));
+$('nextBtn').addEventListener('click',()=>{ if(cur===NSTEP-1) celebrate(); else goto(cur+1); });
+
+/* ============ STEP 1:显存 ============ */
+function renderMem(){
+  const r=D.bench[+$('tR').value];
+  $('tV').textContent=en(r.T);
+  const S=r.S_MB, Q=r.qkvo_MB, nv=r.naive, sd=r.sdpa;
+  const items=[['Q + K + V + O',Q,'var(--e1)'],['一张 S(bf16)',S,'var(--accent)'],
+    ['朴素写法实测',nv?nv.mem_MB:null,'var(--bad)'],['SDPA 实测',sd.mem_MB,'var(--good)']];
+  const mx=Math.max(...items.map(x=>x[1]||0), 24*1024);
+  $('memBars').innerHTML=items.map(([n,v,c])=>`<div class="mbar"><span class="mn">${n}</span><span class="mt"><span class="mf" style="display:block;width:${v==null?100:Math.max(0.4,v/mx*100)}%;background:${v==null?'repeating-linear-gradient(45deg,#F3D9CE,#F3D9CE 6px,#fff 6px,#fff 12px)':c}"></span></span><span class="mv">${v==null?'显存不够':fmtMB(v)}</span></div>`).join('')
+    +`<div class="mini-h" style="margin-top:4px">条长以 24 GB(这块卡的显存)为满格</div>`;
+  $('s1Ratio').textContent=(S/Q).toFixed(1)+'×';
+  $('s1Naive').textContent=nv?fmtMB(nv.mem_MB):'OOM';
+  $('s1Sdpa').textContent=fmtMB(sd.mem_MB);
+  $('s1Note').innerHTML=`T = ${en(r.T)}:一张 S 是 <b>${fmtMB(S)}</b>,Q+K+V+O 合计 ${fmtMB(Q)}。`+
+    (nv?`朴素写法多占 ${fmtMB(nv.mem_MB)}(S、掩码后的副本、fp32 的 softmax 结果都要落地),SDPA 只多出输出本身的 ${fmtMB(sd.mem_MB)}。`
+       :`朴素写法在这块卡上显存不够,SDPA 只多出输出本身的 ${fmtMB(sd.mem_MB)}。`);
+}
+$('tR').max=D.bench.length-1;
+$('tR').addEventListener('input',renderMem);
+renderMem();
+
+/* ============ STEP 2:online softmax ============ */
+const OX=D.online_softmax.x, OB=D.online_softmax.block;
+let osRead=0, osPrevM=null;
+function renderOS(){
+  const read=OX.slice(0,osRead);
+  const m=read.length?Math.max(...read):-Infinity;
+  const l=read.reduce((a,v)=>a+Math.exp(v-m),0);
+  const gm=Math.max(...OX), gl=OX.reduce((a,v)=>a+Math.exp(v-gm),0);
+  $('osCells').innerHTML=OX.map((v,i)=>{
+    const st=i<osRead-OB?'read':(i<osRead?'now':'');
+    const p=osRead===OX.length?(Math.exp(v-m)/l).toFixed(3):'?';
+    return `<div class="c ${st} ${i<osRead&&v===m?'max':''}"><div class="v">${v}</div><div class="p">${p}</div></div>`;
+  }).join('');
+  $('osRead').textContent=`${osRead} / ${OX.length}`;
+  $('osM').textContent=osRead?m.toFixed(2):'−∞';
+  $('osL').textContent=osRead?l.toFixed(4):'0';
+  const alpha=(osPrevM===null||!isFinite(osPrevM))?null:Math.exp(osPrevM-m);
+  $('osA').textContent=alpha===null?'–':alpha.toFixed(4);
+  let note;
+  if(!osRead) note='还没读。m 从 −∞ 开始,l 从 0 开始。每格下方的小字在读完整行后显示 softmax 概率。';
+  else if(osRead<OX.length) note=alpha!==null&&alpha<1?`这一块里出现了更大的数,m 从 ${osPrevM.toFixed(2)} 升到 ${m.toFixed(2)},之前攒的 l 乘了 ${alpha.toFixed(4)} 再加上这一块。`
+    :`这一块没有更大的数,m 不变,缩放系数是 1,l 直接加上这一块的 exp(x − m)。`;
+  else note=`读完了:m = ${m.toFixed(2)},l = ${l.toFixed(4)}。一次算完整行得到的是 m = ${gm.toFixed(2)},l = ${gl.toFixed(4)},相同。每格下方的概率 = exp(x − m) / l。`;
+  $('osNote').innerHTML=note;
+}
+function osStep(){ if(osRead>=OX.length) return; osPrevM=osRead?Math.max(...OX.slice(0,osRead)):null; osRead=Math.min(OX.length,osRead+OB); }
+document.querySelectorAll('#osBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{
+  setActiveBtn('osBtns',i);
+  if(i===0) osStep(); else if(i===1){ while(osRead<OX.length) osStep(); } else { osRead=0; osPrevM=null; }
+  renderOS();
+}));
+$('osErr').textContent=D.online_softmax.max_err.toExponential(1);
+renderOS();
+
+/* ============ STEP 3:分块扫描 ============ */
+const NB=6; let qb=4, kj=-1;
+$('qbBtns').innerHTML=Array.from({length:NB},(_,i)=>`<button class="btn">Q 块 ${i}</button>`).join('');
+document.querySelectorAll('#qbBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{qb=i;kj=-1;setActiveBtn('scanBtns',2);renderBlk();}));
+document.querySelectorAll('#scanBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{
+  setActiveBtn('scanBtns',i);
+  if(i===0) kj=Math.min(qb,kj+1); else if(i===1) kj=qb; else kj=-1;
+  renderBlk();
+}));
+function renderBlk(){
+  setActiveBtn('qbBtns',qb);
+  const C=40,P=26;
+  let s=`<svg viewBox="0 0 ${P+NB*C+4} ${P+NB*C+4}" width="${P+NB*C+4}" style="display:block;font-family:ui-monospace,monospace">`;
+  for(let j=0;j<NB;j++) s+=`<text x="${P+j*C+C/2}" y="16" font-size="10" text-anchor="middle" fill="#6B6B68">K${j}</text>`;
+  for(let i=0;i<NB;i++){
+    s+=`<text x="12" y="${P+i*C+C/2+4}" font-size="10" text-anchor="middle" fill="${i===qb?'#D97757':'#6B6B68'}" font-weight="${i===qb?700:400}">Q${i}</text>`;
+    for(let j=0;j<NB;j++){
+      let f='#fff';
+      if(j>i) f='#ECEAE2'; else if(j===i) f='#E5EBF9';
+      if(i===qb&&j<=kj) f=(j===kj)?'#D97757':'#F2D9CE';
+      s+=`<rect x="${P+j*C+1}" y="${P+i*C+1}" width="${C-2}" height="${C-2}" rx="5" fill="${f}" stroke="${i===qb?'#D97757':'#E5E2D9'}" stroke-width="${i===qb?1.5:1}"/>`;
+      if(j>i) s+=`<text x="${P+j*C+C/2}" y="${P+i*C+C/2+4}" font-size="11" text-anchor="middle" fill="#B9B5AA">×</text>`;
+    }
+  }
+  s+='</svg>';
+  $('blkSvg').innerHTML=s;
+  const tag=(t,c)=>`<span class="tag" style="background:${c}">${t}</span>`;
+  const sram=[[tag('Q'+qb,'#D97757'),'64 × 64,整个扫描期间一直在'],
+    kj>=0?[tag('K'+kj+' V'+kj,'#3a63c0'),'这一格读进来,用完就换下一块']:null,
+    kj>=0?[tag('S 块','#a3548c'),'64 × 64 分数,只在片上存在']:null,
+    [tag('m l acc','#3f7d63'),`每行一个 m、l,acc 64 × 64;${kj<0?'初值 −∞ / 0 / 0':'已经累加了 '+(kj+1)+' 块'}`]].filter(Boolean);
+  $('sramList').innerHTML=sram.map(([a,b])=>`<div class="memrow">${a}<span>${b}</span></div>`).join('');
+  $('hbmList').innerHTML=[[tag('Q K V','#6B6B68'),'完整的,只读'],
+    [tag('O','#6B6B68'),kj===qb?'Q'+qb+' 这一行写回了 64 行输出':'扫完这一行才写 64 行']].map(([a,b])=>`<div class="memrow">${a}<span>${b}</span></div>`).join('');
+  const done=kj===qb;
+  $('s3Note').innerHTML=kj<0?`Q 块 ${qb} 要扫 K0 到 K${qb} 共 <b>${qb+1}</b> 格,右边 ${NB-1-qb} 格因果掩码全遮,跳过。整张 ${NB}×${NB} 里只需要算 ${NB*(NB+1)/2} 格,约一半。`
+    :(done?`这一行扫完:acc / l 写回显存。全程写回显存的只有 64 行输出,没有一格 S。`:`正在算 Q${qb} × K${kj}:S 块在片上算出,更新 m、l,乘上 V${kj} 累加进 acc。`+(kj===qb?'':''));
+}
+renderBlk();
+
+/* ============ STEP 4:代码 ============ */
+const CODE=[
+['q = tl.load(Q + base + rows[:, None] * s_t + dims[None, :], mask=rows[:, None] < T)',0],
+['m = tl.full([BLOCK_M], float("-inf"), tl.float32)',3],
+['l = tl.zeros([BLOCK_M], tl.float32)',3],
+['acc = tl.zeros([BLOCK_M, D], tl.float32)',4],
+['hi = tl.minimum((pid_m + 1) * BLOCK_M, T)          # 因果:只读到对角线',2],
+['for start in range(0, hi, BLOCK_N):',-1],
+['    cols = start + tl.arange(0, BLOCK_N)',-1],
+['    k = tl.load(K + base + cols[None, :] * s_t + dims[:, None])',1],
+['    s = tl.dot(q, k) * scale                         # (BLOCK_M, BLOCK_N),留在片上',1],
+['    s = tl.where(rows[:, None] >= cols[None, :], s, float("-inf"))',2],
+['    m_new = tl.maximum(m, tl.max(s, 1))',3],
+['    p_ = tl.math.exp2(s - m_new[:, None])',3],
+['    alpha = tl.math.exp2(m - m_new)',3],
+['    l = l * alpha + tl.sum(p_, 1)',3],
+['    v = tl.load(V + base + cols[:, None] * s_t + dims[None, :])',4],
+['    acc = acc * alpha[:, None] + tl.dot(p_.to(v.dtype), v)',4],
+['    m = m_new',3],
+['acc = acc / l[:, None]',5],
+['tl.store(O + base + rows[:, None] * s_t + dims[None, :], acc.to(O.dtype.element_ty))',5],
+];
+const CODE_NOTE=[
+  '一个 program 先把自己负责的 BLOCK_M = 64 行 Q 读进片上。mask 处理 T 不是 64 整数倍时的最后一块。',
+  '每次读一块 K,<code>tl.dot</code> 在片上做 64 × 64 × 64 的矩阵乘,得到小块 S。K 按转置的方式读(dims 在行、cols 在列),省掉一次转置。',
+  '<code>hi</code> 让循环只走到对角线;对角线那一块里 query 位置小于 key 位置的元素还要逐个置成 −∞。',
+  '和第 2 步完全一样:新的最大值、这一块的 exp、旧和的缩放系数 alpha。',
+  'acc 先乘 alpha,再加上 P 块 × V 块。P 转回 bf16 再做矩阵乘,和 FlashAttention-2 一样;acc 本身保持 fp32。',
+  '扫完所有块,每行除以自己的 l,写回显存。整个 kernel 只有这一处写显存。',
+];
+function renderCode(n){
+  setActiveBtn('codeBtns',n);
+  const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  $('codeBox').innerHTML=CODE.map(([t,k])=>{
+    const i=t.indexOf('#'); const body=i>0?esc(t.slice(0,i))+'<span class="cm">'+esc(t.slice(i))+'</span>':esc(t);
+    return `<div class="${k===n?'on':''}">${body}</div>`;
+  }).join('');
+  $('codeNote').innerHTML=CODE_NOTE[n];
+}
+document.querySelectorAll('#codeBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>renderCode(i)));
+renderCode(0);
+(function(){
+  const Ts=Object.keys(D.check); const names=Object.keys(D.check[Ts[0]]);
+  const lab={naive:'朴素',blocked:'PyTorch 分块',triton:'Triton kernel',sdpa:'SDPA(bf16)'};
+  $('chkTable').innerHTML=`<thead><tr><th>实现</th>${Ts.map(t=>`<th>T = ${t}</th>`).join('')}</tr></thead><tbody>`+
+    names.map(n=>`<tr class="${n==='triton'?'hl':''}"><td>${lab[n]||n}</td>${Ts.map(t=>`<td>${D.check[t][n].toExponential(2)}</td>`).join('')}</tr>`).join('')+'</tbody>';
+  const t=D.check[Ts[1]];
+  $('chkNote').innerHTML=`四种实现的误差都在 10<sup>−2</sup> 以内,来自 bf16 的舍入:bf16 尾数只有 7 位,在 [1, 2) 区间相邻两个数相差 2<sup>−7</sup> ≈ 0.0078。`+
+    (t.triton!==undefined?`T = ${Ts[1]} 时 Triton kernel 与 bf16 SDPA 的误差${t.triton===t.sdpa?'完全相同':'同一量级'}。`:'');
+})();
+
+/* ============ STEP 5:实测 ============ */
+const IMPL=[['naive','朴素写法'],['sdpa','SDPA'],['triton','Triton kernel']];
+let benchMode=0;
+function renderBench(){
+  setActiveBtn('benchBtns',benchMode);
+  const key=['ms','mem_MB','tflops'][benchMode];
+  const f=v=>benchMode===1?fmtMB(v):(benchMode===0?(v<10?v.toFixed(2):v.toFixed(1)):v.toFixed(1));
+  $('benchTable').innerHTML=`<thead><tr><th>T</th>${IMPL.map(([k,n])=>`<th>${n}</th>`).join('')}<th>朴素 ÷ Triton</th></tr></thead><tbody>`+
+    D.bench.map(r=>{
+      const ratio=r.naive&&r.triton?(benchMode===2?r.triton[key]/r.naive[key]:r.naive[key]/r.triton[key]):null;
+      return `<tr><td>${en(r.T)}</td>${IMPL.map(([k])=>`<td>${r[k]?f(r[k][key]):'<span style="color:var(--bad)">显存不够</span>'}</td>`).join('')}<td>${ratio?ratio.toFixed(1)+'×':'–'}</td></tr>`;
+    }).join('')+'</tbody>';
+  const last=D.bench.filter(r=>r.naive).pop(), big=D.bench[D.bench.length-1];
+  const notes=[
+    `T = ${en(last.T)} 时朴素写法 ${last.naive.ms.toFixed(1)} ms,Triton ${last.triton?last.triton.ms.toFixed(1):'–'} ms,SDPA ${last.sdpa.ms.toFixed(1)} ms。朴素写法的时间随 T² 涨得更快:它每一步都要把 T² 规模的数据写回显存再读出。`,
+    `多占的显存:Triton 与 SDPA 只多出输出张量本身,随 T 线性增长;朴素写法随 T² 增长,T = ${en(big.T)} 时${big.naive?'多占 '+fmtMB(big.naive.mem_MB):'显存不够'}。`,
+    `有效算力按因果注意力 2·B·H·T²·d 次浮点运算折算。T 小时 kernel 启动开销占比大,T 越大,Triton / SDPA 越接近矩阵乘单元的吞吐;朴素写法受显存带宽限制,停在低位。`];
+  $('benchNote').innerHTML=notes[benchMode];
+}
+document.querySelectorAll('#benchBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{benchMode=i;renderBench();}));
+renderBench();
+(function(){
+  const L=D.model_loss.loss, ks=Object.keys(L);
+  const lab={sdpa:'SDPA(第 6 章原样)',naive:'朴素写法',triton:'Triton kernel'};
+  const lo=Math.min(...ks.map(k=>L[k])), hi=Math.max(...ks.map(k=>L[k]));
+  $('lossBars').innerHTML=ks.map(k=>`<div class="mbar"><span class="mn">${lab[k]||k}</span><span class="mt"><span class="mf" style="display:block;width:${60+(L[k]-lo)/Math.max(1e-9,hi-lo)*30}%;background:${k==='triton'?'var(--accent)':'#B9B5AA'}"></span></span><span class="mv">${L[k].toFixed(5)}</span></div>`).join('')
+    +`<div class="mini-h">条长只放大了差值(以最小值为 60% 起画),三者相差 ${(hi-lo).toFixed(5)}</div>`;
+  $('lossNote').innerHTML=`换成自己写的 Triton kernel,val loss <b>${L.triton!==undefined?L.triton.toFixed(5):'–'}</b>,原来的 SDPA ${L.sdpa.toFixed(5)},差 ${L.triton!==undefined?Math.abs(L.triton-L.sdpa).toFixed(5):'–'}。`;
+  const r4=D.bench.find(r=>r.T===4096)||D.bench[D.bench.length-2];
+  $('okList').innerHTML=[
+    `online softmax:8 个数分 4 块读,与一次算完的最大误差 <b>${D.online_softmax.max_err.toExponential(1)}</b>`,
+    `PyTorch 分块与 Triton kernel 和 fp32 SDPA 的误差与 bf16 SDPA 同一量级(T = 1000 覆盖了不整除 64 的边界)`,
+    `T = ${en(r4.T)}:朴素写法 ${r4.naive?r4.naive.ms.toFixed(1)+' ms / '+fmtMB(r4.naive.mem_MB):'显存不够'},Triton <b>${r4.triton.ms.toFixed(1)} ms / ${fmtMB(r4.triton.mem_MB)}</b>`,
+    `朴素写法在 T = ${en((D.bench.find(r=>!r.naive)||{T:0}).T)} 时显存不够,Triton 与 SDPA 照常运行`,
+    `124M 换成 Triton kernel 后 val loss ${L.triton!==undefined?L.triton.toFixed(5):'–'},SDPA ${L.sdpa.toFixed(5)}`,
+  ].filter(t=>!t.includes('T = 0')).map(t=>`<li><span class="ck">✓</span><div>${t}</div></li>`).join('');
+})();
+
+/* ============ 名词气泡 ============ */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent, def=el.dataset.def||'', key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def+(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8; if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw; if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el)); el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* ============ 通关庆祝 ============ */
+function celebrate(){
+  $('congrats').classList.add('show');
+  const cv=$('confetti'); cv.style.display='block';
+  const ctx=cv.getContext('2d'); cv.width=innerWidth; cv.height=innerHeight;
+  const COL=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const ps=[];for(let i=0;i<150;i++)ps.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    vx:(Math.random()-0.5)*3,vy:2+Math.random()*4,s:5+Math.random()*7,c:COL[i%COL.length],a:Math.random()*6.28,va:(Math.random()-0.5)*0.3});
+  let t0=null;
+  function frame(ts){ if(!t0)t0=ts; const el=ts-t0;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.04;p.a+=p.va;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.a);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.6);ctx.restore();});
+    if(el<3400) requestAnimationFrame(frame); else { ctx.clearRect(0,0,cv.width,cv.height); cv.style.display='none'; }
+  }
+  requestAnimationFrame(frame);
+  $('congrats').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ============ 初始化:深链 ============ */
+const m=/^#step-(\d+)$/.exec(location.hash);
+goto(m?parseInt(m[1],10)-1:0);
+window.addEventListener('hashchange',()=>{const mm=/^#step-(\d+)$/.exec(location.hash);goto(mm?parseInt(mm[1],10)-1:0);});
+
+</script>
+<!--site-copyright-->
+<footer style="max-width:960px;margin:56px auto 0;padding:18px 24px 44px;border-top:1px solid var(--border);text-align:center;font-size:12px;color:var(--ink2);line-height:1.7">
+  © 2026 <a href="https://fim.ai" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">FIM Labs</a> · 从零手写大语言模型 · MIT License
+</footer>
+</body>
+</html>

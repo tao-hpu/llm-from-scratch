@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scaling Law · 用小模型预测 124M</title>
+<meta name="description" content="训一批 0.6M 到 25M 参数的小模型,拟合 L(N, D) = E + A/N^α + B/D^β,外推到第 6 章 124M 训 10B token 的 loss:预测 3.36,实测 3.03。换三组拟合点看外推越远误差越大、主拟合的 bootstrap 区间为什么没盖住真实值,并排查两次训练发散的原因(注意力 logit 增长)。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 20 章 · Scaling Law · 从零手写大语言模型">
+<meta property="og:description" content="训一批 0.6M 到 25M 参数的小模型,拟合 L(N, D) = E + A/N^α + B/D^β,外推到第 6 章 124M 训 10B token 的 loss:预测 3.36,实测 3.03。换三组拟合点看外推越远误差越大、主拟合的 bootstrap 区间为什么没盖住真实值,并排查两次训练发散的原因(注意力 logit 增长)。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/20_scaling_law_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 20 章 · Scaling Law · 从零手写大语言模型">
+<meta name="twitter:description" content="训一批 0.6M 到 25M 参数的小模型,拟合 L(N, D) = E + A/N^α + B/D^β,外推到第 6 章 124M 训 10B token 的 loss:预测 3.36,实测 3.03。换三组拟合点看外推越远误差越大、主拟合的 bootstrap 区间为什么没盖住真实值,并排查两次训练发散的原因(注意力 logit 增长)。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
+<style>
+
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --good:#3f7d63; --good-soft:#D7EBE0; --bad:#9a3a22; --bad-soft:#F3D9CE;
+    --e0:#b8512f; --e0s:#F7E6DE; --e1:#3a63c0; --e1s:#E5EBF9;
+    --e2:#3f7d63; --e2s:#E4EFE9; --e3:#a3548c; --e3s:#F6E6F0;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 24px 90px;}
+
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:790px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  .steps-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:26px 0 18px;}
+  .step-tab{background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 14px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13.5px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 20px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:10px;padding:10px 14px;}
+
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;align-items:center;}
+  .btn-row.small .btn{font-size:13px;padding:7px 13px;}
+
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:24px 0 6px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  .codepath{font-family:var(--mono);font-size:11.5px;color:var(--ink2);background:#F4F2EA;
+    border:1px solid var(--border);border-radius:8px;padding:5px 10px;display:inline-block;margin-top:10px;}
+  .codepath b{color:var(--accent);}
+
+  /* 名词气泡 */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:280px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;font-family:system-ui,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* 庆祝 */
+  .congrats{display:none;text-align:center;background:linear-gradient(135deg,#FBF1EA,#F6E6F0);
+    border:1px solid var(--accent-soft);border-radius:16px;padding:22px;margin-top:18px;}
+  .congrats.show{display:block;animation:fade .5s ease;}
+  .congrats .ct{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--accent);}
+  .congrats .cs{font-size:13.5px;color:var(--ink2);margin-top:6px;}
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;}
+
+  .nav{display:flex;justify-content:space-between;margin-top:22px;gap:10px;}
+  .checklist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:8px;}
+  .checklist li{display:flex;gap:10px;align-items:flex-start;font-size:13px;background:#fff;border:1px solid var(--border);
+    border-radius:10px;padding:10px 13px;}
+  .checklist li .ck{color:#3f7d63;font-weight:700;flex-shrink:0;}
+  .checklist li b{color:var(--accent);}
+  .rk-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0;}
+  .rk-row label{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:150px;}
+  .rk-val{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent);min-width:64px;text-align:center;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:8px;padding:2px 6px;}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;background:var(--accent-soft);
+    flex:1;min-width:150px;max-width:340px;outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.18);}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid #fff;}
+  .dotread{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:12px 0 4px;}
+  .dr{background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 13px;text-align:center;}
+  .dr .drv{font-family:var(--mono);font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .dr .drl{font-size:11.5px;color:var(--ink2);margin-top:2px;}
+  .lab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin:10px 0;}
+  .scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin:4px 0;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;}
+  .mini-h{font-family:var(--mono);font-size:11.5px;color:var(--ink2);font-weight:700;margin:4px 0;}
+
+  /* ===== 本页 ===== */
+  table.hm{border-collapse:separate;border-spacing:4px;font-family:var(--mono);font-size:12.5px;}
+  table.hm th{font-size:11px;color:var(--ink2);font-weight:700;padding:2px 6px;white-space:nowrap;}
+  table.hm td{text-align:center;border-radius:8px;padding:9px 10px;min-width:74px;font-weight:700;cursor:pointer;transition:transform .15s ease;}
+  table.hm td:hover{transform:scale(1.04);}
+  table.hm td.sel{outline:2px solid var(--accent);outline-offset:1px;}
+  .formula{font-family:var(--serif);font-size:20px;text-align:center;margin:6px 0 10px;}
+  .formula .t{padding:1px 6px;border-radius:6px;}
+  .stack{display:flex;height:30px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:#F4F2EA;margin:8px 0 4px;}
+  .stack div{height:100%;transition:width .35s ease;display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:11.5px;color:#fff;font-weight:700;overflow:hidden;white-space:nowrap;}
+  table.tb{border-collapse:collapse;width:100%;font-size:12.5px;min-width:600px;}
+  table.tb th{font-family:var(--mono);font-size:11px;color:var(--ink2);text-align:right;font-weight:700;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap;}
+  table.tb th:first-child,table.tb td:first-child{text-align:left;}
+  table.tb td{padding:6px 8px;border-bottom:1px solid #EFECE3;font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  table.tb tr.hl td{background:#FBF1EA;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <header>
+    <span class="filename">20_scaling_law_viz.html</span>
+    <h1>Scaling Law:用小模型预测 124M 的 loss</h1>
+    <p class="subtitle">
+      第 6 章花了 4090 一整天,把 124M 训了 10B token。能不能先训一批小模型(每个几分钟到两小时),算出大模型会训到多少?
+      <span class="term" data-term="scaling law · 规模定律" data-key="scaling-law" data-def="模型最终 loss 随参数量 N、训练 token 数 D 按幂律下降的经验规律。常用形式 L(N, D) = E + A/N^α + B/D^β,用小模型拟合出系数,再外推到大模型。">Scaling law</span>
+      的做法:参数量 N 从 0.6M 到 25M,每个配几档训练 token 数 D,拟合 <code>L(N, D) = E + A/N^α + B/D^β</code>,再把第 6 章的 N 和 D 代进去。
+      这次的预测是 3.36,实测 3.03,偏高 0.33;这一关把误差从哪来也一起查清楚。配套代码 <code>phase5-fullstack/18_scaling.py</code>,全部在 RTX 4090 上训练,和第 6 章同一套 GPT-2 结构、分词器与 FineWeb-Edu 数据。
+    </p>
+  </header>
+
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">一批小模型</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">N 和 D 两个方向</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">拟合一个公式</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">算力怎么分</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">外推到 124M</div></div>
+  </div>
+
+  <div class="hp-bar">
+    <span class="hp-label">这一关</span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">N <b>0.6M … 25M</b> <i>非嵌入参数 · 5 档</i></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">D <b>50M … 1.6B</b> <i>训练 token · 4 档 + 16 亿</i></span>
+    <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">检验 <b>49M · 85M</b> <i>不参加主拟合</i></span>
+    <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">目标 <b>124M · 10B</b> <i>第 6 章,N=85.1M</i></span>
+    <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">batch <b>65,536</b> <i>token / 步</i></span>
+    <span class="hp-chip" style="color:#6B6B68;background:#ECEAE2">评测 <b>327,680</b> <i>val token,所有点同一份</i></span>
+    <span class="hp-note">N 只数非嵌入参数(Kaplan 口径),124M 的非嵌入部分是 85.1M</span>
+  </div>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>① 一批小模型,各训几档 token</h2>
+    <p class="lead">
+      5 种宽度 / 深度,每种训 4 次:5000 万、1 亿、2 亿、4 亿 token;较大的三种再各训一次 16 亿。每次学习率都按自己的总步数从头做 warmup + 余弦退火。
+      选一个模型,看它各次训练的 val loss 曲线(红色虚线是发散、不参加拟合的那次):
+    </p>
+    <div class="btn-row small" id="nBtns"></div>
+    <div class="lab">
+      <div class="scroll-x"><div id="curveSvg" style="min-width:560px"></div></div>
+      <div class="legend" id="curveLeg"></div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s1Shape" style="font-size:15px">–</div><div class="drl">层数 × 宽度</div></div>
+        <div class="dr"><div class="drv" id="s1N" style="color:var(--e1)">–</div><div class="drl">N(非嵌入参数)</div></div>
+        <div class="dr"><div class="drv" id="s1Tot">–</div><div class="drl">算上嵌入的总参数</div></div>
+        <div class="dr"><div class="drv" id="s1Time">–</div><div class="drl" id="s1TimeL">训练合计用时</div></div>
+      </div>
+    </div>
+    <div class="note" id="s1Note"></div>
+    <div class="codepath">↳ 代码:<b>18_scaling.py train</b>(模型与第 6 章 <code>04_gpt2_124m.py</code> 相同,层数 / 宽度可调)· 网格 <code>runs/queue_scaling.sh</code></div>
+
+    <details class="dig">
+      <summary>为什么每档 D 都要从头训,不能训一次 4 亿、中途记 loss?</summary>
+      <div class="dig-body">
+        学习率的余弦退火要在训练结束时降到底,loss 才降到这个 D 能达到的水平。训 4 亿 token 的那次,在第 1 亿 token 时学习率还很高,loss 比专门训 1 亿、退火到底的那次要高。
+        Chinchilla 论文(Hoffmann et al., arXiv 2203.15556)指出 Kaplan 等人对所有模型用了同样的训练 token 数和学习率计划,认为这是两篇结论不同的原因之一;Chinchilla 自己让退火长度和训练 token 数匹配。
+        图里 4 亿那条曲线在 1 亿处的值,可以和单独训 1 亿那条的终点比一比。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>为什么 N 不算嵌入参数?</summary>
+      <div class="dig-body">
+        这批小模型的词表都是 50,304,嵌入表 50,304 × 宽度:宽度 128 的模型,嵌入占 <b id="embShare">–</b>,Transformer 层只有 0.6M。
+        算上嵌入,小模型的"大小"几乎全由词表决定。Kaplan et al.(arXiv 2001.08361)图 6 显示,只数非嵌入参数时,不同深宽比的模型落在同一条曲线上,所以用这个口径。
+        Chinchilla 数的是全部参数,两篇的系数因此不能直接互相套用。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>有两次训练的 loss 后半程往上走,是怎么回事?</summary>
+      <div class="dig-body">
+        <p style="margin:0 0 8px">L4_d192 训 4 亿 token、L6_d256 训 16 亿 token 这两次,val loss 先降后升。原因是注意力分数失控,可以用
+        <span class="term" data-term="qk-norm" data-key="qk-norm" data-def="算注意力分数之前,先对 q、k 各做一次 LayerNorm(按头),分数的量级就不会随训练无限变大。用来防止注意力 logit 增长导致的训练发散。">qk-norm</span>
+        修好。下图是 L4_d192 · 4 亿 token 这次的原结构与加 qk-norm 对照(同配置、同随机种子):</p>
+        <p style="margin:0 0 8px" id="divText"></p>
+        <div class="btn-row small" id="divBtns"><button class="btn">val loss</button><button class="btn">第 2 层注意力分数最大值</button><button class="btn">梯度范数(裁剪前)</button></div>
+        <div class="scroll-x"><div id="divSvg" style="min-width:520px;background:#fff;border-radius:10px"></div></div>
+        <div class="legend"><span><i style="background:var(--bad)"></i>原结构</span><span><i style="background:var(--good)"></i>加 qk-norm</span></div>
+        <p style="margin:8px 0 0" id="divText2"></p>
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:把各次训练的终点摆进一张 N × D 的表,看 loss 往哪个方向降得快。</div>
+  </section>
+
+  <!-- ============ STEP 2 ============ -->
+  <section class="panel" id="panel1">
+    <h2>② N 和 D 两个方向</h2>
+    <p class="lead">
+      每格是一次训练的最终 val loss,颜色越深越低。点一格,下面画出同一行(同样 N、D 变)和同一列(同样 D、N 变)的变化,横轴都是对数:
+    </p>
+    <div class="lab scroll-x"><table class="hm" id="hmTable"></table></div>
+    <div class="lab">
+      <div class="scroll-x"><div id="sliceSvg" style="min-width:560px"></div></div>
+      <div class="legend">
+        <span><i style="background:var(--e1)"></i>固定 N,D 变</span>
+        <span><i style="background:var(--e2)"></i>固定 D,N 变</span>
+      </div>
+    </div>
+    <div class="note" id="s2Note"></div>
+
+    <details class="dig">
+      <summary>为什么 D = 50M 那一列的 loss 都挤在一起?</summary>
+      <div class="dig-body" id="d50Dig">–</div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:两个方向各自按幂律下降,还有一个降不下去的底。把它写成一个公式来拟合。</div>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="panel" id="panel2">
+    <h2>③ 拟合 L(N, D) = E + A/N<sup>α</sup> + B/D<sup>β</sup></h2>
+    <p class="lead">
+      <b>E</b> 是数据本身的不确定性,模型再大、数据再多也降不下去;<b>A/N<sup>α</sup></b> 是模型太小欠的账,<b>B/D<sup>β</sup></b> 是数据太少欠的账。
+      按 Chinchilla §3.3,对 log L 做 Huber 回归、L-BFGS 求解,拟合用 21 个点(发散的两个不算)。拖两个滑块,看预测的 loss 由三部分怎么组成:
+    </p>
+    <div class="formula" id="fitFormula"></div>
+    <div class="lab">
+      <div class="rk-row"><label>N(非嵌入参数)</label><input type="range" id="nR" min="5" max="9" step="0.05" value="7"><span class="rk-val" id="nV">–</span></div>
+      <div class="rk-row"><label>D(训练 token)</label><input type="range" id="dR" min="7.5" max="10.5" step="0.05" value="8.3"><span class="rk-val" id="dV">–</span></div>
+      <div class="stack" id="fitStack"></div>
+      <div class="legend">
+        <span><i style="background:#6B6B68"></i>E 数据的底</span>
+        <span><i style="background:var(--e1)"></i>A/N<sup>α</sup> 模型太小</span>
+        <span><i style="background:var(--e2)"></i>B/D<sup>β</sup> 数据太少</span>
+      </div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s3L" style="color:var(--accent)">–</div><div class="drl">预测 loss</div></div>
+        <div class="dr"><div class="drv" id="s3Np">–</div><div class="drl">模型项</div></div>
+        <div class="dr"><div class="drv" id="s3Dp">–</div><div class="drl">数据项</div></div>
+        <div class="dr"><div class="drv" id="s3Near" style="font-size:14px">–</div><div class="drl">最近的实测点</div></div>
+      </div>
+    </div>
+    <div class="note" id="s3Note"></div>
+    <div class="codepath">↳ 代码:<b>18_scaling.py fit</b> 的 <code>fit_params</code>(4500 组初值,取初始损失最小的 64 组跑 L-BFGS)</div>
+
+    <details class="dig">
+      <summary>拟合出的 α、β 和 Chinchilla 论文的对得上吗?</summary>
+      <div class="dig-body" id="abDig">–</div>
+    </details>
+
+    <details class="dig">
+      <summary>为什么对 log L 拟合,还要用 Huber 损失?</summary>
+      <div class="dig-body">
+        对 log L 拟合,相当于看相对误差,loss 6 和 loss 4 的点权重相近。Huber 损失在残差小于 δ(这里 1e-3,同 Chinchilla)时是平方,大于 δ 时变成线性,
+        个别偏离的点(比如退火不充分的短训练)不会把整条曲线拉歪。参数写成 A = e<sup>a</sup>、B = e<sup>b</sup>、E = e<sup>e</sup>,log L̂ 用 log-sum-exp 算,数值更稳。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:有了公式,就能回答一个预算问题:给定算力,模型该多大、训多少 token?</div>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="panel" id="panel3">
+    <h2>④ 算力怎么分:固定 C,N 和 D 此消彼长</h2>
+    <p class="lead">
+      训练算力约 <code>C ≈ 6·N·D</code>(每个 token 前向 2N、反向 4N 次浮点运算)。C 固定时,模型越大能训的 token 越少。
+      拖 C,曲线是公式预测的 loss 随 N 的变化,最低点就是这个预算下的
+      <span class="term" data-term="算力最优 · compute-optimal" data-key="compute-optimal" data-def="给定训练算力 C ≈ 6ND,让预测 loss 最小的那一组 (N, D)。Chinchilla 的结论是 N 和 D 大致同比例增长,约每个参数 20 个 token。">算力最优</span>
+      模型大小:
+    </p>
+    <div class="lab">
+      <div class="rk-row"><label>算力 C(FLOPs)</label><input type="range" id="cR" min="15" max="21" step="0.1" value="17"><span class="rk-val" id="cV">–</span></div>
+      <div class="scroll-x"><div id="isoSvg" style="min-width:560px"></div></div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s4N" style="color:var(--e1)">–</div><div class="drl">最优 N</div></div>
+        <div class="dr"><div class="drv" id="s4D" style="color:var(--e2)">–</div><div class="drl">最优 D</div></div>
+        <div class="dr"><div class="drv" id="s4R" style="color:var(--accent)">–</div><div class="drl">D / N(每个参数几个 token)</div></div>
+        <div class="dr"><div class="drv" id="s4L">–</div><div class="drl">这个预算下的最低 loss</div></div>
+      </div>
+    </div>
+    <div class="note" id="s4Note"></div>
+    <div class="codepath">↳ 代码:<b>18_scaling.py fit</b> 末尾:<code>N_opt = G · (C/6)^(β/(α+β))</code>,G = (αA / βB)<sup>1/(α+β)</sup></div>
+
+    <details class="dig">
+      <summary>这里算出的 D/N 为什么远大于 Chinchilla 的 20?</summary>
+      <div class="dig-body" id="ratioDig">–</div>
+    </details>
+
+    <details class="dig">
+      <summary>第 6 章的 124M 按这个标准训多了还是少了?</summary>
+      <div class="dig-body" id="ch6Dig">–</div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:把第 6 章的 N = 85.1M、D = 10B 代进公式,和那次真实训练对照。</div>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="panel" id="panel4">
+    <h2>⑤ 外推到 124M,和真实训练对照</h2>
+    <p class="lead">
+      下面几个点都没参加拟合,按离拟合范围的远近排:往 D 方向外推的 16 亿 token 训练、往 N 方向外推的 49M 与 124M 结构(4 亿 token),以及第 6 章训了 10B token 的 124M。
+      灰色区间是 <span class="term" data-term="bootstrap · 自助重抽样" data-key="bootstrap" data-def="从拟合点里有放回地随机抽同样多个点,重新拟合,重复几百次,看预测值的分布。用来估计只有少量数据点时,一个拟合结果有多不稳定。">bootstrap</span>
+      的 90% 范围(拟合点有放回地重抽、重新拟合 200 次)。先选用哪批点拟合,再点一行:
+    </p>
+    <div class="btn-row small" id="fitBtns"></div>
+    <div class="formula" id="fitFormula5" style="font-size:16px"></div>
+    <div class="lab scroll-x"><table class="tb" id="holdTable"></table></div>
+    <div class="lab">
+      <div class="mini-h">实测 − 预测(负数 = 实测比预测好)</div>
+      <div class="scroll-x"><div id="missSvg" style="min-width:560px"></div></div>
+    </div>
+    <div class="lab">
+      <div class="scroll-x"><div id="holdSvg" style="min-width:560px"></div></div>
+    </div>
+    <div class="note" id="s5Note"></div>
+
+    <details class="dig">
+      <summary>为什么外推总是偏高,主拟合的 bootstrap 区间也没盖住实测?</summary>
+      <div class="dig-body" id="honestDig">–</div>
+    </details>
+
+    <details class="dig">
+      <summary>第 6 章的 124M 和这批小模型的训练配方一样吗?</summary>
+      <div class="dig-body">
+        结构、分词器、数据、上下文长度、AdamW 设置、学习率峰值(宽度 768 按本章规则也是 6e-4)与余弦退火到 10% 都相同。不同的是两处:第 6 章每步 524,288 个 token(本章 65,536,8 倍),
+        warmup 715 步(本章 100 步)。本章按同一配方训了 124M 结构 4 亿 token 的点,公式对它的预测也偏高(见表中「12 层 × 768」一行),
+        说明误差不全来自配方差异。要把配方的影响单独拆出来,得按本章配方把 124M 训满 10B token,在这块 4090 上约一天。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>重评的 124M 为什么是 3.0301,不是第 6 章写的 3.02?</summary>
+      <div class="dig-body">
+        评测口径不同。第 6 章训练脚本每次只在 val shard 开头取 20 批 × 8 × 1024 = 163,840 个 token;
+        本章所有点(包括这个 124M)统一用开头 40 批 = 327,680 个 token,bf16 前向。拟合点和检验点必须用同一个口径,所以 124M 也按本章口径重评。
+      </div>
+    </details>
+
+    <div class="sub-h"><span class="badge">达标</span>本关实测</div>
+    <ul class="checklist" id="okList"></ul>
+    <div class="codepath">↳ 跑法:<code>bash runs/queue_scaling.sh</code>(CUDA,4090 上约 7.1 小时)· <code>python 18_scaling.py fit runs/s_*.json --exclude L4_d192_D400M L6_d256_D1600M --out runs/ch20_fit.json</code>(CPU;加 <code>--max-d 400e6</code> / <code>--holdout 1e9</code> 得到另两组拟合)</div>
+
+    <div class="congrats" id="congrats">
+      <div class="ct">🎉 Scaling Law · 通关</div>
+      <div class="cs">你用一批小模型拟合出 L(N, D),外推到第 6 章训了一整天的 124M,看到外推越远误差越大、bootstrap 盖不住形状上的偏差,还排查了一次注意力分数失控的训练。下一关回到后训练:只给判分器,用 RL 教 124M 做加法。</div>
+    </div>
+  </section>
+
+  <div class="nav">
+    <button class="btn" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<canvas id="confetti"></canvas>
+
+<script>
+/* ================================================================
+   REAL-DATA:全部来自 phase5-fullstack/runs/s_*.json、runs/diverged/ 与三组拟合 runs/ch20_fit*.json(RTX 4090)
+   命令:cd phase5-fullstack && bash runs/queue_scaling.sh
+         X="--exclude L4_d192_D400M L6_d256_D1600M"
+         python 18_scaling.py fit runs/s_*.json $X --out runs/ch20_fit.json                    # 主拟合
+         python 18_scaling.py fit runs/s_*.json $X --max-d 400e6 --out runs/ch20_fit_d400.json # 只用 D ≤ 4 亿
+         python 18_scaling.py fit runs/s_*.json $X --holdout 1e9 --out runs/ch20_fit_all.json  # 全部训练点
+   rows:每次训练的 N(非嵌入)、N_total、D、最终 val loss、公式预测、是否参加拟合、训练中 val 曲线;
+   检验点另有 bootstrap 90% 区间;fit:E, A, B, alpha, beta, G
+   ================================================================ */
+const D={"fit": {"E": 3.2040724330259227, "A": 312.4025403720129, "B": 634738.147267108, "alpha": 0.43332434347148313, "beta": 0.7148896000218978, "G": 0.0008506446859426265, "holdout_N": 40000000.0}, "rows": [{"kind": "ckpt", "name": "../phase1-124m/ckpt10b/latest.pt", "n_layer": 12, "n_embd": 768, "N": 85056000, "D": 10000000000.0, "val": 3.0301, "pred": 3.3636, "in_fit": false, "role": "check", "id": "ckpt"}, {"kind": "train", "name": "L10_d640", "n_layer": 10, "n_embd": 640, "N": 49236480, "D": 100007936, "val": 4.5809, "pred": 4.561, "in_fit": false, "role": "check", "id": "L10_d640_100", "curve": [{"tokens": 10027008, "val": 6.4875}, {"tokens": 20054016, "val": 6.0748}, {"tokens": 30015488, "val": 5.6854}, {"tokens": 40042496, "val": 5.3617}, {"tokens": 50069504, "val": 5.1321}, {"tokens": 60030976, "val": 4.9568}, {"tokens": 70057984, "val": 4.8322}, {"tokens": 80019456, "val": 4.7023}, {"tokens": 90046464, "val": 4.6304}, {"tokens": 100007936, "val": 4.5809}]}, {"kind": "train", "name": "L10_d640", "n_layer": 10, "n_embd": 640, "N": 49236480, "D": 200015872, "val": 4.0472, "pred": 4.0874, "in_fit": false, "role": "check", "id": "L10_d640_200", "curve": [{"tokens": 20054016, "val": 6.0786}, {"tokens": 40042496, "val": 5.3797}, {"tokens": 60030976, "val": 4.9463}, {"tokens": 80019456, "val": 4.5958}, {"tokens": 100073472, "val": 4.4025}, {"tokens": 120061952, "val": 4.3004}, {"tokens": 140050432, "val": 4.1868}, {"tokens": 160038912, "val": 4.1226}, {"tokens": 180027392, "val": 4.0753}, {"tokens": 200015872, "val": 4.0472}]}, {"kind": "train", "name": "L12_d768", "n_layer": 12, "n_embd": 768, "N": 85056000, "D": 400031744, "val": 3.6692, "pred": 3.7683, "in_fit": false, "role": "check", "id": "L12_d768_400", "curve": [{"tokens": 10027008, "val": 6.5255}, {"tokens": 20054016, "val": 6.1073}, {"tokens": 30015488, "val": 5.7061}, {"tokens": 40042496, "val": 5.3656}, {"tokens": 50069504, "val": 5.1083}, {"tokens": 60030976, "val": 4.9173}, {"tokens": 70057984, "val": 4.7345}, {"tokens": 80019456, "val": 4.5619}, {"tokens": 90046464, "val": 4.449}, {"tokens": 100073472, "val": 4.3674}, {"tokens": 110034944, "val": 4.3026}, {"tokens": 120061952, "val": 4.2719}, {"tokens": 130023424, "val": 4.1901}, {"tokens": 140050432, "val": 4.1464}, {"tokens": 150077440, "val": 4.1225}, {"tokens": 160038912, "val": 4.0811}, {"tokens": 170065920, "val": 4.0554}, {"tokens": 180027392, "val": 4.0135}, {"tokens": 190054400, "val": 3.9879}, {"tokens": 200081408, "val": 3.948}, {"tokens": 210042880, "val": 3.9232}, {"tokens": 220069888, "val": 3.9126}, {"tokens": 230031360, "val": 3.8801}, {"tokens": 240058368, "val": 3.8622}, {"tokens": 250085376, "val": 3.8292}, {"tokens": 260046848, "val": 3.8169}, {"tokens": 270073856, "val": 3.7999}, {"tokens": 280035328, "val": 3.7807}, {"tokens": 290062336, "val": 3.7737}, {"tokens": 300089344, "val": 3.7558}, {"tokens": 310050816, "val": 3.7403}, {"tokens": 320077824, "val": 3.7317}, {"tokens": 330039296, "val": 3.7168}, {"tokens": 340066304, "val": 3.7133}, {"tokens": 350093312, "val": 3.6971}, {"tokens": 360054784, "val": 3.6946}, {"tokens": 370081792, "val": 3.6843}, {"tokens": 380043264, "val": 3.678}, {"tokens": 390070272, "val": 3.6772}, {"tokens": 400031744, "val": 3.6692}]}, {"kind": "train", "name": "L3_d128", "n_layer": 3, "n_embd": 128, "N": 595072, "D": 100007936, "val": 5.2646, "pred": 5.3987, "in_fit": true, "role": "fit", "id": "L3_d128_100", "curve": [{"tokens": 10027008, "val": 6.6286}, {"tokens": 20054016, "val": 6.2258}, {"tokens": 30015488, "val": 5.936}, {"tokens": 40042496, "val": 5.7493}, {"tokens": 50069504, "val": 5.6055}, {"tokens": 60030976, "val": 5.483}, {"tokens": 70057984, "val": 5.4152}, {"tokens": 80019456, "val": 5.3292}, {"tokens": 90046464, "val": 5.2932}, {"tokens": 100007936, "val": 5.2646}]}, {"kind": "train", "name": "L3_d128", "n_layer": 3, "n_embd": 128, "N": 595072, "D": 200015872, "val": 4.9229, "pred": 4.9252, "in_fit": true, "role": "fit", "id": "L3_d128_200", "curve": [{"tokens": 20054016, "val": 6.2037}, {"tokens": 40042496, "val": 5.7386}, {"tokens": 60030976, "val": 5.4916}, {"tokens": 80019456, "val": 5.3071}, {"tokens": 100073472, "val": 5.1853}, {"tokens": 120061952, "val": 5.1287}, {"tokens": 140050432, "val": 5.0327}, {"tokens": 160038912, "val": 4.9839}, {"tokens": 180027392, "val": 4.9467}, {"tokens": 200015872, "val": 4.9229}]}, {"kind": "train", "name": "L3_d128", "n_layer": 3, "n_embd": 128, "N": 595072, "D": 400031744, "val": 4.7197, "pred": 4.6367, "in_fit": true, "role": "fit", "id": "L3_d128_400", "curve": [{"tokens": 40042496, "val": 5.7329}, {"tokens": 80019456, "val": 5.3129}, {"tokens": 120061952, "val": 5.1524}, {"tokens": 160038912, "val": 5.013}, {"tokens": 200081408, "val": 4.923}, {"tokens": 240058368, "val": 4.8758}, {"tokens": 280035328, "val": 4.8098}, {"tokens": 320077824, "val": 4.7714}, {"tokens": 360054784, "val": 4.7417}, {"tokens": 400031744, "val": 4.7197}]}, {"kind": "train", "name": "L3_d128", "n_layer": 3, "n_embd": 128, "N": 595072, "D": 50003968, "val": 6.2078, "pred": 6.1759, "in_fit": true, "role": "fit", "id": "L3_d128_50", "curve": [{"tokens": 5046272, "val": 7.2034}, {"tokens": 10027008, "val": 6.8645}, {"tokens": 15007744, "val": 6.6784}, {"tokens": 20054016, "val": 6.5659}, {"tokens": 25034752, "val": 6.4597}, {"tokens": 30015488, "val": 6.3697}, {"tokens": 35061760, "val": 6.3032}, {"tokens": 40042496, "val": 6.2567}, {"tokens": 45023232, "val": 6.2359}, {"tokens": 50003968, "val": 6.2078}]}, {"kind": "train", "name": "L4_d192", "n_layer": 4, "n_embd": 192, "N": 1779840, "D": 100007936, "val": 5.0289, "pred": 5.0273, "in_fit": true, "role": "fit", "id": "L4_d192_100", "curve": [{"tokens": 10027008, "val": 6.5351}, {"tokens": 20054016, "val": 6.133}, {"tokens": 30015488, "val": 5.8296}, {"tokens": 40042496, "val": 5.6202}, {"tokens": 50069504, "val": 5.4401}, {"tokens": 60030976, "val": 5.288}, {"tokens": 70057984, "val": 5.1984}, {"tokens": 80019456, "val": 5.1077}, {"tokens": 90046464, "val": 5.0631}, {"tokens": 100007936, "val": 5.0289}]}, {"kind": "train", "name": "L4_d192", "n_layer": 4, "n_embd": 192, "N": 1779840, "D": 200015872, "val": 4.5069, "pred": 4.5537, "in_fit": true, "role": "fit", "id": "L4_d192_200", "curve": [{"tokens": 20054016, "val": 6.125}, {"tokens": 40042496, "val": 5.6098}, {"tokens": 60030976, "val": 5.276}, {"tokens": 80019456, "val": 5.0554}, {"tokens": 100073472, "val": 4.8913}, {"tokens": 120061952, "val": 4.775}, {"tokens": 140050432, "val": 4.6484}, {"tokens": 160038912, "val": 4.5797}, {"tokens": 180027392, "val": 4.5356}, {"tokens": 200015872, "val": 4.5069}]}, {"kind": "train", "name": "L4_d192", "n_layer": 4, "n_embd": 192, "N": 1779840, "D": 400031744, "val": 4.9511, "pred": 4.2652, "in_fit": false, "role": "excluded", "id": "L4_d192_400", "curve": [{"tokens": 40042496, "val": 5.5975}, {"tokens": 80019456, "val": 5.0549}, {"tokens": 120061952, "val": 4.7762}, {"tokens": 160038912, "val": 4.6111}, {"tokens": 200081408, "val": 4.5194}, {"tokens": 240058368, "val": 4.604}, {"tokens": 280035328, "val": 4.9096}, {"tokens": 320077824, "val": 5.1127}, {"tokens": 360054784, "val": 5.045}, {"tokens": 400031744, "val": 4.9511}]}, {"kind": "train", "name": "L4_d192", "n_layer": 4, "n_embd": 192, "N": 1779840, "D": 50003968, "val": 5.6524, "pred": 5.8045, "in_fit": true, "role": "fit", "id": "L4_d192_50", "curve": [{"tokens": 5046272, "val": 6.9921}, {"tokens": 10027008, "val": 6.5607}, {"tokens": 15007744, "val": 6.3204}, {"tokens": 20054016, "val": 6.1699}, {"tokens": 25034752, "val": 6.0317}, {"tokens": 30015488, "val": 5.8923}, {"tokens": 35061760, "val": 5.7981}, {"tokens": 40042496, "val": 5.7304}, {"tokens": 45023232, "val": 5.6888}, {"tokens": 50003968, "val": 5.6524}]}, {"kind": "train", "name": "L6_d256", "n_layer": 6, "n_embd": 256, "N": 4739072, "D": 100007936, "val": 4.9025, "pred": 4.8159, "in_fit": true, "role": "fit", "id": "L6_d256_100", "curve": [{"tokens": 10027008, "val": 6.5306}, {"tokens": 20054016, "val": 6.1308}, {"tokens": 30015488, "val": 5.7981}, {"tokens": 40042496, "val": 5.5301}, {"tokens": 50069504, "val": 5.3318}, {"tokens": 60030976, "val": 5.1796}, {"tokens": 70057984, "val": 5.0918}, {"tokens": 80019456, "val": 4.9884}, {"tokens": 90046464, "val": 4.9391}, {"tokens": 100007936, "val": 4.9025}]}, {"kind": "train", "name": "L6_d256", "n_layer": 6, "n_embd": 256, "N": 4739072, "D": 1599995904, "val": 5.1069, "pred": 3.771, "in_fit": false, "role": "excluded", "id": "L6_d256_1600", "curve": [{"tokens": 40042496, "val": 5.5266}, {"tokens": 80019456, "val": 4.8714}, {"tokens": 120061952, "val": 4.6225}, {"tokens": 160038912, "val": 4.4571}, {"tokens": 200015872, "val": 4.3551}, {"tokens": 240058368, "val": 4.3167}, {"tokens": 280035328, "val": 4.2622}, {"tokens": 320012288, "val": 4.2533}, {"tokens": 360054784, "val": 4.2235}, {"tokens": 400031744, "val": 4.1903}, {"tokens": 440008704, "val": 4.1649}, {"tokens": 480051200, "val": 4.1558}, {"tokens": 520028160, "val": 4.1301}, {"tokens": 560005120, "val": 4.1542}, {"tokens": 600047616, "val": 4.1128}, {"tokens": 640024576, "val": 4.0908}, {"tokens": 680001536, "val": 4.095}, {"tokens": 720044032, "val": 4.0737}, {"tokens": 760020992, "val": 4.0606}, {"tokens": 800063488, "val": 4.0678}, {"tokens": 840040448, "val": 4.0506}, {"tokens": 880017408, "val": 4.119}, {"tokens": 920059904, "val": 4.3449}, {"tokens": 960036864, "val": 4.9465}, {"tokens": 1000013824, "val": 5.9719}, {"tokens": 1040056320, "val": 6.3315}, {"tokens": 1080033280, "val": 4.5885}, {"tokens": 1120010240, "val": 4.3868}, {"tokens": 1160052736, "val": 4.487}, {"tokens": 1200029696, "val": 4.4376}, {"tokens": 1240006656, "val": 4.5286}, {"tokens": 1280049152, "val": 4.6241}, {"tokens": 1320026112, "val": 4.2914}, {"tokens": 1360003072, "val": 4.358}, {"tokens": 1400045568, "val": 4.7873}, {"tokens": 1440022528, "val": 5.004}, {"tokens": 1479999488, "val": 5.0241}, {"tokens": 1520041984, "val": 5.0988}, {"tokens": 1560018944, "val": 4.9435}, {"tokens": 1599995904, "val": 5.1069}]}, {"kind": "train", "name": "L6_d256", "n_layer": 6, "n_embd": 256, "N": 4739072, "D": 200015872, "val": 4.324, "pred": 4.3423, "in_fit": true, "role": "fit", "id": "L6_d256_200", "curve": [{"tokens": 20054016, "val": 6.1346}, {"tokens": 40042496, "val": 5.52}, {"tokens": 60030976, "val": 5.1525}, {"tokens": 80019456, "val": 4.8795}, {"tokens": 100073472, "val": 4.6591}, {"tokens": 120061952, "val": 4.5653}, {"tokens": 140050432, "val": 4.452}, {"tokens": 160038912, "val": 4.3954}, {"tokens": 180027392, "val": 4.3517}, {"tokens": 200015872, "val": 4.324}]}, {"kind": "train", "name": "L6_d256", "n_layer": 6, "n_embd": 256, "N": 4739072, "D": 400031744, "val": 4.069, "pred": 4.0538, "in_fit": true, "role": "fit", "id": "L6_d256_400", "curve": [{"tokens": 40042496, "val": 5.5184}, {"tokens": 80019456, "val": 4.8716}, {"tokens": 120061952, "val": 4.5915}, {"tokens": 160038912, "val": 4.4177}, {"tokens": 200081408, "val": 4.3054}, {"tokens": 240058368, "val": 4.241}, {"tokens": 280035328, "val": 4.1672}, {"tokens": 320077824, "val": 4.1266}, {"tokens": 360054784, "val": 4.0918}, {"tokens": 400031744, "val": 4.069}]}, {"kind": "train", "name": "L6_d256", "n_layer": 6, "n_embd": 256, "N": 4739072, "D": 50003968, "val": 5.5688, "pred": 5.5931, "in_fit": true, "role": "fit", "id": "L6_d256_50", "curve": [{"tokens": 5046272, "val": 6.8739}, {"tokens": 10027008, "val": 6.5451}, {"tokens": 15007744, "val": 6.2915}, {"tokens": 20054016, "val": 6.1594}, {"tokens": 25034752, "val": 6.0002}, {"tokens": 30015488, "val": 5.8505}, {"tokens": 35061760, "val": 5.7361}, {"tokens": 40042496, "val": 5.6572}, {"tokens": 45023232, "val": 5.6086}, {"tokens": 50003968, "val": 5.5688}]}, {"kind": "train", "name": "L6_d384", "n_layer": 6, "n_embd": 384, "N": 10647552, "D": 100007936, "val": 4.7542, "pred": 4.6975, "in_fit": true, "role": "fit", "id": "L6_d384_100", "curve": [{"tokens": 10027008, "val": 6.4772}, {"tokens": 20054016, "val": 6.0642}, {"tokens": 30015488, "val": 5.7328}, {"tokens": 40042496, "val": 5.4333}, {"tokens": 50069504, "val": 5.2279}, {"tokens": 60030976, "val": 5.0676}, {"tokens": 70057984, "val": 4.961}, {"tokens": 80019456, "val": 4.8522}, {"tokens": 90046464, "val": 4.7976}, {"tokens": 100007936, "val": 4.7542}]}, {"kind": "train", "name": "L6_d384", "n_layer": 6, "n_embd": 384, "N": 10647552, "D": 1599995904, "val": 3.6946, "pred": 3.6527, "in_fit": true, "role": "fit", "id": "L6_d384_1600", "curve": [{"tokens": 40042496, "val": 5.4278}, {"tokens": 80019456, "val": 4.7678}, {"tokens": 120061952, "val": 4.5142}, {"tokens": 160038912, "val": 4.3515}, {"tokens": 200015872, "val": 4.2448}, {"tokens": 240058368, "val": 4.1972}, {"tokens": 280035328, "val": 4.1376}, {"tokens": 320012288, "val": 4.1138}, {"tokens": 360054784, "val": 4.0794}, {"tokens": 400031744, "val": 4.051}, {"tokens": 440008704, "val": 4.0181}, {"tokens": 480051200, "val": 4.0072}, {"tokens": 520028160, "val": 3.9809}, {"tokens": 560005120, "val": 3.9953}, {"tokens": 600047616, "val": 3.9523}, {"tokens": 640024576, "val": 3.9295}, {"tokens": 680001536, "val": 3.9289}, {"tokens": 720044032, "val": 3.9016}, {"tokens": 760020992, "val": 3.8843}, {"tokens": 800063488, "val": 3.8949}, {"tokens": 840040448, "val": 3.8638}, {"tokens": 880017408, "val": 3.8529}, {"tokens": 920059904, "val": 3.8439}, {"tokens": 960036864, "val": 3.8251}, {"tokens": 1000013824, "val": 3.8235}, {"tokens": 1040056320, "val": 3.8053}, {"tokens": 1080033280, "val": 3.7928}, {"tokens": 1120010240, "val": 3.7875}, {"tokens": 1160052736, "val": 3.7727}, {"tokens": 1200029696, "val": 3.7613}, {"tokens": 1240006656, "val": 3.7534}, {"tokens": 1280049152, "val": 3.7382}, {"tokens": 1320026112, "val": 3.7272}, {"tokens": 1360003072, "val": 3.7264}, {"tokens": 1400045568, "val": 3.7149}, {"tokens": 1440022528, "val": 3.7154}, {"tokens": 1479999488, "val": 3.7045}, {"tokens": 1520041984, "val": 3.7004}, {"tokens": 1560018944, "val": 3.7047}, {"tokens": 1599995904, "val": 3.6946}]}, {"kind": "train", "name": "L6_d384", "n_layer": 6, "n_embd": 384, "N": 10647552, "D": 200015872, "val": 4.2249, "pred": 4.224, "in_fit": true, "role": "fit", "id": "L6_d384_200", "curve": [{"tokens": 20054016, "val": 6.0782}, {"tokens": 40042496, "val": 5.4255}, {"tokens": 60030976, "val": 5.056}, {"tokens": 80019456, "val": 4.781}, {"tokens": 100073472, "val": 4.575}, {"tokens": 120061952, "val": 4.4708}, {"tokens": 140050432, "val": 4.3575}, {"tokens": 160038912, "val": 4.295}, {"tokens": 180027392, "val": 4.253}, {"tokens": 200015872, "val": 4.2249}]}, {"kind": "train", "name": "L6_d384", "n_layer": 6, "n_embd": 384, "N": 10647552, "D": 400031744, "val": 3.9377, "pred": 3.9355, "in_fit": true, "role": "fit", "id": "L6_d384_400", "curve": [{"tokens": 40042496, "val": 5.4473}, {"tokens": 80019456, "val": 4.7886}, {"tokens": 120061952, "val": 4.4917}, {"tokens": 160038912, "val": 4.3079}, {"tokens": 200081408, "val": 4.187}, {"tokens": 240058368, "val": 4.1149}, {"tokens": 280035328, "val": 4.041}, {"tokens": 320077824, "val": 3.9945}, {"tokens": 360054784, "val": 3.9595}, {"tokens": 400031744, "val": 3.9377}]}, {"kind": "train", "name": "L6_d384", "n_layer": 6, "n_embd": 384, "N": 10647552, "D": 50003968, "val": 5.4713, "pred": 5.4748, "in_fit": true, "role": "fit", "id": "L6_d384_50", "curve": [{"tokens": 5046272, "val": 6.8827}, {"tokens": 10027008, "val": 6.4871}, {"tokens": 15007744, "val": 6.2202}, {"tokens": 20054016, "val": 6.0777}, {"tokens": 25034752, "val": 5.9147}, {"tokens": 30015488, "val": 5.7652}, {"tokens": 35061760, "val": 5.6474}, {"tokens": 40042496, "val": 5.5661}, {"tokens": 45023232, "val": 5.5123}, {"tokens": 50003968, "val": 5.4713}]}, {"kind": "train", "name": "L8_d512", "n_layer": 8, "n_embd": 512, "N": 25220096, "D": 100007936, "val": 4.6288, "pred": 4.6097, "in_fit": true, "role": "fit", "id": "L8_d512_100", "curve": [{"tokens": 10027008, "val": 6.4674}, {"tokens": 20054016, "val": 6.0655}, {"tokens": 30015488, "val": 5.6788}, {"tokens": 40042496, "val": 5.367}, {"tokens": 50069504, "val": 5.1483}, {"tokens": 60030976, "val": 4.9826}, {"tokens": 70057984, "val": 4.8691}, {"tokens": 80019456, "val": 4.7428}, {"tokens": 90046464, "val": 4.6777}, {"tokens": 100007936, "val": 4.6288}]}, {"kind": "train", "name": "L8_d512", "n_layer": 8, "n_embd": 512, "N": 25220096, "D": 1599995904, "val": 3.512, "pred": 3.5649, "in_fit": true, "role": "fit", "id": "L8_d512_1600", "curve": [{"tokens": 40042496, "val": 5.3806}, {"tokens": 80019456, "val": 4.6369}, {"tokens": 120061952, "val": 4.3869}, {"tokens": 160038912, "val": 4.2144}, {"tokens": 200015872, "val": 4.106}, {"tokens": 240058368, "val": 4.0548}, {"tokens": 280035328, "val": 3.99}, {"tokens": 320012288, "val": 3.969}, {"tokens": 360054784, "val": 3.9265}, {"tokens": 400031744, "val": 3.8919}, {"tokens": 440008704, "val": 3.8583}, {"tokens": 480051200, "val": 3.8432}, {"tokens": 520028160, "val": 3.8143}, {"tokens": 560005120, "val": 3.8229}, {"tokens": 600047616, "val": 3.7826}, {"tokens": 640024576, "val": 3.7615}, {"tokens": 680001536, "val": 3.7556}, {"tokens": 720044032, "val": 3.7283}, {"tokens": 760020992, "val": 3.7131}, {"tokens": 800063488, "val": 3.7182}, {"tokens": 840040448, "val": 3.6858}, {"tokens": 880017408, "val": 3.6767}, {"tokens": 920059904, "val": 3.6671}, {"tokens": 960036864, "val": 3.6451}, {"tokens": 1000013824, "val": 3.6426}, {"tokens": 1040056320, "val": 3.6234}, {"tokens": 1080033280, "val": 3.609}, {"tokens": 1120010240, "val": 3.6056}, {"tokens": 1160052736, "val": 3.5925}, {"tokens": 1200029696, "val": 3.5772}, {"tokens": 1240006656, "val": 3.5723}, {"tokens": 1280049152, "val": 3.5576}, {"tokens": 1320026112, "val": 3.546}, {"tokens": 1360003072, "val": 3.5429}, {"tokens": 1400045568, "val": 3.5337}, {"tokens": 1440022528, "val": 3.5327}, {"tokens": 1479999488, "val": 3.5234}, {"tokens": 1520041984, "val": 3.5183}, {"tokens": 1560018944, "val": 3.5233}, {"tokens": 1599995904, "val": 3.512}]}, {"kind": "train", "name": "L8_d512", "n_layer": 8, "n_embd": 512, "N": 25220096, "D": 200015872, "val": 4.1096, "pred": 4.1362, "in_fit": true, "role": "fit", "id": "L8_d512_200", "curve": [{"tokens": 20054016, "val": 6.0762}, {"tokens": 40042496, "val": 5.3788}, {"tokens": 60030976, "val": 4.9703}, {"tokens": 80019456, "val": 4.6463}, {"tokens": 100073472, "val": 4.4478}, {"tokens": 120061952, "val": 4.3583}, {"tokens": 140050432, "val": 4.2451}, {"tokens": 160038912, "val": 4.1829}, {"tokens": 180027392, "val": 4.1378}, {"tokens": 200015872, "val": 4.1096}]}, {"kind": "train", "name": "L8_d512", "n_layer": 8, "n_embd": 512, "N": 25220096, "D": 400031744, "val": 3.8121, "pred": 3.8477, "in_fit": true, "role": "fit", "id": "L8_d512_400", "curve": [{"tokens": 40042496, "val": 5.3916}, {"tokens": 80019456, "val": 4.6316}, {"tokens": 120061952, "val": 4.3721}, {"tokens": 160038912, "val": 4.1853}, {"tokens": 200081408, "val": 4.0662}, {"tokens": 240058368, "val": 3.9929}, {"tokens": 280035328, "val": 3.9151}, {"tokens": 320077824, "val": 3.869}, {"tokens": 360054784, "val": 3.8342}, {"tokens": 400031744, "val": 3.8121}]}, {"kind": "train", "name": "L8_d512", "n_layer": 8, "n_embd": 512, "N": 25220096, "D": 50003968, "val": 5.405, "pred": 5.387, "in_fit": true, "role": "fit", "id": "L8_d512_50", "curve": [{"tokens": 5046272, "val": 6.7901}, {"tokens": 10027008, "val": 6.4672}, {"tokens": 15007744, "val": 6.2057}, {"tokens": 20054016, "val": 6.0671}, {"tokens": 25034752, "val": 5.8951}, {"tokens": 30015488, "val": 5.7256}, {"tokens": 35061760, "val": 5.6004}, {"tokens": 40042496, "val": 5.507}, {"tokens": 45023232, "val": 5.4497}, {"tokens": 50003968, "val": 5.405}]}], "fits": [{"key": "d400", "label": "只用 D ≤ 4 亿", "n_fit": 19, "E": 3.287310594519055, "A": 1007.2983326467331, "B": 608163.9957358664, "alpha": 0.5281784756197887, "beta": 0.7124472734219669, "G": 0.004505435068270957, "maxN": 25220096, "maxD": 400031744, "pts": {"ckpt": {"pred": 3.3983, "role": "check", "lo": 3.0221, "hi": 3.5942}, "L10_d640_100": {"pred": 4.589, "role": "check", "lo": 4.5048, "hi": 4.6815}, "L10_d640_200": {"pred": 4.1157, "role": "check", "lo": 4.033, "hi": 4.1941}, "L12_d768_400": {"pred": 3.805, "role": "check", "lo": 3.6701, "hi": 3.879}, "L3_d128_100": {"pred": 5.3996, "role": "fit"}, "L3_d128_200": {"pred": 4.9263, "role": "fit"}, "L3_d128_400": {"pred": 4.6374, "role": "fit"}, "L3_d128_50": {"pred": 6.1752, "role": "fit"}, "L4_d192_100": {"pred": 5.0052, "role": "fit"}, "L4_d192_200": {"pred": 4.5319, "role": "fit"}, "L4_d192_400": {"pred": 4.243, "role": "excluded"}, "L4_d192_50": {"pred": 5.7808, "role": "fit"}, "L6_d256_100": {"pred": 4.8019, "role": "fit"}, "L6_d256_1600": {"pred": 3.7559, "role": "excluded"}, "L6_d256_200": {"pred": 4.3286, "role": "fit"}, "L6_d256_400": {"pred": 4.0397, "role": "fit"}, "L6_d256_50": {"pred": 5.5775, "role": "fit"}, "L6_d384_100": {"pred": 4.6975, "role": "fit"}, "L6_d384_1600": {"pred": 3.6515, "role": "check", "lo": 3.4234, "hi": 3.7688}, "L6_d384_200": {"pred": 4.2242, "role": "fit"}, "L6_d384_400": {"pred": 3.9353, "role": "fit"}, "L6_d384_50": {"pred": 5.4731, "role": "fit"}, "L8_d512_100": {"pred": 4.626, "role": "fit"}, "L8_d512_1600": {"pred": 3.5799, "role": "check", "lo": 3.3602, "hi": 3.7109}, "L8_d512_200": {"pred": 4.1526, "role": "fit"}, "L8_d512_400": {"pred": 3.8638, "role": "fit"}, "L8_d512_50": {"pred": 5.4015, "role": "fit"}}}, {"key": "main", "label": "加上 16 亿(主拟合)", "n_fit": 21, "E": 3.2040724330259227, "A": 312.4025403720129, "B": 634738.147267108, "alpha": 0.43332434347148313, "beta": 0.7148896000218978, "G": 0.0008506446859426265, "maxN": 25220096, "maxD": 1599995904, "pts": {"ckpt": {"pred": 3.3636, "role": "check", "lo": 3.1909, "hi": 3.4736}, "L10_d640_100": {"pred": 4.561, "role": "check", "lo": 4.471, "hi": 4.6317}, "L10_d640_200": {"pred": 4.0874, "role": "check", "lo": 4.0076, "hi": 4.158}, "L12_d768_400": {"pred": 3.7683, "role": "check", "lo": 3.6535, "hi": 3.8454}, "L3_d128_100": {"pred": 5.3987, "role": "fit"}, "L3_d128_200": {"pred": 4.9252, "role": "fit"}, "L3_d128_400": {"pred": 4.6367, "role": "fit"}, "L3_d128_50": {"pred": 6.1759, "role": "fit"}, "L4_d192_100": {"pred": 5.0273, "role": "fit"}, "L4_d192_200": {"pred": 4.5537, "role": "fit"}, "L4_d192_400": {"pred": 4.2652, "role": "excluded"}, "L4_d192_50": {"pred": 5.8045, "role": "fit"}, "L6_d256_100": {"pred": 4.8159, "role": "fit"}, "L6_d256_1600": {"pred": 3.771, "role": "excluded"}, "L6_d256_200": {"pred": 4.3423, "role": "fit"}, "L6_d256_400": {"pred": 4.0538, "role": "fit"}, "L6_d256_50": {"pred": 5.5931, "role": "fit"}, "L6_d384_100": {"pred": 4.6975, "role": "fit"}, "L6_d384_1600": {"pred": 3.6527, "role": "fit"}, "L6_d384_200": {"pred": 4.224, "role": "fit"}, "L6_d384_400": {"pred": 3.9355, "role": "fit"}, "L6_d384_50": {"pred": 5.4748, "role": "fit"}, "L8_d512_100": {"pred": 4.6097, "role": "fit"}, "L8_d512_1600": {"pred": 3.5649, "role": "fit"}, "L8_d512_200": {"pred": 4.1362, "role": "fit"}, "L8_d512_400": {"pred": 3.8477, "role": "fit"}, "L8_d512_50": {"pred": 5.387, "role": "fit"}}}, {"key": "all", "label": "再加 49M 与 124M 结构", "n_fit": 24, "E": 2.986067840409273, "A": 86.57002053981883, "B": 390002.7484742038, "alpha": 0.3250749319864366, "beta": 0.6860181151182929, "G": 0.00011630337537687844, "maxN": 85056000, "maxD": 1599995904, "pts": {"ckpt": {"pred": 3.2688, "role": "check", "lo": 3.1804, "hi": 3.4406}, "L10_d640_100": {"pred": 4.5268, "role": "fit"}, "L10_d640_200": {"pred": 4.0472, "role": "fit"}, "L12_d768_400": {"pred": 3.7046, "role": "fit"}, "L3_d128_100": {"pred": 5.4021, "role": "fit"}, "L3_d128_200": {"pred": 4.9225, "role": "fit"}, "L3_d128_400": {"pred": 4.6244, "role": "fit"}, "L3_d128_50": {"pred": 6.1737, "role": "fit"}, "L4_d192_100": {"pred": 5.0579, "role": "fit"}, "L4_d192_200": {"pred": 4.5783, "role": "fit"}, "L4_d192_400": {"pred": 4.2802, "role": "excluded"}, "L4_d192_50": {"pred": 5.8295, "role": "fit"}, "L6_d256_100": {"pred": 4.8386, "role": "fit"}, "L6_d256_1600": {"pred": 3.7604, "role": "excluded"}, "L6_d256_200": {"pred": 4.359, "role": "fit"}, "L6_d256_400": {"pred": 4.0609, "role": "fit"}, "L6_d256_50": {"pred": 5.6102, "role": "fit"}, "L6_d384_100": {"pred": 4.7032, "role": "fit"}, "L6_d384_1600": {"pred": 3.625, "role": "fit"}, "L6_d384_200": {"pred": 4.2236, "role": "fit"}, "L6_d384_400": {"pred": 3.9255, "role": "fit"}, "L6_d384_50": {"pred": 5.4748, "role": "fit"}, "L8_d512_100": {"pred": 4.5932, "role": "fit"}, "L8_d512_1600": {"pred": 3.5151, "role": "fit"}, "L8_d512_200": {"pred": 4.1136, "role": "fit"}, "L8_d512_400": {"pred": 3.8155, "role": "fit"}, "L8_d512_50": {"pred": 5.3649, "role": "fit"}}}], "checks": [{"id": "L10_d640_100", "label": "10 层 × 640", "N": 49236480, "D": 100007936, "val": 4.5809}, {"id": "L10_d640_200", "label": "10 层 × 640", "N": 49236480, "D": 200015872, "val": 4.0472}, {"id": "L6_d384_1600", "label": "6 层 × 384", "N": 10647552, "D": 1599995904, "val": 3.6946}, {"id": "L12_d768_400", "label": "12 层 × 768(124M 结构)", "N": 85056000, "D": 400031744, "val": 3.6692}, {"id": "L8_d512_1600", "label": "8 层 × 512", "N": 25220096, "D": 1599995904, "val": 3.512}, {"id": "ckpt", "label": "第 6 章 124M", "N": 85056000, "D": 10000000000.0, "val": 3.0301}], "ntot": {"L6_d384": 30357504, "L4_d192": 11634816, "L12_d768": 124475904, "L6_d256": 17879040, "L8_d512": 51500032, "L3_d128": 7165056, "L10_d640": 82086400}, "minutes": {"L6_d384": 113.82, "L4_d192": 21.67, "L12_d768": 54.57, "L6_d256": 82.36999999999999, "L8_d512": 159.85, "L3_d128": 19.48, "L10_d640": 29.32}, "nruns": {"L6_d384": 5, "L4_d192": 4, "L12_d768": 1, "L6_d256": 5, "L8_d512": 5, "L3_d128": 4, "L10_d640": 2}, "div": {"base": [{"tokens": 10027008, "val": 6.5301, "gnorm": 0.9029, "att": 6.26, "clip": 0.373}, {"tokens": 20054016, "val": 6.1304, "gnorm": 0.4359, "att": 8.45, "clip": 0.02}, {"tokens": 30015488, "val": 5.8296, "gnorm": 0.4012, "att": 18.29, "clip": 0.007}, {"tokens": 40042496, "val": 5.5985, "gnorm": 0.4373, "att": 18.39, "clip": 0.0}, {"tokens": 50069504, "val": 5.4199, "gnorm": 0.5819, "att": 18.39, "clip": 0.0}, {"tokens": 60030976, "val": 5.2767, "gnorm": 0.6656, "att": 18.62, "clip": 0.033}, {"tokens": 70057984, "val": 5.1948, "gnorm": 0.6959, "att": 19.64, "clip": 0.026}, {"tokens": 80019456, "val": 5.0567, "gnorm": 0.7046, "att": 20.7, "clip": 0.026}, {"tokens": 90046464, "val": 4.9759, "gnorm": 0.7413, "att": 21.64, "clip": 0.026}, {"tokens": 100073472, "val": 4.8693, "gnorm": 0.776, "att": 20.64, "clip": 0.02}, {"tokens": 110034944, "val": 4.7939, "gnorm": 0.818, "att": 23.25, "clip": 0.053}, {"tokens": 120061952, "val": 4.7762, "gnorm": 0.8263, "att": 24.71, "clip": 0.059}, {"tokens": 130023424, "val": 4.6945, "gnorm": 0.8, "att": 23.57, "clip": 0.02}, {"tokens": 140050432, "val": 4.6632, "gnorm": 0.7827, "att": 30.77, "clip": 0.026}, {"tokens": 150077440, "val": 4.6505, "gnorm": 0.8118, "att": 46.82, "clip": 0.078}, {"tokens": 160038912, "val": 4.6104, "gnorm": 0.8023, "att": 65.27, "clip": 0.053}, {"tokens": 170065920, "val": 4.5967, "gnorm": 0.7758, "att": 109.45, "clip": 0.007}, {"tokens": 180027392, "val": 4.5633, "gnorm": 0.8614, "att": 168.55, "clip": 0.086}, {"tokens": 190054400, "val": 4.5446, "gnorm": 0.9403, "att": 342.71, "clip": 0.288}, {"tokens": 200081408, "val": 4.5231, "gnorm": 1.1711, "att": 1037.37, "clip": 0.725}, {"tokens": 210042880, "val": 4.6453, "gnorm": 3.8672, "att": 12154.64, "clip": 1.0}, {"tokens": 220069888, "val": 5.082, "gnorm": 17.962, "att": 54902.52, "clip": 1.0}, {"tokens": 230031360, "val": 4.984, "gnorm": 18.2696, "att": 154458.16, "clip": 1.0}, {"tokens": 240058368, "val": 5.0112, "gnorm": 23.0658, "att": 346620.94, "clip": 1.0}, {"tokens": 250085376, "val": 5.0992, "gnorm": 54.7665, "att": 642996.31, "clip": 1.0}, {"tokens": 260046848, "val": 5.2148, "gnorm": 163.1162, "att": 1043133.62, "clip": 1.0}, {"tokens": 270073856, "val": 5.3847, "gnorm": 208.5751, "att": 1538593.12, "clip": 1.0}, {"tokens": 280035328, "val": 5.5446, "gnorm": 244.0368, "att": 2120478.75, "clip": 1.0}, {"tokens": 290062336, "val": 5.4617, "gnorm": 437.9529, "att": 2841168.5, "clip": 1.0}, {"tokens": 300089344, "val": 5.3899, "gnorm": 507.071, "att": 3614335.0, "clip": 1.0}, {"tokens": 310050816, "val": 5.853, "gnorm": 607.3274, "att": 4440366.0, "clip": 1.0}, {"tokens": 320077824, "val": 5.4396, "gnorm": 639.4649, "att": 5290971.0, "clip": 1.0}, {"tokens": 330039296, "val": 5.3302, "gnorm": 722.6565, "att": 6132547.5, "clip": 1.0}, {"tokens": 340066304, "val": 5.5978, "gnorm": 1062.1379, "att": 6982383.0, "clip": 1.0}, {"tokens": 350093312, "val": 5.3484, "gnorm": 833.2967, "att": 7769227.5, "clip": 1.0}, {"tokens": 360054784, "val": 5.4144, "gnorm": 1024.5755, "att": 8554295.0, "clip": 1.0}, {"tokens": 370081792, "val": 5.5367, "gnorm": 1496.3627, "att": 9329842.0, "clip": 1.0}, {"tokens": 380043264, "val": 5.466, "gnorm": 1437.0023, "att": 10070562.0, "clip": 1.0}, {"tokens": 390070272, "val": 5.5484, "gnorm": 1308.8634, "att": 10827263.0, "clip": 1.0}], "qk": [{"tokens": 10027008, "val": 6.5351, "gnorm": 0.8236, "att": 5.46, "clip": 0.32}, {"tokens": 20054016, "val": 6.1219, "gnorm": 0.4593, "att": 5.27, "clip": 0.033}, {"tokens": 30015488, "val": 5.839, "gnorm": 0.3908, "att": 5.17, "clip": 0.007}, {"tokens": 40042496, "val": 5.653, "gnorm": 0.3872, "att": 6.84, "clip": 0.0}, {"tokens": 50069504, "val": 5.4894, "gnorm": 0.437, "att": 8.63, "clip": 0.0}, {"tokens": 60030976, "val": 5.3459, "gnorm": 0.5013, "att": 11.06, "clip": 0.0}, {"tokens": 70057984, "val": 5.2375, "gnorm": 0.5107, "att": 13.62, "clip": 0.0}, {"tokens": 80019456, "val": 5.0793, "gnorm": 0.5213, "att": 14.58, "clip": 0.0}, {"tokens": 90046464, "val": 4.9876, "gnorm": 0.5366, "att": 15.32, "clip": 0.013}, {"tokens": 100073472, "val": 4.881, "gnorm": 0.5135, "att": 14.68, "clip": 0.0}, {"tokens": 110034944, "val": 4.7882, "gnorm": 0.5391, "att": 14.96, "clip": 0.0}, {"tokens": 120061952, "val": 4.7472, "gnorm": 0.5547, "att": 15.59, "clip": 0.007}, {"tokens": 130023424, "val": 4.6463, "gnorm": 0.5546, "att": 16.55, "clip": 0.0}, {"tokens": 140050432, "val": 4.606, "gnorm": 0.5407, "att": 16.94, "clip": 0.0}, {"tokens": 150077440, "val": 4.587, "gnorm": 0.5704, "att": 17.69, "clip": 0.007}, {"tokens": 160038912, "val": 4.5438, "gnorm": 0.5696, "att": 17.88, "clip": 0.007}, {"tokens": 170065920, "val": 4.5188, "gnorm": 0.5349, "att": 19.23, "clip": 0.0}, {"tokens": 180027392, "val": 4.4796, "gnorm": 0.5602, "att": 20.21, "clip": 0.007}, {"tokens": 190054400, "val": 4.4616, "gnorm": 0.5271, "att": 20.62, "clip": 0.0}, {"tokens": 200081408, "val": 4.4217, "gnorm": 0.5626, "att": 22.39, "clip": 0.0}, {"tokens": 210042880, "val": 4.4043, "gnorm": 0.5433, "att": 22.41, "clip": 0.0}, {"tokens": 220069888, "val": 4.3965, "gnorm": 0.5466, "att": 22.87, "clip": 0.007}, {"tokens": 230031360, "val": 4.3663, "gnorm": 0.5704, "att": 23.51, "clip": 0.007}, {"tokens": 240058368, "val": 4.3593, "gnorm": 0.5473, "att": 24.78, "clip": 0.0}, {"tokens": 250085376, "val": 4.3204, "gnorm": 0.5515, "att": 26.02, "clip": 0.0}, {"tokens": 260046848, "val": 4.3152, "gnorm": 0.5412, "att": 26.25, "clip": 0.0}, {"tokens": 270073856, "val": 4.303, "gnorm": 0.5461, "att": 26.37, "clip": 0.0}, {"tokens": 280035328, "val": 4.2832, "gnorm": 0.5809, "att": 26.51, "clip": 0.007}, {"tokens": 290062336, "val": 4.2779, "gnorm": 0.5456, "att": 27.42, "clip": 0.0}, {"tokens": 300089344, "val": 4.2579, "gnorm": 0.5776, "att": 27.13, "clip": 0.007}, {"tokens": 310050816, "val": 4.2482, "gnorm": 0.5582, "att": 28.72, "clip": 0.007}, {"tokens": 320077824, "val": 4.2402, "gnorm": 0.5673, "att": 28.65, "clip": 0.007}, {"tokens": 330039296, "val": 4.2234, "gnorm": 0.5565, "att": 28.77, "clip": 0.0}, {"tokens": 340066304, "val": 4.226, "gnorm": 0.5828, "att": 29.17, "clip": 0.02}, {"tokens": 350093312, "val": 4.2079, "gnorm": 0.5515, "att": 29.69, "clip": 0.0}, {"tokens": 360054784, "val": 4.2073, "gnorm": 0.5493, "att": 29.39, "clip": 0.0}, {"tokens": 370081792, "val": 4.1976, "gnorm": 0.5813, "att": 28.94, "clip": 0.013}, {"tokens": 380043264, "val": 4.192, "gnorm": 0.5673, "att": 29.78, "clip": 0.007}, {"tokens": 390070272, "val": 4.1937, "gnorm": 0.5579, "att": 29.99, "clip": 0.0}]}, "notes": {"div": "这次训练重跑时加了诊断:第 2 层注意力分数(q·k/√d)的最大值在 1.8 亿 token 时是 169,2 亿 时 1,037,训完时 1083 万。从 2 亿 token 起,裁剪前的梯度范数超过阈值 1.0,之后每一步都被裁剪,训完时是 1,309。梯度集中在这一层的 LayerNorm 和 q/k/v 投影上,其余 3 层的注意力分数最大 136。分数到这个量级,softmax 几乎只剩一个位置有权重。", "div2": "排查过程:换随机种子重跑,最终 5.06,同样先降后升;学习率减半,最低点推后,最终 4.76;加 z-loss(系数 1e-4,压输出 logit)最终 5.07,因为输出 logit 全程正常,z-loss 管不到这里。q、k 各加一个 LayerNorm 后,同样配置、同样种子训完是 <b>4.19</b>,梯度范数一直在 0.39–0.82。同一个模型只训 2 亿 token 时(学习率更早退火)没有发作,终点 4.51。L6_d256 训 16 亿 token 那次是同一个现象:第 2 层注意力分数在 8.8 亿 token 时到 26 万。Wortsman et al.(arXiv 2309.14322)把这类现象叫注意力 logit 增长,在小模型上用大学习率就能复现,qk-norm 是他们用的办法。本章的学习率按宽度设(min(3e-3, 6e-4 × 768 / 宽度)),越窄的模型学习率越大,这两个点都是窄模型配长训练。为了和第 6 章的 124M 保持同一种结构,其余训练都不加 qk-norm,这两个点不参加拟合。", "d50": "D = 5000 万只有 763 步(每步 65,536 token)。这一列里 N 从 0.6M 到 25M,loss 只差 0.80;D = 4 亿那一列差 0.91。步数太少时,大模型还没来得及发挥容量,各尺寸都卡在训练初期。这一列的点离公式最远:拟合残差绝对值的中位数是 0.027,D = 5000 万的 5 个点平均 0.046。Huber 损失会降低这类偏离点的权重,但它们仍然参加拟合。", "ab": "本页 α = 0.433、β = 0.715、E = 3.204;Chinchilla 论文(arXiv 2203.15556)式 (10)给出的是 α = 0.34、β = 0.28、E = 1.69。差别有几个来源:这里 N 只数非嵌入参数,Chinchilla 数全部参数;这里的模型比 Chinchilla 最小的模型(约 7000 万参数)还小,训练 token 也少两个数量级;数据、分词器也不同,E 是「数据 + 分词器」本身的熵,换一套就会变。β 大到 0.71,意思是数据项降得很快、很快就贴近底 E。拟合点的 D 最多 16 亿,只覆盖训练的前段,这里 loss 确实降得快;第 5 步会看到,这正是外推到 100 亿 token 时预测偏高的原因。", "ratio": "按本页的公式,C = 1e17 时最优 D/N ≈ 145,C = 1e19 时 ≈ 47。Chinchilla 的结论是每个参数约 20 个 token(按全部参数算)。差这么多,首先是 N 的口径:这批小模型的参数大部分在嵌入表里,只数非嵌入参数时 N 很小,同样的 D 除以它,比值自然大;其次这里 β 偏大(数据项降得快),公式会倾向于多给数据。本页的拟合只覆盖 0.6M–25M、5000 万–16 亿 token,把最优比外推到 1e19 FLOPs 已经远超出数据范围,只能当公式的推论看。", "ch6": "第 6 章:N = 85.1M(非嵌入)、D = 10B,C ≈ 5.1e+18 FLOPs,D/N ≈ 118。本页公式在这个 C 下的最优是 N ≈ 123.9M、D ≈ 6.9B。按公式,同样算力用最优配比,loss 是 3.360,第 6 章的配置是 3.364。差距很小;而第 5 步会看到,公式对这个 (N, D) 的预测本身就偏高 0.3,这里的比较只能当参考。另外训练更多 token 的小模型推理更便宜,很多开源模型有意远超算力最优配比去训,追求的不只是训练算力最省。", "fits": ["只用 D ≤ 4 亿的 19 个点拟合:往 D 方向外推 4 倍(16 亿)的两个点,误差 +0.043、-0.068;往 N 方向外推 3.4 倍(124M 结构,4 亿 token),误差 <b>-0.136</b>;两个方向一起外推到第 6 章的 124M(N ×3.4、D ×25),误差 <b>-0.368</b>。", "加上 16 亿 token 的两个点(21 个点):124M 的误差从 -0.368 变成 <b>-0.333</b>,只缩小了 0.03。bootstrap 90% 区间 3.191 – 3.474,没有盖住实测的 3.030。", "把 49M 和 124M 结构(4 亿 token)也放进拟合(24 个点),N 方向不用再外推;N = 85M 这一行的拟合点只到 4 亿 token,只剩 D 方向外推 25 倍。124M 的误差还有 <b>-0.239</b>。"], "honest": "三组拟合的误差方向都一样:实测比预测好,外推越远差得越多。原因在公式的形状:拟合出的 β ≈ 0.71,比 Chinchilla 的 0.28 大得多,E ≈ 3.20 比 124M 实测的 3.03 还高。拟合点的 D 最多 16 亿,都落在训练前段,loss 在这一段降得快,公式就把「降得快、很快见底」当成了全貌;而 124M 从 16 亿训到 100 亿 token,loss 还在慢慢往下走。bootstrap 只是从同样这批点里重抽,反映的是「换几个点结果会晃多少」,反映不了「这批点整体偏在训练前段」:主拟合的区间 3.19 – 3.47、全部点拟合的 3.18 – 3.44 都没盖住实测;只用 4 亿以内那组点数少、外推远,区间宽到 3.02 – 3.59,实测刚好落在下边缘。要让外推更可信,拟合点得覆盖目标 D 的更大比例、配多个随机种子,并先确认公式能预测已知的中等规模点,再往更远处推。"}, "ok": ["23 次小模型训练(5 种尺寸 × 4 档 token,较大三种加一档 16 亿),合计 6.6 小时(RTX 4090);两次发散,不参加拟合", "主拟合(21 个点):L = 3.204 + 312.4/N^0.433 + 6.347e+05/D^0.715,拟合点残差中位数 0.027", "范围附近外推准:49M · 1 亿 / 2 亿 token 误差 +0.020 / -0.040", "外推到第 6 章 124M(10B token):预测 <b>3.364</b>,实测 <b>3.030</b>;拟合点换成三组,误差 -0.37 / -0.33 / -0.24", "发散原因定位到第 2 层注意力分数涨到 1083 万;加 qk-norm 后同配置 val loss 4.19"]};
+
+const $=id=>document.getElementById(id);
+function setActiveBtn(containerId,n){
+  document.querySelectorAll('#'+containerId+' .btn').forEach((b,i)=>b.classList.toggle('primary',i===n));
+}
+const en=v=>v.toLocaleString('en-US');
+const fN=n=>n>=1e9?(n/1e9).toFixed(n>=1e10?0:1)+'B':(n>=1e6?(n/1e6).toFixed(n>=1e7?1:2).replace(/\.?0+$/,'')+'M':(n/1e3).toFixed(0)+'K');
+const F=D.fit, Lhat=(n,d)=>F.E+F.A/Math.pow(n,F.alpha)+F.B/Math.pow(d,F.beta);
+const TRAIN=D.rows.filter(r=>r.in_fit);
+const SMALL=D.rows.filter(r=>r.kind==='train'&&r.N<=D.fit.holdout_N);   // 小模型的全部训练,含发散的两次
+const SIZES=[...new Set(SMALL.map(r=>r.name))].sort((a,b)=>SMALL.find(r=>r.name===a).N-SMALL.find(r=>r.name===b).N);
+const DS=[...new Set(SMALL.map(r=>Math.round(r.D/1e6)))].sort((a,b)=>a-b);
+const pick=(name,dm)=>TRAIN.find(r=>r.name===name&&Math.round(r.D/1e6)===dm);
+const pickAny=(name,dm)=>SMALL.find(r=>r.name===name&&Math.round(r.D/1e6)===dm);
+
+/* ============ 步骤切换 ============ */
+const NSTEP=5;
+const tabs=document.querySelectorAll('.step-tab');
+const panels=[];for(let i=0;i<NSTEP;i++)panels.push($('panel'+i));
+let cur=0;
+function goto(i){
+  cur=Math.max(0,Math.min(NSTEP-1,i));
+  tabs.forEach(t=>t.classList.toggle('active',+t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active',idx===cur));
+  $('prevBtn').disabled = cur===0;
+  $('nextBtn').textContent = cur===NSTEP-1 ? '完成 🎉' : '下一步 →';
+  const hash='#step-'+(cur+1);
+  if(location.hash!==hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+$('prevBtn').addEventListener('click',()=>goto(cur-1));
+$('nextBtn').addEventListener('click',()=>{ if(cur===NSTEP-1) celebrate(); else goto(cur+1); });
+
+/* ============ 通用:对数横轴折线图 ============ */
+function chart(el,series,o){
+  const W=620,H=o.h||250,L=46,R=16,T=14,B=36;
+  const lx=v=>Math.log10(v), xs=v=>L+(lx(v)-lx(o.x0))/(lx(o.x1)-lx(o.x0))*(W-L-R);
+  const yt=v=>o.ylog?Math.log10(v):v, Y0=yt(o.y0), Y1=yt(o.y1);
+  const ys=v=>T+(1-(yt(v)-Y0)/(Y1-Y0))*(H-T-B);
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;font-family:ui-monospace,monospace">`;
+  const yticks=[]; if(o.ylog){ for(let k=Math.ceil(Y0);k<=Math.floor(Y1);k+=(o.ystep||1)) yticks.push(Math.pow(10,k)); } else { for(let v=o.y0;v<=o.y1+1e-9;v+=o.ystep) yticks.push(v); }
+  const ylab=v=>o.ylog?(v>=1e6?v/1e6+'M':v>=1e3?v/1e3+'K':String(v)):v.toFixed(o.yfix||1);
+  yticks.forEach(v=>{ s+=`<line x1="${L}" x2="${W-R}" y1="${ys(v)}" y2="${ys(v)}" stroke="#E5E2D9"/><text x="${L-6}" y="${ys(v)+4}" font-size="10.5" text-anchor="end" fill="#6B6B68">${ylab(v)}</text>`; });
+  o.xticks.forEach(v=>{ s+=`<text x="${xs(v)}" y="${H-B+15}" font-size="10.5" text-anchor="middle" fill="#6B6B68">${fN(v)}</text>`; });
+  s+=`<text x="${(L+W-R)/2}" y="${H-4}" font-size="10.5" text-anchor="middle" fill="#6B6B68">${o.xlabel}</text>`;
+  series.forEach(se=>{
+    if(se.band){ s+=`<line x1="${xs(se.x)}" x2="${xs(se.x)}" y1="${ys(Math.max(o.y0,se.lo))}" y2="${ys(Math.min(o.y1,se.hi))}" stroke="#cfc9ba" stroke-width="10" stroke-linecap="round"/>`; return; }
+    if(se.vline){ s+=`<line x1="${xs(se.vline)}" x2="${xs(se.vline)}" y1="${T}" y2="${H-B}" stroke="${se.col}" stroke-dasharray="4 4"/>`; return; }
+    const pts=se.pts.filter(p=>o.ylog?p[1]>0:(p[1]>=o.y0-0.5&&p[1]<=o.y1+0.5));
+    if(se.line!==false) s+=`<polyline fill="none" stroke="${se.col}" stroke-width="${se.w||2}" ${se.dash?'stroke-dasharray="5 4"':''} points="${pts.map(p=>xs(p[0])+','+ys(Math.max(o.y0,Math.min(o.y1,p[1])))).join(' ')}"/>`;
+    if(se.dots!==false) pts.forEach(p=>{ s+=`<circle cx="${xs(p[0])}" cy="${ys(p[1])}" r="${se.r||3}" fill="${se.hollow?'#fff':se.col}" stroke="${se.col}" stroke-width="1.6"/>`; });
+    if(se.label){ const p=pts[pts.length-1]; s+=`<text x="${xs(p[0])+6}" y="${ys(p[1])+4}" font-size="10.5" fill="${se.col}">${se.label}</text>`; }
+  });
+  s+='</svg>'; $(el).innerHTML=s;
+}
+const DCOL=['#B9B5AA','#8FA7D9','#3a63c0','#1f3a7a','#0b1a3d'];
+
+/* ============ STEP 1 ============ */
+let nIdx=Math.min(3,SIZES.length-1);
+$('nBtns').innerHTML=SIZES.map(n=>`<button class="btn">N = ${fN(SMALL.find(r=>r.name===n).N)}</button>`).join('');
+document.querySelectorAll('#nBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{nIdx=i;renderCurves();}));
+function renderCurves(){
+  setActiveBtn('nBtns',nIdx);
+  const name=SIZES[nIdx], all=DS.map(d=>pickAny(name,d)).filter(Boolean), runs=all.filter(r=>r.in_fit);
+  const col=r=>r.in_fit?DCOL[DS.indexOf(Math.round(r.D/1e6))]:'#9a3a22';
+  chart('curveSvg',all.map(r=>({pts:r.curve.map(c=>[c.tokens,c.val]),col:col(r),dash:!r.in_fit,dots:r.curve.length<15,r:2.5,label:r.in_fit?r.val.toFixed(2):'发散'})),
+    {x0:5e6,x1:2.5e9,y0:3.5,y1:8,ystep:0.5,xticks:[1e7,3e7,1e8,3e8,1e9],xlabel:'已训 token 数(对数)· 纵轴 val loss'});
+  $('curveLeg').innerHTML=all.map(r=>`<span><i style="background:${col(r)}"></i>D = ${fN(r.D)}${r.in_fit?'':'(发散)'}</span>`).join('');
+  const r0=runs[0];
+  $('s1Shape').textContent=`${r0.n_layer} 层 × ${r0.n_embd}`;
+  $('s1N').textContent=fN(r0.N); $('s1Tot').textContent=fN(D.ntot[name]);
+  $('s1Time').textContent=D.minutes[name].toFixed(0)+' 分钟'; $('s1TimeL').textContent=`${D.nruns[name]} 次训练合计用时`;
+  const a=runs[runs.length-1], b=runs.find(r=>Math.round(r.D/1e6)===100);
+  const mid=a.curve.reduce((best,c)=>Math.abs(c.tokens-1e8)<Math.abs(best.tokens-1e8)?c:best);
+  $('s1Note').innerHTML=`同一个模型,D 从 ${fN(r0.D)} 到 ${fN(a.D)},最终 val loss 从 ${r0.val.toFixed(3)} 降到 <b>${a.val.toFixed(3)}</b>。`+
+    (b?`训 ${fN(a.D)} 那次在第 ${fN(mid.tokens)} token 时是 ${mid.val.toFixed(3)},单独训 1 亿并退火到底的那次是 ${b.val.toFixed(3)}。`:'');
+}
+renderCurves();
+/* 发散诊断:原结构 vs qk-norm */
+let divIdx=1;
+document.querySelectorAll('#divBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{divIdx=i;renderDiv();}));
+function renderDiv(){
+  setActiveBtn('divBtns',divIdx);
+  const key=['val','att','gnorm'][divIdx];
+  const se=[['base','#9a3a22'],['qk','#3f7d63']].map(([k,c])=>({pts:D.div[k].map(p=>[p.tokens,p[key]]),col:c,r:2}));
+  const o=[{y0:4,y1:7,ystep:0.5,yfix:1},{y0:1,y1:1e8,ylog:1,ystep:1},{y0:0.1,y1:1e4,ylog:1,ystep:1}][divIdx];
+  if(divIdx===2) se.push({pts:[[7e6,1],[4.5e8,1]],col:'#6B6B68',dash:1,dots:false,w:1,label:'裁剪阈值 1.0'});
+  chart('divSvg',se,{x0:7e6,x1:4.5e8,xticks:[1e7,3e7,1e8,3e8],xlabel:'已训 token 数(对数)'+(divIdx?' · 纵轴对数':''),h:230,...o});
+}
+renderDiv();
+$('divText').innerHTML=D.notes.div; $('divText2').innerHTML=D.notes.div2;
+$('embShare').textContent=(()=>{const r=TRAIN.find(r=>r.n_embd===128);return r?((1-r.N/D.ntot[r.name])*100).toFixed(0)+'%':'–';})();
+
+/* ============ STEP 2 ============ */
+let hmSel={n:SIZES[2],d:DS[1]};
+const allV=TRAIN.map(r=>r.val), vmin=Math.min(...allV), vmax=Math.max(...allV);
+function heat(v){ const t=(v-vmin)/(vmax-vmin); const a=[58,99,192], b=[242,217,206]; const c=a.map((x,i)=>Math.round(x+(b[i]-x)*t)); return `rgb(${c.join(',')})`; }
+function renderHM(){
+  let h=`<thead><tr><th>N \\ D</th>${DS.map(d=>`<th>${fN(d*1e6)}</th>`).join('')}</tr></thead><tbody>`;
+  SIZES.slice().reverse().forEach(n=>{
+    const N=SMALL.find(r=>r.name===n).N;
+    h+=`<tr><th>${fN(N)}</th>`+DS.map(d=>{const r=pick(n,d), x=pickAny(n,d);
+      if(!r) return x?`<td style="background:var(--bad-soft);color:var(--bad);cursor:default;font-size:11px">${x.val.toFixed(2)}<br>发散</td>`:'<td style="cursor:default;color:#cfc9ba">–</td>';
+      const t=(r.val-vmin)/(vmax-vmin);
+      return `<td class="${n===hmSel.n&&d===hmSel.d?'sel':''}" data-n="${n}" data-d="${d}" style="background:${heat(r.val)};color:${t<0.55?'#fff':'#1A1A18'}">${r.val.toFixed(3)}</td>`;}).join('')+'</tr>';
+  });
+  $('hmTable').innerHTML=h+'</tbody>';
+  document.querySelectorAll('#hmTable td[data-n]').forEach(td=>td.addEventListener('click',()=>{hmSel={n:td.dataset.n,d:+td.dataset.d};renderHM();}));
+  const rowR=DS.map(d=>pick(hmSel.n,d)).filter(Boolean), colR=SIZES.map(n=>pick(n,hmSel.d)).filter(Boolean);
+  const W=620,H=230,L=46,R=16,T=14,B=36;
+  // 两条线共用纵轴,各自的横轴都按"相对第一个点的倍数"(对数)画
+  const series=[{pts:rowR.map(r=>[r.D/rowR[0].D,r.val]),col:'#3a63c0'},{pts:colR.map(r=>[r.N/colR[0].N,r.val]),col:'#3f7d63'}];
+  chart('sliceSvg',series,{x0:1,x1:50,y0:3,y1:6.5,ystep:0.5,xticks:[1,2,4,8,16,32],xlabel:'相对最小那档的倍数(对数)· 纵轴 val loss',h:230});
+  const rl=rowR[rowR.length-1], cl=colR[colR.length-1];
+  $('s2Note').innerHTML=`N = ${fN(SMALL.find(r=>r.name===hmSel.n).N)} 这一行,D 从 ${fN(rowR[0].D)} 到 ${fN(rl.D)}(${Math.round(rl.D/rowR[0].D)} 倍),loss 变化 <b>${(rl.val-rowR[0].val).toFixed(3)}</b>;`+
+    (colR.length>1?`D = ${fN(hmSel.d*1e6)} 这一列,N 从 ${fN(colR[0].N)} 到 ${fN(cl.N)}(${(cl.N/colR[0].N).toFixed(0)} 倍),loss 变化 <b>${(cl.val-colR[0].val).toFixed(3)}</b>。`:`D = ${fN(hmSel.d*1e6)} 这一列只有一个拟合点。`);
+}
+renderHM();
+$('d50Dig').innerHTML=D.notes.d50;
+
+/* ============ STEP 3 ============ */
+$('fitFormula').innerHTML=`L = <span class="t" style="background:#ECEAE2">${F.E.toFixed(3)}</span> + <span class="t" style="background:var(--e1s)">${F.A.toPrecision(3)} / N<sup>${F.alpha.toFixed(3)}</sup></span> + <span class="t" style="background:var(--e2s)">${F.B.toPrecision(3)} / D<sup>${F.beta.toFixed(3)}</sup></span>`;
+function renderFit(){
+  const n=Math.pow(10,+$('nR').value), d=Math.pow(10,+$('dR').value);
+  $('nV').textContent=fN(n); $('dV').textContent=fN(d);
+  const np=F.A/Math.pow(n,F.alpha), dp=F.B/Math.pow(d,F.beta), L=F.E+np+dp, tot=8;
+  $('fitStack').innerHTML=`<div style="width:${F.E/tot*100}%;background:#6B6B68">E ${F.E.toFixed(2)}</div><div style="width:${np/tot*100}%;background:var(--e1)">${np>0.25?np.toFixed(2):''}</div><div style="width:${dp/tot*100}%;background:var(--e2)">${dp>0.25?dp.toFixed(2):''}</div>`;
+  $('s3L').textContent=L.toFixed(3); $('s3Np').textContent=np.toFixed(3); $('s3Dp').textContent=dp.toFixed(3);
+  let best=null; D.rows.filter(r=>r.role!=='excluded').forEach(r=>{const dist=Math.abs(Math.log10(r.N/n))+Math.abs(Math.log10(r.D/d)); if(!best||dist<best.dist) best={r,dist};});
+  $('s3Near').textContent=best.dist<0.08?`${best.r.val.toFixed(3)}(预测 ${best.r.pred.toFixed(3)})`:'附近没有';
+  $('s3Note').innerHTML=np>dp?`现在模型项(${np.toFixed(3)})比数据项(${dp.toFixed(3)})大:再加数据收益小,该加参数。`:`现在数据项(${dp.toFixed(3)})比模型项(${np.toFixed(3)})大:该多训 token。`;
+}
+['nR','dR'].forEach(id=>$(id).addEventListener('input',renderFit));
+renderFit();
+$('abDig').innerHTML=D.notes.ab;
+
+/* ============ STEP 4 ============ */
+function renderIso(){
+  const C=Math.pow(10,+$('cR').value);
+  $('cV').textContent=C.toExponential(0).replace('e+','e');
+  const Ns=[]; for(let e=5;e<=10.5;e+=0.05) Ns.push(Math.pow(10,e));
+  const pts=Ns.map(n=>[n,Lhat(n,C/6/n)]);
+  const nopt=F.G*Math.pow(C/6,F.beta/(F.alpha+F.beta)), dopt=C/6/nopt, lopt=Lhat(nopt,dopt);
+  const y0=Math.max(2,Math.floor((lopt-0.3)*2)/2), y1=y0+3;
+  chart('isoSvg',[{pts,col:'#D97757',dots:false},{vline:nopt,col:'#3a63c0'},{pts:[[nopt,lopt]],col:'#3a63c0',line:false,r:5}],
+    {x0:1e5,x1:3e10,y0,y1,ystep:0.5,xticks:[1e6,1e7,1e8,1e9,1e10],xlabel:`N(对数);D = C / 6N · 纵轴预测 loss`,h:250});
+  $('s4N').textContent=fN(nopt); $('s4D').textContent=fN(dopt); $('s4R').textContent=(dopt/nopt).toFixed(0); $('s4L').textContent=lopt.toFixed(3);
+  $('s4Note').innerHTML=`C = ${C.toExponential(1)} FLOPs:最优约 N = <b>${fN(nopt)}</b>、D = <b>${fN(dopt)}</b>。比它小的模型数据项占主导,比它大的模型训不到足够 token。C 每乘 10,最优 N 乘 10<sup>β/(α+β)</sup> = ${Math.pow(10,F.beta/(F.alpha+F.beta)).toFixed(2)},最优 D 乘 ${Math.pow(10,F.alpha/(F.alpha+F.beta)).toFixed(2)}。`;
+}
+$('cR').addEventListener('input',renderIso);
+renderIso();
+$('ratioDig').innerHTML=D.notes.ratio;
+$('ch6Dig').innerHTML=D.notes.ch6;
+
+/* ============ STEP 5 ============ */
+let fSel=1, hSel=D.checks.length-1;
+$('fitBtns').innerHTML=D.fits.map(f=>`<button class="btn">${f.label} · ${f.n_fit} 点</button>`).join('');
+document.querySelectorAll('#fitBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{fSel=i;renderHold();}));
+const reach=(f,c)=>{const n=c.N/f.maxN, d=c.D/f.maxD, t=[]; if(n>1.05) t.push('N ×'+n.toFixed(1)); if(d>1.05) t.push('D ×'+d.toFixed(0)); return t.length?t.join('、'):'范围内';};
+function renderHold(){
+  setActiveBtn('fitBtns',fSel);
+  const f=D.fits[fSel], Lf=(n,d)=>f.E+f.A/Math.pow(n,f.alpha)+f.B/Math.pow(d,f.beta);
+  $('fitFormula5').innerHTML=`L = ${f.E.toFixed(3)} + ${f.A.toPrecision(3)} / N<sup>${f.alpha.toFixed(3)}</sup> + ${f.B.toPrecision(3)} / D<sup>${f.beta.toFixed(3)}</sup>`;
+  $('holdTable').innerHTML=`<thead><tr><th>检验点</th><th>N</th><th>D</th><th>超出拟合范围</th><th>实测</th><th>预测</th><th>实测 − 预测</th><th>bootstrap 90%</th></tr></thead><tbody>`+
+    D.checks.map((c,i)=>{const p=f.pts[c.id], inFit=p.role==='fit';
+      return `<tr class="${i===hSel?'hl':''}" data-i="${i}" style="cursor:pointer"><td>${c.label}</td><td>${fN(c.N)}</td><td>${fN(c.D)}</td><td>${inFit?'–':reach(f,c)}</td><td><b>${c.val.toFixed(3)}</b></td>`+
+        (inFit?`<td colspan="3" style="text-align:center;color:#6B6B68">这组拟合里参加了拟合</td>`:
+        `<td>${p.pred.toFixed(3)}</td><td style="color:${Math.abs(c.val-p.pred)>0.1?'#9a3a22':'#1A1A18'}">${(c.val-p.pred>=0?'+':'')+(c.val-p.pred).toFixed(3)}</td><td>${p.lo!==undefined?`${p.lo.toFixed(3)} – ${p.hi.toFixed(3)}`:'–'}</td>`)+'</tr>';}).join('')+'</tbody>';
+  document.querySelectorAll('#holdTable tr[data-i]').forEach(tr=>tr.addEventListener('click',()=>{hSel=+tr.dataset.i;renderHold();}));
+  // 误差条:横向排开,零线居中
+  const W=620,H=190,L=46,R=16,T=12,B=40, cs=D.checks, bw=(W-L-R)/cs.length;
+  const ys=v=>T+(1-(v+0.45)/0.6)*(H-T-B);
+  let sv=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;font-family:ui-monospace,monospace">`;
+  [-0.4,-0.3,-0.2,-0.1,0,0.1].forEach(v=>{sv+=`<line x1="${L}" x2="${W-R}" y1="${ys(v)}" y2="${ys(v)}" stroke="${v===0?'#6B6B68':'#E5E2D9'}"/><text x="${L-6}" y="${ys(v)+4}" font-size="10.5" text-anchor="end" fill="#6B6B68">${v.toFixed(1)}</text>`;});
+  cs.forEach((c,i)=>{const p=f.pts[c.id], x=L+i*bw+bw*0.2, w=bw*0.6;
+    sv+=`<text x="${L+i*bw+bw/2}" y="${H-B+14}" font-size="10" text-anchor="middle" fill="#6B6B68">${c.id==='ckpt'?'124M · 10B':fN(c.N)+' · '+fN(c.D)}</text>`;
+    if(p.role==='fit'){ sv+=`<text x="${L+i*bw+bw/2}" y="${ys(0)-6}" font-size="10" text-anchor="middle" fill="#6B6B68">参加拟合</text>`; return; }
+    const m=c.val-p.pred, y=Math.min(ys(0),ys(m)), h=Math.abs(ys(m)-ys(0));
+    sv+=`<rect x="${x}" y="${y}" width="${w}" height="${Math.max(1,h)}" rx="3" fill="${i===hSel?'#D97757':Math.abs(m)>0.1?'#c98a74':'#b9b5aa'}"/><text x="${x+w/2}" y="${m<0?ys(m)+12:ys(m)-4}" font-size="10.5" text-anchor="middle" fill="#1A1A18">${(m>=0?'+':'')+m.toFixed(2)}</text>`;});
+  sv+=`<text x="${(L+W-R)/2}" y="${H-6}" font-size="10.5" text-anchor="middle" fill="#6B6B68">按离拟合范围的远近从左到右排</text></svg>`;
+  $('missSvg').innerHTML=sv;
+  // 选中的一行:公式沿 D 的预测曲线
+  const c=D.checks[hSel], p=f.pts[c.id];
+  const ds=[]; for(let e=7.5;e<=10.3;e+=0.05) ds.push(Math.pow(10,e));
+  chart('holdSvg',[
+    {pts:ds.map(d=>[d,Lf(c.N,d)]),col:'#D97757',dots:false},
+    ...(p.lo!==undefined?[{band:1,x:c.D,lo:p.lo,hi:p.hi}]:[]),
+    {pts:[[c.D,c.val]],col:'#1A1A18',line:false,r:5},
+    {pts:[[c.D,p.pred]],col:'#D97757',line:false,r:5,hollow:1},
+  ],{x0:3e7,x1:2e10,y0:2.5,y1:5.5,ystep:0.5,xticks:[1e8,1e9,1e10],xlabel:`D(对数)· 橙线:这组公式在 N = ${fN(c.N)} 下的预测 · 黑点:实测 · 空心:预测 · 灰条:bootstrap 90%`});
+  $('s5Note').innerHTML=D.notes.fits[fSel];
+}
+renderHold();
+$('honestDig').innerHTML=D.notes.honest;
+$('okList').innerHTML=D.ok.map(t=>`<li><span class="ck">✓</span><div>${t}</div></li>`).join('');
+
+/* ============ 名词气泡 ============ */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent, def=el.dataset.def||'', key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def+(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8; if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw; if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el)); el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* ============ 通关庆祝 ============ */
+function celebrate(){
+  $('congrats').classList.add('show');
+  const cv=$('confetti'); cv.style.display='block';
+  const ctx=cv.getContext('2d'); cv.width=innerWidth; cv.height=innerHeight;
+  const COL=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const ps=[];for(let i=0;i<150;i++)ps.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    vx:(Math.random()-0.5)*3,vy:2+Math.random()*4,s:5+Math.random()*7,c:COL[i%COL.length],a:Math.random()*6.28,va:(Math.random()-0.5)*0.3});
+  let t0=null;
+  function frame(ts){ if(!t0)t0=ts; const el=ts-t0;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.04;p.a+=p.va;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.a);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.6);ctx.restore();});
+    if(el<3400) requestAnimationFrame(frame); else { ctx.clearRect(0,0,cv.width,cv.height); cv.style.display='none'; }
+  }
+  requestAnimationFrame(frame);
+  $('congrats').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ============ 初始化:深链 ============ */
+const m=/^#step-(\d+)$/.exec(location.hash);
+goto(m?parseInt(m[1],10)-1:0);
+window.addEventListener('hashchange',()=>{const mm=/^#step-(\d+)$/.exec(location.hash);goto(mm?parseInt(mm[1],10)-1:0);});
+
+</script>
+<!--site-copyright-->
+<footer style="max-width:960px;margin:56px auto 0;padding:18px 24px 44px;border-top:1px solid var(--border);text-align:center;font-size:12px;color:var(--ink2);line-height:1.7">
+  © 2026 <a href="https://fim.ai" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">FIM Labs</a> · 从零手写大语言模型 · MIT License
+</footer>
+</body>
+</html>

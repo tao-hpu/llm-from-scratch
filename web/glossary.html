@@ -31,7 +31,7 @@
   body{background:var(--bg);color:var(--ink);
     font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     line-height:1.7;-webkit-font-smoothing:antialiased;}
-  .wrap{max-width:880px;margin:0 auto;padding:32px 24px 90px;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 24px 90px;}
 
   .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
     font-family:var(--mono);font-size:13px;color:var(--ink2);
@@ -110,6 +110,7 @@
     <a href="#rope">RoPE</a><a href="#rmsnorm">RMSNorm</a><a href="#swiglu">SwiGLU</a><a href="#gqa">GQA</a><a href="#muon">Muon</a>
     <a href="#linear-attention">线性注意力</a><a href="#delta-rule">delta rule</a><a href="#gated-deltanet">Gated DeltaNet</a><a href="#hybrid-attention">混合注意力 3:1</a><a href="#sparse-attention">稀疏注意力</a><a href="#nsa">NSA</a><a href="#sliding-window">滑窗注意力</a><a href="#lightning-indexer">lightning indexer</a><a href="#ngram-memory">N-gram 查表记忆</a><a href="#ngram-hash">n-gram 哈希 / 撞行</a><a href="#memory-gate">记忆门控</a><a href="#overfitting">过拟合</a><a href="#host-offload">表放主机内存</a><a href="#ple">PLE</a><a href="#speculative-decoding">投机解码</a><a href="#mtp">MTP 多 token 预测</a>
     <a href="#quantization">量化</a><a href="#quant-scale">scale / 分组</a><a href="#bpw">bpw</a><a href="#outlier">离群值</a><a href="#fake-quant">假量化</a><a href="#fp4">FP4 · E2M1</a><a href="#q4-k">Q4_K</a><a href="#nvfp4">NVFP4</a><a href="#mxfp4">MXFP4</a>
+    <a href="#byte-level-bpe">字节级 BPE</a><a href="#bpe-merges">合并表</a><a href="#pretokenize">预切分</a><a href="#bytes-per-token">每 token 字节数</a><a href="#online-softmax">online softmax</a><a href="#triton">Triton</a><a href="#scaling-law">scaling law</a><a href="#compute-optimal">算力最优</a><a href="#bootstrap">bootstrap</a><a href="#qk-norm">qk-norm</a><a href="#rlvr">RLVR</a><a href="#grpo">GRPO</a><a href="#verifier">判分器</a><a href="#advantage">优势</a><a href="#pass-at-k">pass@k</a>
     <a href="#attention-paper">Attention Is All You Need</a>
   </div>
 
@@ -137,7 +138,7 @@
   <div class="gentry" id="tokenizer">
     <h3>分词器 <span class="en">tokenizer</span></h3>
     <p>把文本和数字互相转换的工具:<code>encode</code> 把字符串变成整数 id 序列,<code>decode</code> 反过来。
-    本项目用最简单的"字符级"切分 —— 每个字符一个 id。</p>
+    第 1–4 章用最简单的"字符级"切分 —— 每个字符一个 id;第 6 章起用 GPT-2 的 <a href="#bpe" style="color:var(--accent)">BPE</a>(tiktoken);第 18 章从零训了一个字节级 BPE。</p>
   </div>
 
   <div class="gentry" id="default">
@@ -380,6 +381,7 @@
   <div class="gentry" id="bpe">
     <h3>BPE <span class="en">子词分词 · Byte-Pair Encoding</span></h3>
     <p>把文本切成<b>子词</b>单元的分词法,介于<a href="#tokenizer" style="color:var(--accent)">字符级</a>和整词级之间。GPT-2 的 BPE 词表有 <b>50257</b> 个 token —— 本项目 124M 复现就用它(代码里向上取整到 50304,凑 128 的倍数更省 GPU)。</p>
+    <p>训练方法:从单个字符(或字节)出发,反复统计相邻两个 token 的出现次数,把最多的那一对合并成新 token,直到词表够大。第 18 章从零实现了一遍,见 <a href="#byte-level-bpe" style="color:var(--accent)">字节级 BPE</a>。</p>
   </div>
 
   <div class="gentry" id="fineweb">
@@ -405,6 +407,8 @@
   <div class="gentry" id="flash-attention">
     <h3>Flash-Attention <span class="en">省显存的注意力实现</span></h3>
     <p>把<a href="#self-attention" style="color:var(--accent)">注意力</a>算得<b>又快又省显存</b>的实现(<code>F.scaled_dot_product_attention</code>):不显式构造 T×T 注意力矩阵,边算边融合。和普通注意力<b>数学等价</b>,只是更高效。</p>
+    <p>做法:把 Q、K、V 切成块,一块 Q 在片上 SRAM 里依次和每块 K/V 算分数、用 <a href="#online-softmax" style="color:var(--accent)">online softmax</a> 累加输出,T×T 的分数矩阵从不写回显存。
+    第 19 章用 <a href="#triton" style="color:var(--accent)">Triton</a> 手写了前向 kernel,换进第 6 章的 124M 后 val loss 与 SDPA 一致。出处 Dao et al., arXiv 2205.14135;FlashAttention-2 见 arXiv 2307.08691。</p>
   </div>
 
   <div class="sec-h"><span class="sh-num">F</span>后训练与对齐(Phase 2)</div>
@@ -461,14 +465,14 @@
     <p>一种<b>不走强化学习</b>的 <a href="#preference-alignment" style="color:var(--accent)">偏好对齐</a>方法:把 RLHF 的目标推成闭式解,
     直接在"chosen 好 / rejected 差"的偏好对上做一个<b>类监督损失</b>,拉高 chosen、压低 rejected。
     <b>不需要奖励模型、不需要在线采样、没有 RL 循环</b>,单机就能跑。它<b>不是 <a href="#rlhf" style="color:var(--accent)">PPO</a> 的变体</b>,
-    而是和 RLHF 平行的另一条路;卖点是"不用 RL 那套笨重机器也能拿到 RLHF 的效果"。本项目偏好对齐只做 DPO(<code>08_dpo.py</code>)。</p>
+    而是和 RLHF 平行的另一条路;卖点是"不用 RL 那套笨重机器也能拿到 RLHF 的效果"。本项目偏好对齐只做 DPO(<code>08_dpo.py</code>);第 21 章把离线 DPO 放进和 SFT、GRPO 的同台对照。</p>
   </div>
 
   <div class="gentry" id="rlhf">
     <h3>RLHF / PPO <span class="en">Reinforcement Learning from Human Feedback</span></h3>
     <p>用<b>强化学习</b>做 <a href="#preference-alignment" style="color:var(--accent)">偏好对齐</a>:先用偏好数据训一个<b>奖励模型</b>给回答打分,
     再用 <b>PPO</b>(一种 RL 算法)让模型<b>最大化奖励</b>。要在线采样 rollout、要价值网络,工程量比 <a href="#dpo" style="color:var(--accent)">DPO</a> 大数倍。
-    它和 DPO 是实现同一目标的两条路(<b>RLHF 走 RL,DPO 不走</b>)。本项目只在白皮书里讲原理,<b>不写成脚本</b>。</p>
+    它和 DPO 是实现同一目标的两条路(<b>RLHF 走 RL,DPO 不走</b>)。本项目没有实现 RLHF / PPO;第 21 章实现了同属强化学习的 <a href="#grpo" style="color:var(--accent)">GRPO</a>,奖励来自<a href="#verifier" style="color:var(--accent)">判分器</a>而不是奖励模型。</p>
   </div>
 
   <!-- ============ MoE 与稀疏激活 ============ -->
@@ -807,6 +811,113 @@
     每 32 个值共享一个 8 位 E8M0 scale,E8M0 只能表示 2 的整数次幂。每权重 4 + 8/32 = <b>4.25 位</b>。
     因为 scale 只能是 2 的幂,块内最大值除以 scale 后落在 4 到 8 之间,超过 6 的部分被截断。
     第 17 章在 124M 上实测 val loss 3.1030,比 <a href="#nvfp4" style="color:var(--accent)">NVFP4</a> 多 0.039。</p>
+  </div>
+
+  <!-- ============ 补齐全链路 ============ -->
+  <div class="sec-h"><span class="sh-num">K</span>补齐全链路(Phase 5)</div>
+
+  <div class="gentry" id="byte-level-bpe">
+    <h3>字节级 BPE <span class="en">byte-level BPE</span></h3>
+    <p>初始词表是 256 个字节的 <a href="#bpe" style="color:var(--accent)">BPE</a>:文本先按 UTF-8 编成字节,再反复把出现最多的相邻一对合并成新 token。
+    任何字符串都能编码,不需要"未知字符";代价是中文等每字 3 字节的文字初始序列长,要靠合并压回来。GPT-2 论文 §2.2 提出这一做法。</p>
+    <p>第 18 章 <code>phase5-fullstack/16_bpe.py</code> 在 8 MB FineWeb-Edu 上训到 16,384 词表(16,128 次合并,纯 Python 约 2 分钟),
+    1 MB 测试语料每 token 4.252 字节,GPT-2 的 50,257 词表是 4.622。</p>
+  </div>
+
+  <div class="gentry" id="bpe-merges">
+    <h3>合并表 <span class="en">BPE merges</span></h3>
+    <p>BPE 训练的全部产物:按先后顺序记下的每一次合并,第 i 条合并产生 id 为 256 + i 的新 token。
+    编码新文本时,在每一段里反复找"合并表里排得最靠前"的相邻对合掉,直到没有能合的;解码是把每个 token 查回它代表的字节拼起来。
+    只用合并表的前 k 条,就得到一个 256 + k 的小词表(第 18 章 STEP 4 的扫描就是这样做的)。</p>
+  </div>
+
+  <div class="gentry" id="pretokenize">
+    <h3>预切分 <span class="en">pre-tokenization</span></h3>
+    <p>BPE 合并前先用规则把文本切成小段,合并不跨段。GPT-2 的正则按缩写('s 't …)、字母串、数字串、其他符号、空白分类切,
+    所以 <code>dog.</code> <code>dog!</code> 里的 <code>dog</code> 是同一个 token。</p>
+    <p>第 18 章对照:同样 16,128 次合并,只按空格切时词表里有 <b>2,279</b> 个字母和标点粘在一起的 token(如 <code>s,</code> <code>ation.</code>),
+    GPT-2 正则下只有 7 个(全是缩写);只按空格切的压缩率高 3.8%。</p>
+  </div>
+
+  <div class="gentry" id="bytes-per-token">
+    <h3>每 token 字节数 <span class="en">bytes per token · 压缩率</span></h3>
+    <p>一段文本的 UTF-8 字节数除以编码后的 token 数。越大,一个 token 平均代表的文本越多,同样 1024 的上下文能装更多内容,训练同样多文本需要的步数也越少。
+    它依赖训练语料:第 18 章用英文语料训出的分词器,中文例句每 token 只有 1 个字节(一个汉字都没合并)。</p>
+  </div>
+
+  <div class="gentry" id="online-softmax">
+    <h3>online softmax <span class="en">分段计算 softmax</span></h3>
+    <p>把一行数分成几段依次读,只记到目前为止的最大值 m 和按 m 算的指数和 l;新的一段带来更大的最大值时,之前的 l(以及累加中的输出)乘 exp(m_旧 − m_新) 缩回去。
+    读完一整行,结果与一次算完的 <a href="#softmax" style="color:var(--accent)">softmax</a> 完全相同,不是近似。
+    出处 Milakov & Gimelshein, arXiv 1805.02867;它是 <a href="#flash-attention" style="color:var(--accent)">FlashAttention</a> 能分块的前提。</p>
+  </div>
+
+  <div class="gentry" id="triton">
+    <h3>Triton <span class="en">GPU kernel 语言</span></h3>
+    <p>OpenAI 开源的 GPU 编程语言,写在 Python 里、按"块"描述计算:<code>tl.load</code> 读一块数据到片上,<code>tl.dot</code> 做块间矩阵乘,
+    线程分配、共享内存和流水由编译器决定。PyTorch 的 <code>torch.compile</code> 在 GPU 上生成的也是 Triton kernel。
+    第 19 章 <code>17_flash_attn.py</code> 的 <code>_flash_fwd</code> 用约 30 行 Triton 写了 FlashAttention 前向。</p>
+  </div>
+
+  <div class="gentry" id="scaling-law">
+    <h3>Scaling law <span class="en">规模定律</span></h3>
+    <p>模型最终 loss 随参数量 N 和训练 token 数 D 按幂律下降的经验规律。Chinchilla(Hoffmann et al., arXiv 2203.15556)用的形式是
+    <code>L(N, D) = E + A/N^α + B/D^β</code>:E 是数据本身降不下去的部分,另两项分别是模型太小、数据太少欠下的账。
+    做法是训一批小模型拟合系数,再外推到大模型。Kaplan et al.(arXiv 2001.08361)只数非嵌入参数,Chinchilla 数全部参数,两者的系数不能直接互换。</p>
+    <p>第 20 章 <code>18_scaling.py</code> 用 21 个 0.6M–25M 小模型的训练终点拟合,外推第 6 章 124M 训 10B token 的 loss:预测 3.36,实测 3.03。拟合点的 D 最多 16 亿,外推越远,预测偏高越多。</p>
+  </div>
+
+  <div class="gentry" id="compute-optimal">
+    <h3>算力最优 <span class="en">compute-optimal</span></h3>
+    <p>训练算力约 C ≈ 6·N·D(每个 token 前向 2N、反向 4N 次浮点运算)。C 固定时,让预测 loss 最小的那组 (N, D) 就是算力最优配比。
+    由 L(N, D) 求导可得 N_opt ∝ C<sup>β/(α+β)</sup>、D_opt ∝ C<sup>α/(α+β)</sup>。Chinchilla 的结论是 N 与 D 大致同比例增长,约每个参数 20 个 token。
+    只看训练算力最省;推理成本也要算的话,常会刻意用更小的模型训更多 token。</p>
+  </div>
+
+  <div class="gentry" id="bootstrap">
+    <h3>bootstrap <span class="en">自助重抽样</span></h3>
+    <p>从 n 个数据点里有放回地随机抽 n 个(有的点被抽到多次,有的没被抽到),用这组点重新拟合,重复几百次,看结果的分布。
+    数据点少时,它能说明一个拟合值有多不稳定。第 20 章对 21 个拟合点做了 200 次,给出外推值的 90% 范围。
+    它只反映「换几个点结果会晃多少」;如果全部拟合点都偏在同一侧(比如都只覆盖训练前段),区间会很窄,却盖不住真实值,第 20 章主拟合对 124M 的外推就是这样。</p>
+  </div>
+
+  <div class="gentry" id="qk-norm">
+    <h3>qk-norm <span class="en">query-key normalization</span></h3>
+    <p>算注意力分数之前,先对每个头的 q、k 各做一次 LayerNorm。不加时,训练中 q、k 的量级可能越长越大,注意力分数(q·k/√d)随之失控,
+    softmax 塌到只看一个位置,梯度暴涨,loss 回升,这叫注意力 logit 增长(Wortsman et al., arXiv 2309.14322)。
+    第 20 章里 1.8M 参数的模型训 4 亿 token 时,第 2 层注意力分数涨到约 1000 万;加 qk-norm 后同配置 val loss 从 4.95 降到 4.19。</p>
+  </div>
+
+  <div class="gentry" id="rlvr">
+    <h3>RLVR <span class="en">Reinforcement Learning with Verifiable Rewards</span></h3>
+    <p>奖励来自能自动判对错的程序(对最终答案、跑单元测试)的强化学习。和 <a href="#rlhf" style="color:var(--accent)">RLHF</a> 的区别在奖励从哪来:RLHF 用人类偏好训出的奖励模型打分,
+    RLVR 用<a href="#verifier" style="color:var(--accent)">判分器</a>,不需要标注也不会被"讨好"奖励模型。DeepSeek-R1 的推理能力主要靠这类训练得到。
+    第 21 章用它教 124M 做两位数加法。</p>
+  </div>
+
+  <div class="gentry" id="grpo">
+    <h3>GRPO <span class="en">Group Relative Policy Optimization · 组相对策略优化</span></h3>
+    <p>DeepSeekMath(Shao et al., arXiv 2402.03300)提出的 RL 算法:同一道题采样 G 个回答,用组内平均奖励当基线、组内标准差归一化,
+    得到每个回答的<a href="#advantage" style="color:var(--accent)">优势</a>;loss = −A · log π(回答) + β · KL(π ‖ π_ref)。
+    和 PPO 比省掉了价值网络(critic)。论文每题采 64 个,KL 系数 0.04。第 21 章 <code>19_grpo.py</code> 的 <code>run_grpo</code> 是它的最小实现。</p>
+  </div>
+
+  <div class="gentry" id="verifier">
+    <h3>判分器 <span class="en">verifier</span></h3>
+    <p>检查模型回答对不对的程序,只输出分数,不给出正确答案。第 21 章的判分器是一行比较:回答去掉空格后是否等于正确的和。
+    判分器能判的东西决定了 RLVR 能教什么:判分器看不到的行为(比如格式之外的胡言乱语),奖励也管不到。</p>
+  </div>
+
+  <div class="gentry" id="advantage">
+    <h3>优势 <span class="en">advantage</span></h3>
+    <p>一个回答比基线好多少。策略梯度按优势加权:A &gt; 0 的回答概率被抬高,A &lt; 0 的被压低。
+    GRPO 里 A = (r − 组内均值) / 组内标准差,同一组的优势加起来为 0;组内奖励全相同(全对或全错)时 A 全为 0,这道题不产生梯度。</p>
+  </div>
+
+  <div class="gentry" id="pass-at-k">
+    <h3>pass@k</h3>
+    <p>每道题采样 k 次,至少一次答对的题所占的比例。pass@1(常用贪心解码)衡量模型最常给出的答案对不对,pass@k 衡量它能不能采样出正确答案。
+    做 RL 之前,起点的 pass@k(k 取组大小)大致决定一组里能不能凑出对的回答,也就是 RL 有没有信号。</p>
   </div>
 
   <!-- ============ 里程碑 ============ -->

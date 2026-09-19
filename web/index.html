@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#D97757">
 <!-- Open Graph -->
 <meta property="og:title" content="从零手写大语言模型 · LLM from Scratch">
-<meta property="og:description" content="每一关 = 真实现的 Python 代码 + 可亲手拨动的交互可视化。17 关从 bigram 一路搭到 GPT、对齐、现代架构与推理效率。">
+<meta property="og:description" content="每一关 = 真实现的 Python 代码 + 可亲手拨动的交互可视化。21 关从 bigram 一路搭到 GPT、对齐、现代架构、推理效率,再补上分词器、注意力 kernel、scaling law 与 RLVR。">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://learn-llm.fim.ai">
 <meta property="og:image" content="https://learn-llm.fim.ai/og.png">
@@ -17,7 +17,7 @@
 <!-- Twitter / X -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="从零手写大语言模型 · LLM from Scratch">
-<meta name="twitter:description" content="每一关 = 真实现的 Python 代码 + 可亲手拨动的交互可视化。17 关从 bigram 一路搭到 GPT、对齐、现代架构与推理效率。">
+<meta name="twitter:description" content="每一关 = 真实现的 Python 代码 + 可亲手拨动的交互可视化。21 关从 bigram 一路搭到 GPT、对齐、现代架构、推理效率,再补上分词器、注意力 kernel、scaling law 与 RLVR。">
 <meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
 <style>
   /* ============ 全局基础样式(暖色变量,全站统一)============ */
@@ -33,506 +33,702 @@
     --serif:Georgia,"Times New Roman",serif;
   }
   *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;scroll-padding-top:24px;}
   html,body{margin:0;padding:0;}
   body{
     background:var(--bg);color:var(--ink);
     font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     line-height:1.7;-webkit-font-smoothing:antialiased;
   }
-  .wrap{max-width:980px;margin:0 auto;padding:48px 24px 80px;}
+  a{color:inherit;}
+
+  /* ============ 两栏布局:左目录 + 右内容 ============ */
+  .layout{max-width:1280px;margin:0 auto;padding:0 28px;display:grid;grid-template-columns:228px minmax(0,1fr);gap:44px;}
+
+  /* ============ 左侧目录栏 ============ */
+  .side{position:sticky;top:0;align-self:start;max-height:100vh;overflow-y:auto;padding:30px 0 20px;scrollbar-width:none;}
+  .side::-webkit-scrollbar{display:none;}
+  .brand{display:block;text-decoration:none;margin-bottom:16px;}
+  .brand b{display:block;font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.3;color:var(--ink);}
+  .brand span{font-size:12.5px;color:var(--ink2);}
+  .toc{list-style:none;margin:0;padding:0;}
+  .toc > li{margin-bottom:8px;}
+  .toc .ph{display:block;text-decoration:none;font-family:var(--mono);font-size:11px;font-weight:700;
+    letter-spacing:.4px;color:var(--ink2);padding:3px 8px;border-radius:6px;transition:color .2s ease;}
+  .toc .ph:hover{color:var(--accent);}
+  .toc > li.on .ph{color:var(--accent);}
+  .toc ol{list-style:none;margin:2px 0 0;padding:0 0 0 8px;border-left:1px solid var(--border);margin-left:8px;}
+  .toc ol a{display:flex;gap:8px;text-decoration:none;font-size:13px;line-height:1.45;color:var(--ink);
+    padding:2px 8px;border-radius:6px;transition:background .2s ease,color .2s ease;}
+  .toc ol a i{font-style:normal;font-family:var(--mono);font-size:11px;color:var(--ink2);padding-top:2px;}
+  .toc ol a:hover{background:var(--card);color:var(--accent);}
+  .side-links{margin-top:14px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:0 4px;}
+  .side-links a{text-decoration:none;font-size:13px;color:var(--ink2);padding:3px 8px;border-radius:6px;transition:color .2s ease;}
+  .side-links a:hover{color:var(--accent);}
 
   /* ============ 顶部标题区 ============ */
-  header{margin-bottom:36px;}
-  .eyebrow{
-    font-family:var(--mono);font-size:13px;color:var(--ink2);
-    background:var(--card);border:1px solid var(--border);
-    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:18px;
-  }
-  h1{font-family:var(--serif);font-weight:600;font-size:36px;line-height:1.25;margin:0 0 12px;}
+  .main{padding:44px 0 56px;min-width:0;}
+  header{margin-bottom:8px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:34px;line-height:1.25;margin:0 0 12px;}
   h1 .dot{color:var(--accent);}
-  .subtitle{color:var(--ink2);font-size:16px;max-width:680px;margin:0;}
+  .subtitle{color:var(--ink2);font-size:15.5px;max-width:720px;margin:0;}
   .subtitle code{
     font-family:var(--mono);font-size:13px;
     background:var(--card);border:1px solid var(--border);
     padding:2px 6px;border-radius:6px;color:var(--accent);
   }
+  .cta{margin-top:18px;display:flex;flex-wrap:wrap;gap:10px;}
+  .cta a{display:inline-flex;align-items:center;gap:7px;text-decoration:none;font-size:14px;font-weight:600;line-height:1.2;
+    color:var(--ink);background:#fff;border:1px solid var(--border);border-radius:12px;padding:9px 16px;transition:all .2s ease;}
+  .cta a:hover{border-color:var(--accent);color:var(--accent);}
+  .cta a.star{color:#fff;background:var(--accent);border-color:var(--accent);box-shadow:0 2px 8px rgba(217,119,87,.25);}
+  .cta a.star:hover{background:#C9633F;border-color:#C9633F;color:#fff;}
 
   /* ============ 阶段分组 ============ */
   .phase-sec{margin-top:40px;}
-  .phase-title{
-    display:flex;align-items:baseline;gap:12px;margin-bottom:16px;flex-wrap:wrap;
-  }
-  .phase-title .pt-num{
-    font-family:var(--mono);font-size:12px;font-weight:700;
-    color:var(--accent);letter-spacing:.5px;
-  }
-  .phase-title h2{font-family:var(--serif);font-size:24px;font-weight:600;margin:0;}
-  .phase-title .pt-state{
-    font-family:var(--mono);font-size:11px;font-weight:700;color:var(--ink2);
-    background:#F4F2EA;border:1px dashed var(--border);
-    border-radius:999px;padding:3px 10px;
-  }
+  .phase-title{display:flex;align-items:baseline;gap:12px;margin-bottom:14px;flex-wrap:wrap;}
+  .phase-title .pt-num{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);letter-spacing:.5px;}
+  .phase-title h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0;}
+  .phase-title .pt-count{font-size:12.5px;color:var(--ink2);}
 
-  /* ============ 章节卡片栅格 ============ */
-  .chapters{
-    display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
-    gap:22px;
-  }
+  /* ============ 章节卡片:默认只露标题 + 三行描述,展开看全文与步骤 ============ */
+  .chapters{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px;align-items:start;}
   .card{
-    background:var(--card);border:1px solid var(--border);
-    border-radius:18px;padding:24px 24px 20px;
-    transition:transform .25s ease,box-shadow .25s ease,border-color .25s ease;
-    display:flex;flex-direction:column;
+    background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px 20px 14px;
+    transition:border-color .25s ease,box-shadow .25s ease;
   }
-  .card:hover{transform:translateY(-3px);border-color:#cfc9ba;box-shadow:0 10px 28px rgba(26,26,24,.06);}
-  .card-head{display:flex;align-items:baseline;gap:10px;margin-bottom:4px;flex-wrap:wrap;}
-  .ch-num{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);letter-spacing:.5px;}
-  .card h3{font-family:var(--serif);font-size:20px;font-weight:600;margin:6px 0 8px;}
+  .card:hover{border-color:#cfc9ba;box-shadow:0 8px 24px rgba(26,26,24,.05);}
+  .ch-num{font-family:var(--mono);font-size:11.5px;font-weight:700;color:var(--accent);letter-spacing:.5px;}
+  .card h3{font-family:var(--serif);font-size:17.5px;font-weight:600;line-height:1.4;margin:4px 0 8px;}
   .card h3 a{color:var(--ink);text-decoration:none;transition:color .2s ease;}
   .card h3 a:hover{color:var(--accent);}
-  .card .desc{color:var(--ink2);font-size:14px;margin:0 0 16px;}
+  .card .desc{color:var(--ink2);font-size:13.5px;line-height:1.65;margin:0;
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+  .card:has(details[open]) .desc{-webkit-line-clamp:unset;display:block;}
   .card .desc code{
-    font-family:var(--mono);font-size:12.5px;
+    font-family:var(--mono);font-size:12px;
     background:#F4F2EA;border:1px solid var(--border);
     padding:1px 5px;border-radius:5px;color:var(--accent);
   }
+  .card-foot{position:relative;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:12.5px;}
+  .card-foot summary{list-style:none;cursor:pointer;color:var(--ink2);display:inline-flex;align-items:center;gap:6px;user-select:none;}
+  .card-foot summary::-webkit-details-marker{display:none;}
+  .card-foot summary::before{content:"▸";font-size:10px;transition:transform .2s ease;}
+  .card-foot details[open] summary::before{transform:rotate(90deg);}
+  .card-foot summary:hover{color:var(--accent);}
+  .card-foot .go{position:absolute;right:0;top:10px;color:var(--accent);text-decoration:none;font-weight:600;}
+  .card-foot .go:hover{text-decoration:underline;}
 
   /* ============ 步骤列表(深链)============ */
-  .steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;}
-  .card .steps{margin-top:auto;}
+  .steps{list-style:none;margin:10px 0 2px;padding:0;display:flex;flex-direction:column;gap:5px;}
   .steps li a{
     display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);
-    font-size:13.5px;background:#fff;border:1px solid var(--border);border-radius:10px;
-    padding:9px 12px;transition:all .2s ease;
+    font-size:13px;background:#fff;border:1px solid var(--border);border-radius:9px;
+    padding:7px 11px;transition:all .2s ease;
   }
   .steps li a:hover{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);color:var(--accent);}
-  .steps li a .sn{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;width:46px;}
+  .steps li a .sn{font-family:var(--mono);font-size:10.5px;font-weight:700;color:var(--accent);flex-shrink:0;width:42px;}
   .steps li a .st{flex:1;}
   .steps li a .arrow{color:var(--ink2);transition:color .2s ease,transform .2s ease;}
   .steps li a:hover .arrow{color:var(--accent);transform:translateX(3px);}
-  .card-foot{
-    margin-top:16px;padding-top:14px;border-top:1px solid var(--border);
-    font-size:12.5px;color:var(--ink2);
-  }
-  .card-foot a{color:var(--accent);text-decoration:none;font-weight:600;}
-  .card-foot a:hover{text-decoration:underline;}
 
-  /* ============ 锁定 / 占位卡片 ============ */
-  .card.locked{cursor:default;}
-  .card.locked:hover{transform:none;border-color:var(--border);box-shadow:none;}
-  .card.locked h3{color:var(--ink2);}
-  .tag-soon{
-    font-family:var(--mono);font-size:11px;font-weight:700;color:var(--ink2);
-    background:#F4F2EA;border:1px dashed var(--border);border-radius:999px;
-    padding:3px 10px;display:inline-block;
-  }
-  .card.locked .desc{margin-bottom:14px;}
-  .soon-hint{
-    margin-top:auto;font-size:12.5px;color:var(--ink2);
-    background:#F4F2EA;border:1px dashed var(--border);border-radius:10px;
-    padding:10px 12px;text-align:center;cursor:pointer;
-    transition:border-color .2s ease,color .2s ease;
-  }
-  .soon-hint:hover{border-color:var(--accent);color:var(--accent);}
-  .soon-hint code{font-family:var(--mono);font-size:11.5px;color:var(--accent);}
+  /* ============ 页脚:只留版权一行,其余放关于页 ============ */
+  footer{margin-top:52px;padding-top:18px;border-top:1px solid var(--border);font-size:12.5px;color:var(--ink2);}
+  footer a{color:var(--accent);text-decoration:none;font-weight:600;}
+  footer a:hover{text-decoration:underline;}
 
-  /* ============ 页脚 ============ */
-  footer{margin-top:48px;padding-top:22px;border-top:1px solid var(--border);font-size:13px;color:var(--ink2);}
-  footer b{color:var(--accent);font-weight:600;}
-  .progress{font-family:var(--mono);font-size:12px;color:var(--ink2);margin-top:6px;}
+  /* ============ 窄屏:目录栏收成顶部一行阶段标签 ============ */
+  @media(max-width:900px){
+    .layout{display:block;padding:0 16px;}
+    .side{position:static;max-height:none;overflow:visible;padding:24px 0 0;}
+    .brand{display:none;}
+    .toc{display:flex;flex-wrap:wrap;gap:6px;}
+    .toc > li{margin:0;}
+    .toc ol{display:none;}
+    .toc .ph{background:var(--card);border:1px solid var(--border);border-radius:999px;padding:4px 10px;}
+    .side-links{margin-top:12px;}
+    .main{padding-top:24px;}
+    h1{font-size:28px;}
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="layout">
 
-  <!-- ============ 顶部标题区 ============ -->
-  <header>
-    <span class="eyebrow">llm-from-scratch · 总入口</span>
-    <h1>LLM from Scratch <span class="dot">·</span> 从零手写大语言模型</h1>
-    <p class="subtitle">
-      一条完整的学习之旅:从最朴素的 <code>bigram</code> 基线起步,经自注意力搭出最小可训练的
-      nanoGPT,扩展到 124M 规模的预训练与推理,再做后训练三关(<code>SFT / LoRA / DPO</code>),
-      最后走进现代架构:手搓 <code>MoE</code>,再把 GPT-2 升级成 <code>LLaMA</code> 同款。
-      每一章都配交互式可视化 —— 先看懂直觉,再读代码。
-    </p>
-    <div style="margin-top:16px;display:flex;flex-wrap:wrap;align-items:stretch;gap:10px">
-      <a href="glossary.html" style="display:inline-flex;align-items:center;gap:7px;text-decoration:none;
-        font-size:14px;font-weight:600;line-height:1.2;color:var(--ink);background:#fff;border:1px solid var(--border);
-        border-radius:12px;padding:9px 16px;transition:all .2s ease"
-        onmouseover="this.style.borderColor='#D97757';this.style.color='#D97757'"
-        onmouseout="this.style.borderColor='#E5E2D9';this.style.color='#1A1A18'">
-        📖 名词表 · 不懂的术语点这里 →
-      </a>
-      <a href="notes.html" style="display:inline-flex;align-items:center;gap:7px;text-decoration:none;
-        font-size:14px;font-weight:600;line-height:1.2;color:var(--ink);background:#fff;border:1px solid var(--border);
-        border-radius:12px;padding:9px 16px;transition:all .2s ease"
-        onmouseover="this.style.borderColor='#D97757';this.style.color='#D97757'"
-        onmouseout="this.style.borderColor='#E5E2D9';this.style.color='#1A1A18'">
-        🥚 学习札记 · 彩蛋小故事 →
-      </a>
-      <a href="https://github.com/tao-hpu/llm-from-scratch" target="_blank" rel="noopener"
-        style="display:inline-flex;align-items:center;gap:7px;text-decoration:none;
-        font-size:14px;font-weight:600;line-height:1.2;color:#fff;background:var(--accent);border:1px solid var(--accent);
-        border-radius:12px;padding:9px 16px;transition:all .2s ease;
-        box-shadow:0 2px 8px rgba(217,119,87,.25)"
-        onmouseover="this.style.background='#C9633F';this.style.borderColor='#C9633F'"
-        onmouseout="this.style.background='#D97757';this.style.borderColor='#D97757'">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.42 7.42 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
-        在 GitHub 上点个 Star ⭐
-      </a>
-    </div>
-  </header>
+  <!-- ============ 左侧目录栏 ============ -->
+  <aside class="side">
+    <a class="brand" href="#top"><b>LLM from Scratch</b><span>从零手写大语言模型</span></a>
+    <ul class="toc">
+      <li><a class="ph" href="#phase-1">nanoGPT</a>
+        <ol>
+          <li><a href="01_bigram_crossentropy_viz.html#step-1"><i>01</i>Bigram 基线</a></li>
+          <li><a href="02_attention_viz.html#step-1"><i>02</i>自注意力</a></li>
+          <li><a href="03_transformer_viz.html#step-1"><i>03</i>完整 Transformer</a></li>
+          <li><a href="04_gpt_machine_viz.html#part-1"><i>04</i>整机俯瞰</a></li>
+        </ol>
+      </li>
+      <li><a class="ph" href="#phase-2">124M 训练与推理</a>
+        <ol>
+          <li><a href="05_sampling_viz.html#step-1"><i>05</i>采样与 KV-cache</a></li>
+          <li><a href="07_pretraining_viz.html#step-1"><i>06</i>预训练 124M</a></li>
+        </ol>
+      </li>
+      <li><a class="ph" href="#phase-3">后训练</a>
+        <ol>
+          <li><a href="06_posttraining_viz.html#step-1"><i>07</i>后训练地图</a></li>
+          <li><a href="08_sft_viz.html#step-1"><i>08</i>SFT</a></li>
+          <li><a href="09_lora_viz.html#step-1"><i>09</i>LoRA</a></li>
+          <li><a href="10_dpo_viz.html#step-1"><i>10</i>DPO</a></li>
+        </ol>
+      </li>
+      <li><a class="ph" href="#phase-4">现代架构</a>
+        <ol>
+          <li><a href="11_moe_viz.html#step-1"><i>11</i>MoE</a></li>
+          <li><a href="12_llama_viz.html#step-1"><i>12</i>LLaMA 四件套</a></li>
+        </ol>
+      </li>
+      <li><a class="ph" href="#phase-5">长上下文与推理效率</a>
+        <ol>
+          <li><a href="13_linear_attention_viz.html#step-1"><i>13</i>线性注意力</a></li>
+          <li><a href="14_sparse_attention_viz.html#step-1"><i>14</i>稀疏注意力</a></li>
+          <li><a href="15_ngram_memory_viz.html#step-1"><i>15</i>N-gram 查表</a></li>
+          <li><a href="16_speculative_decoding_viz.html#step-1"><i>16</i>投机解码与 MTP</a></li>
+          <li><a href="17_quantization_viz.html#step-1"><i>17</i>量化</a></li>
+        </ol>
+      </li>
+      <li><a class="ph" href="#phase-6">补齐全链路</a>
+        <ol>
+          <li><a href="18_bpe_viz.html#step-1"><i>18</i>手写 BPE</a></li>
+          <li><a href="19_flash_attention_viz.html#step-1"><i>19</i>FlashAttention</a></li>
+          <li><a href="20_scaling_law_viz.html#step-1"><i>20</i>Scaling Law</a></li>
+          <li><a href="21_rlvr_grpo_viz.html#step-1"><i>21</i>RLVR 与 GRPO</a></li>
+        </ol>
+      </li>
+    </ul>
+    <nav class="side-links">
+      <a href="glossary.html">📖 名词表</a>
+      <a href="notes.html">🥚 学习札记</a>
+      <a href="about.html">关于本项目</a>
+      <a href="https://github.com/tao-hpu/llm-from-scratch" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </aside>
 
-  <!-- ============ PHASE 1 · nanoGPT ============ -->
-  <section class="phase-sec">
-    <div class="phase-title">
-      <span class="pt-num">PHASE 1 · nanoGPT</span>
-      <h2>第一阶段 · nanoGPT</h2>
-    </div>
+  <main class="main" id="top">
 
-    <div class="chapters">
+    <!-- ============ 顶部标题区 ============ -->
+    <header>
+      <h1>LLM from Scratch <span class="dot">·</span> 从零手写大语言模型</h1>
+      <p class="subtitle">
+        从最朴素的 <code>bigram</code> 起步,手写到 GPT-2 124M 的预训练与推理,再做后训练、现代架构与推理效率,
+        最后补上分词器、注意力 kernel、scaling law 与 RLVR。每章配交互式可视化:先看懂直觉,再读代码。
+      </p>
+      <div class="cta">
+        <a href="01_bigram_crossentropy_viz.html#step-1">从第 1 章开始 →</a>
+        <a href="glossary.html">📖 名词表</a>
+        <a class="star" href="https://github.com/tao-hpu/llm-from-scratch" target="_blank" rel="noopener"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.42 7.42 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> 在 GitHub 上点个 Star</a>
+      </div>
+    </header>
 
-      <!-- 第 1 章 · Bigram -->
-      <section class="card">
-        <div class="card-head"><span class="ch-num">CHAPTER 01</span></div>
-        <h3><a href="01_bigram_crossentropy_viz.html#step-1">第 1 章 · Bigram 基线</a></h3>
-        <p class="desc">
-          最朴素的语言模型。一口气理解 tokenizer / batch / forward /
-          <code>cross_entropy</code> / 训练循环这条主线。
-        </p>
-        <ul class="steps">
+    <!-- ============ PHASE 1 · nanoGPT ============ -->
+    <section class="phase-sec" id="phase-1">
+      <div class="phase-title">
+        <span class="pt-num">PHASE 1 · nanoGPT</span>
+        <h2>第一阶段 · nanoGPT</h2>
+        <span class="pt-count">4 章</span>
+      </div>
+      <div class="chapters">
+
+        <article class="card" id="ch-01">
+          <span class="ch-num">CHAPTER 01</span>
+          <h3><a href="01_bigram_crossentropy_viz.html#step-1">第 1 章 · Bigram 基线</a></h3>
+          <p class="desc">最朴素的语言模型。一口气理解 tokenizer / batch / forward /<code>cross_entropy</code> / 训练循环这条主线。</p>
+          <div class="card-foot">
+            <details><summary>共 5 步</summary>
+              <ul class="steps">
           <li><a href="01_bigram_crossentropy_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">一个 batch 的 x / y 错位</span><span class="arrow">→</span></a></li>
           <li><a href="01_bigram_crossentropy_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">三维 logits 摊平 (B,T,C)</span><span class="arrow">→</span></a></li>
           <li><a href="01_bigram_crossentropy_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">单题 cross_entropy 拆解</span><span class="arrow">→</span></a></li>
           <li><a href="01_bigram_crossentropy_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">loss = -ln(p) 的直觉</span><span class="arrow">→</span></a></li>
           <li><a href="01_bigram_crossentropy_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">训练循环:不断转的闭环</span><span class="arrow">→</span></a></li>
-        </ul>
-        <div class="card-foot">共 5 步 · <a href="01_bigram_crossentropy_viz.html#step-1">从第一步开始 →</a></div>
-      </section>
+          
+              </ul>
+            </details>
+            <a class="go" href="01_bigram_crossentropy_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
 
-      <!-- 第 2 章 · 自注意力 -->
-      <section class="card">
-        <div class="card-head"><span class="ch-num">CHAPTER 02</span></div>
-        <h3><a href="02_attention_viz.html#step-1">第 2 章 · 自注意力</a></h3>
-        <p class="desc">
-          给模型装上"往回看"的能力。从"对过去做平均"出发,一步步升级成
-          由内容算权重的自注意力,打破 bigram 的 <code>2.49</code> 天花板。
-        </p>
-        <ul class="steps">
+        <article class="card" id="ch-02">
+          <span class="ch-num">CHAPTER 02</span>
+          <h3><a href="02_attention_viz.html#step-1">第 2 章 · 自注意力</a></h3>
+          <p class="desc">给模型装上"往回看"的能力。从"对过去做平均"出发,一步步升级成由内容算权重的自注意力,打破 bigram 的 <code>2.49</code> 天花板。</p>
+          <div class="card-foot">
+            <details><summary>共 6 步</summary>
+              <ul class="steps">
           <li><a href="02_attention_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">往回看:每个位置看过去(因果)</span><span class="arrow">→</span></a></li>
           <li><a href="02_attention_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">数据的形状:B · T · C</span><span class="arrow">→</span></a></li>
           <li><a href="02_attention_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">用矩阵做"对过去做平均"</span><span class="arrow">→</span></a></li>
           <li><a href="02_attention_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">Q / K / V:三种角色</span><span class="arrow">→</span></a></li>
           <li><a href="02_attention_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">算注意力权重(打分→softmax)</span><span class="arrow">→</span></a></li>
           <li><a href="02_attention_viz.html#step-6"><span class="sn">STEP 6</span><span class="st">加权聚合 · forward 全貌</span><span class="arrow">→</span></a></li>
-        </ul>
-        <div class="card-foot">共 6 步 · <a href="02_attention_viz.html#step-1">从第一步开始 →</a></div>
-      </section>
+          
+              </ul>
+            </details>
+            <a class="go" href="02_attention_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
 
-      <!-- 第 3 章 · 完整 Transformer -->
-      <section class="card">
-        <div class="card-head"><span class="ch-num">CHAPTER 03</span></div>
-        <h3><a href="03_transformer_viz.html#step-1">第 3 章 · 完整 Transformer</a></h3>
-        <p class="desc">四块新积木拼出 GPT:<code>多头</code>(同时看多种关系)、<code>FFN</code>(逐位置思考)、<code>残差 + LayerNorm</code>(让深网络训得动),再摞成多层。val loss 从 2.41 掉到 ~1.57。</p>
-        <ul class="steps">
+        <article class="card" id="ch-03">
+          <span class="ch-num">CHAPTER 03</span>
+          <h3><a href="03_transformer_viz.html#step-1">第 3 章 · 完整 Transformer</a></h3>
+          <p class="desc">四块新积木拼出 GPT:<code>多头</code>(同时看多种关系)、<code>FFN</code>(逐位置思考)、<code>残差 + LayerNorm</code>(让深网络训得动),再摞成多层。val loss 从 2.41 掉到 ~1.57。</p>
+          <div class="card-foot">
+            <details><summary>共 6 步</summary>
+              <ul class="steps">
           <li><a href="03_transformer_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">切蛋糕:128 维 → 4 个头</span><span class="arrow">→</span></a></li>
           <li><a href="03_transformer_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">每个头各看各的(分化)</span><span class="arrow">→</span></a></li>
           <li><a href="03_transformer_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">拼回去 · 头数怎么选</span><span class="arrow">→</span></a></li>
           <li><a href="03_transformer_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">FeedForward:逐位置思考</span><span class="arrow">→</span></a></li>
           <li><a href="03_transformer_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">残差 + LayerNorm:堆得动</span><span class="arrow">→</span></a></li>
           <li><a href="03_transformer_viz.html#step-6"><span class="sn">STEP 6</span><span class="st">堆成 GPT · 跌破 2.41</span><span class="arrow">→</span></a></li>
-        </ul>
-        <div class="card-foot">共 6 步 · <a href="03_transformer_viz.html#step-1">从第一步开始 →</a></div>
-      </section>
+          
+              </ul>
+            </details>
+            <a class="go" href="03_transformer_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
 
-      <!-- 整机俯瞰 · 全景收尾 -->
-      <section class="card">
-        <div class="card-head"><span class="ch-num">CHAPTER 04</span></div>
-        <h3><a href="04_gpt_machine_viz.html#part-1">第 4 章 · 把零件拼成整机:一个字符流过 GPT</a></h3>
-        <p class="desc">第 1–3 章的零件拼成整台 tiny GPT(≈0.8M)。两段全自动动画:<code>① 装机</code>(训练把所有权重调到位)+ <code>② 跑起来</code>(<code>forward</code> 算出 logits → <code>decode</code> 采样,预设开头自回归生成)。跑起来里点开 <code>4×Block</code> 还能掀盖看注意力热力图 + FFN 内部。</p>
-        <ul class="steps">
+        <article class="card" id="ch-04">
+          <span class="ch-num">CHAPTER 04</span>
+          <h3><a href="04_gpt_machine_viz.html#part-1">第 4 章 · 把零件拼成整机:一个字符流过 GPT</a></h3>
+          <p class="desc">第 1–3 章的零件拼成整台 tiny GPT(≈0.8M)。两段全自动动画:<code>① 装机</code>(训练把所有权重调到位)+ <code>② 跑起来</code>(<code>forward</code> 算出 logits → <code>decode</code> 采样,预设开头自回归生成)。跑起来里点开 <code>4×Block</code> 还能掀盖看注意力热力图 + FFN 内部。</p>
+          <div class="card-foot">
+            <details><summary>2 段动画</summary>
+              <ul class="steps">
           <li><a href="04_gpt_machine_viz.html#part-1"><span class="sn">PART 1</span><span class="st">🔧 装机:训练把权重调到位</span><span class="arrow">→</span></a></li>
           <li><a href="04_gpt_machine_viz.html#part-2"><span class="sn">PART 2</span><span class="st">▶ 跑起来:前向 + 采样生成</span><span class="arrow">→</span></a></li>
-        </ul>
-        <div class="card-foot">全自动播放 · <a href="04_gpt_machine_viz.html#part-1">进整机俯瞰 →</a></div>
-      </section>
+          
+              </ul>
+            </details>
+            <a class="go" href="04_gpt_machine_viz.html#part-1">播放 →</a>
+          </div>
+        </article>
 
-    </div>
-  </section>
+      </div>
+    </section>
 
-  <!-- ============ PHASE 1 · 124M(占位)============ -->
-  <section class="phase-sec">
-    <div class="phase-title">
-      <span class="pt-num">PHASE 1 · 124M</span>
-      <h2>第一阶段 · 124M 模型</h2>
-      <span class="pt-state">▶ 已上线</span>
-    </div>
-    <div class="chapters">
+    <!-- ============ PHASE 1 · 124M ============ -->
+    <section class="phase-sec" id="phase-2">
+      <div class="phase-title">
+        <span class="pt-num">PHASE 1 · 124M</span>
+        <h2>第一阶段 · 124M 模型</h2>
+        <span class="pt-count">2 章</span>
+      </div>
+      <div class="chapters">
 
-      <!-- 124M 推理 · 采样与 KV-cache -->
-      <section class="card">
-        <div class="card-head"><span class="ch-num">CHAPTER 05</span></div>
-        <h3><a href="05_sampling_viz.html#step-1">第 5 章 · 跑起来:从 logits 到文字(采样与 KV-cache)</a></h3>
-        <p class="desc">对应 <code>phase1-124m/05_sample.py</code>:把推理"从打分到吐字"拆成五步亲手拨——<code>base</code> 只续写不答题、<code>temperature</code> 捏尖/摊平分布、<code>top_k</code> 砍掉长尾、自回归逐 token 滚动、<code>KV-cache</code> 并排省掉重复计算(实测约 2.5–3.1×)。</p>
-        <ul class="steps">
+        <article class="card" id="ch-05">
+          <span class="ch-num">CHAPTER 05</span>
+          <h3><a href="05_sampling_viz.html#step-1">第 5 章 · 跑起来:从 logits 到文字(采样与 KV-cache)</a></h3>
+          <p class="desc">对应 <code>phase1-124m/05_sample.py</code>:把推理"从打分到吐字"拆成五步亲手拨——<code>base</code> 只续写不答题、<code>temperature</code> 捏尖/摊平分布、<code>top_k</code> 砍掉长尾、自回归逐 token 滚动、<code>KV-cache</code> 并排省掉重复计算(实测约 2.5–3.1×)。</p>
+          <div class="card-foot">
+            <details><summary>共 5 步</summary>
+              <ul class="steps">
           <li><a href="05_sampling_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">base 只会续写</span><span class="arrow">→</span></a></li>
           <li><a href="05_sampling_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">temperature 捏分布</span><span class="arrow">→</span></a></li>
           <li><a href="05_sampling_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">top_k 砍尾巴</span><span class="arrow">→</span></a></li>
           <li><a href="05_sampling_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">自回归循环</span><span class="arrow">→</span></a></li>
           <li><a href="05_sampling_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">KV-cache 加速(≈2.5–3.1×)</span><span class="arrow">→</span></a></li>
-        </ul>
-        <div class="card-foot">共 5 步 · <a href="05_sampling_viz.html#step-1">从第一步开始 →</a></div>
-      </section>
+          
+              </ul>
+            </details>
+            <a class="go" href="05_sampling_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
 
-      <!-- 124M 训练 · 预训练过程 -->
-      <section class="card">
-        <div class="card-head"><span class="ch-num">CHAPTER 06</span></div>
-        <h3><a href="07_pretraining_viz.html#step-1">第 6 章 · 真训练:把玩具 GPT 喂真实数据</a></h3>
-        <p class="desc">对应 <code>phase1-124m/04_gpt2_124m.py</code>:把 GPT-2 124M 预训练拆成五步亲手拨——配置从字符级玩具跃迁到 <code>12/12/768</code>、FineWeb-Edu 切 <code>shard</code> 顺序喂、梯度累积攒满 524288 token 再走一步、<code>warmup + 余弦</code>学习率实时画曲线、用两个真实端点(300M→3.65 / 10B→3.02)看数据量 33× 的收敛对照。</p>
-        <ul class="steps">
+        <article class="card" id="ch-06">
+          <span class="ch-num">CHAPTER 06</span>
+          <h3><a href="07_pretraining_viz.html#step-1">第 6 章 · 真训练:把玩具 GPT 喂真实数据</a></h3>
+          <p class="desc">对应 <code>phase1-124m/04_gpt2_124m.py</code>:把 GPT-2 124M 预训练拆成五步亲手拨——配置从字符级玩具跃迁到 <code>12/12/768</code>、FineWeb-Edu 切 <code>shard</code> 顺序喂、梯度累积攒满 524288 token 再走一步、<code>warmup + 余弦</code>学习率实时画曲线、用两个真实端点(300M→3.65 / 10B→3.02)看数据量 33× 的收敛对照。</p>
+          <div class="card-foot">
+            <details><summary>共 5 步</summary>
+              <ul class="steps">
           <li><a href="07_pretraining_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">从玩具到真模型</span><span class="arrow">→</span></a></li>
           <li><a href="07_pretraining_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">真数据 + BPE + shards</span><span class="arrow">→</span></a></li>
           <li><a href="07_pretraining_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">梯度累积:攒满 524288 token</span><span class="arrow">→</span></a></li>
           <li><a href="07_pretraining_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">学习率 schedule:warmup + 余弦</span><span class="arrow">→</span></a></li>
           <li><a href="07_pretraining_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">收敛 + 数据量对照</span><span class="arrow">→</span></a></li>
-        </ul>
-        <div class="card-foot">共 5 步 · <a href="07_pretraining_viz.html#step-1">从第一步开始 →</a></div>
-      </section>
-    </div>
-  </section>
+          
+              </ul>
+            </details>
+            <a class="go" href="07_pretraining_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
 
-  <!-- ============ PHASE 2 · SFT / LoRA / DPO ============ -->
-  <section class="phase-sec">
-    <div class="phase-title">
-      <span class="pt-num">PHASE 2 · SFT / LoRA / DPO</span>
-      <h2>第二阶段 · 后训练</h2>
-    </div>
-    <div class="chapters">
+      </div>
+    </section>
 
-      <!-- Phase 2 开篇 · 后训练白皮书 -->
-      <section class="card">
-        <div class="card-head"><span class="ch-num">CHAPTER 07</span></div>
-        <h3><a href="06_posttraining_viz.html#step-1">第 7 章 · 从"会续写"到"会听话":后训练地图</a></h3>
-        <p class="desc">动手写代码前先对齐全景与术语:<code>参数量 vs 数据量</code>、<code>任务 vs 手段</code>(SFT/DPO × 全量/LoRA)、SFT 改了哪三处(数据/模板/<code>loss mask</code>)、偏好对齐里 <code>RLHF</code> 与 <code>DPO</code> 的关系。</p>
-        <ul class="steps">
+    <!-- ============ PHASE 2 · SFT / LoRA / DPO ============ -->
+    <section class="phase-sec" id="phase-3">
+      <div class="phase-title">
+        <span class="pt-num">PHASE 2 · SFT / LoRA / DPO</span>
+        <h2>第二阶段 · 后训练</h2>
+        <span class="pt-count">4 章</span>
+      </div>
+      <div class="chapters">
+
+        <article class="card" id="ch-07">
+          <span class="ch-num">CHAPTER 07</span>
+          <h3><a href="06_posttraining_viz.html#step-1">第 7 章 · 从"会续写"到"会听话":后训练地图</a></h3>
+          <p class="desc">动手写代码前先对齐全景与术语:<code>参数量 vs 数据量</code>、<code>任务 vs 手段</code>(SFT/DPO × 全量/LoRA)、SFT 改了哪三处(数据/模板/<code>loss mask</code>)、偏好对齐里 <code>RLHF</code> 与 <code>DPO</code> 的关系。</p>
+          <div class="card-foot">
+            <details><summary>共 6 步</summary>
+              <ul class="steps">
           <li><a href="06_posttraining_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">你练出来的底座(124M ≠ 10B)</span><span class="arrow">→</span></a></li>
           <li><a href="06_posttraining_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">后训练地图:预训练→SFT→对齐</span><span class="arrow">→</span></a></li>
           <li><a href="06_posttraining_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">任务 × 手段:两个正交的轴</span><span class="arrow">→</span></a></li>
           <li><a href="06_posttraining_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">SFT 机制:同一 loss 只动三处</span><span class="arrow">→</span></a></li>
           <li><a href="06_posttraining_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">偏好对齐:RLHF vs DPO</span><span class="arrow">→</span></a></li>
           <li><a href="06_posttraining_viz.html#step-6"><span class="sn">STEP 6</span><span class="st">路线图 & 达标标准</span><span class="arrow">→</span></a></li>
-        </ul>
-        <div class="card-foot">共 6 步 · <a href="06_posttraining_viz.html#step-1">从第一步开始 →</a></div>
-      </section>
+          
+              </ul>
+            </details>
+            <a class="go" href="06_posttraining_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
 
-      <!-- SFT · 监督微调 -->
-      <section class="card">
-        <div class="card-head"><span class="ch-num">CHAPTER 08</span></div>
-        <h3><a href="08_sft_viz.html#step-1">第 8 章 · SFT:把 base 调成会答题</a></h3>
-        <p class="desc">拿 Phase 1 的 124M base 做监督微调:<code>对话模板 + EOS</code>、<code>loss mask</code>(只对回答算 loss)、训练循环。配套代码 <code>06_sft.py</code>,内含训练前后真实采样对比。</p>
-        <ul class="steps">
+        <article class="card" id="ch-08">
+          <span class="ch-num">CHAPTER 08</span>
+          <h3><a href="08_sft_viz.html#step-1">第 8 章 · SFT:把 base 调成会答题</a></h3>
+          <p class="desc">拿 Phase 1 的 124M base 做监督微调:<code>对话模板 + EOS</code>、<code>loss mask</code>(只对回答算 loss)、训练循环。配套代码 <code>06_sft.py</code>,内含训练前后真实采样对比。</p>
+          <div class="card-foot">
+            <details><summary>共 5 步</summary>
+              <ul class="steps">
           <li><a href="08_sft_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">起点:base 跑题、停不下来</span><span class="arrow">→</span></a></li>
           <li><a href="08_sft_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">拼训练样本:模板 + EOS</span><span class="arrow">→</span></a></li>
           <li><a href="08_sft_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">loss mask:只对回答算账</span><span class="arrow">→</span></a></li>
           <li><a href="08_sft_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">训练循环:预训练循环+掩码</span><span class="arrow">→</span></a></li>
           <li><a href="08_sft_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">训练前后对比 & 达标</span><span class="arrow">→</span></a></li>
-        </ul>
-        <div class="card-foot">共 5 步 · <a href="08_sft_viz.html#step-1">从第一步开始 →</a></div>
-      </section>
+          
+              </ul>
+            </details>
+            <a class="go" href="08_sft_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
 
-      <!-- LoRA · 低秩微调 -->
-      <section class="card">
-        <div class="card-head"><span class="ch-num">CHAPTER 09</span></div>
-        <h3><a href="09_lora_viz.html#step-1">第 9 章 · 手搓 LoRA:冻结底座,只训 1% 参数</a></h3>
-        <p class="desc">换手段不换任务:同一件 SFT,冻住 124M 底座,只在每层旁挂低秩旁路 <code>B·A</code>,只训 <code>~0.94%</code> 参数、存 <code>4.7MB</code> adapter。配套代码 <code>07_lora.py</code>,内含真实采样与 loss 曲线。</p>
-        <ul class="steps">
+        <article class="card" id="ch-09">
+          <span class="ch-num">CHAPTER 09</span>
+          <h3><a href="09_lora_viz.html#step-1">第 9 章 · 手搓 LoRA:冻结底座,只训 1% 参数</a></h3>
+          <p class="desc">换手段不换任务:同一件 SFT,冻住 124M 底座,只在每层旁挂低秩旁路 <code>B·A</code>,只训 <code>~0.94%</code> 参数、存 <code>4.7MB</code> adapter。配套代码 <code>07_lora.py</code>,内含真实采样与 loss 曲线。</p>
+          <div class="card-foot">
+            <details><summary>共 5 步</summary>
+              <ul class="steps">
           <li><a href="09_lora_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">为何不动整座大楼</span><span class="arrow">→</span></a></li>
           <li><a href="09_lora_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">低秩旁路:省在哪(拨 r 算账)</span><span class="arrow">→</span></a></li>
           <li><a href="09_lora_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">冻结 + B=0:从 base 平滑出发</span><span class="arrow">→</span></a></li>
           <li><a href="09_lora_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">训练循环:只训 A、B</span><span class="arrow">→</span></a></li>
           <li><a href="09_lora_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">前后对比 & 达标</span><span class="arrow">→</span></a></li>
-        </ul>
-        <div class="card-foot">共 5 步 · <a href="09_lora_viz.html#step-1">从第一步开始 →</a></div>
-      </section>
+          
+              </ul>
+            </details>
+            <a class="go" href="09_lora_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
 
-      <!-- DPO · 偏好对齐 -->
-      <section class="card">
-        <div class="card-head"><span class="ch-num">CHAPTER 10</span></div>
-        <h3><a href="10_dpo_viz.html#step-1">第 10 章 · 手搓 DPO:从会答到答得合人意</a></h3>
-        <p class="desc">换任务:从"会答"到"答得合人意"。接在 SFT 之后,用偏好对(chosen/rejected)+ 冻结参考模型做 DPO——<code>不训奖励模型、不走 RL</code>。配套代码 <code>08_dpo.py</code>,真实曲线 loss↓ / margin↑ / 准确率 0→100%;加 <code>--lora</code> 可切 LoRA 手段。</p>
-        <ul class="steps">
+        <article class="card" id="ch-10">
+          <span class="ch-num">CHAPTER 10</span>
+          <h3><a href="10_dpo_viz.html#step-1">第 10 章 · 手搓 DPO:从会答到答得合人意</a></h3>
+          <p class="desc">换任务:从"会答"到"答得合人意"。接在 SFT 之后,用偏好对(chosen/rejected)+ 冻结参考模型做 DPO——<code>不训奖励模型、不走 RL</code>。配套代码 <code>08_dpo.py</code>,真实曲线 loss↓ / margin↑ / 准确率 0→100%;加 <code>--lora</code> 可切 LoRA 手段。</p>
+          <div class="card-foot">
+            <details><summary>共 5 步</summary>
+              <ul class="steps">
           <li><a href="10_dpo_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">会答 ≠ 答得好(偏好对)</span><span class="arrow">→</span></a></li>
           <li><a href="10_dpo_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">两个模型 + 隐式奖励</span><span class="arrow">→</span></a></li>
           <li><a href="10_dpo_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">DPO loss 拨一拨</span><span class="arrow">→</span></a></li>
           <li><a href="10_dpo_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">训练:margin 拉开</span><span class="arrow">→</span></a></li>
           <li><a href="10_dpo_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">前后对比 & 达标</span><span class="arrow">→</span></a></li>
-        </ul>
-        <div class="card-foot">共 5 步 · <a href="10_dpo_viz.html#step-1">从第一步开始 →</a></div>
-      </section>
+          
+              </ul>
+            </details>
+            <a class="go" href="10_dpo_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
 
-    </div>
-  </section>
+      </div>
+    </section>
 
-  <!-- ============ PHASE 3 · MoE + LLaMA ============ -->
-  <section class="phase-sec">
-    <div class="phase-title">
-      <span class="pt-num">PHASE 3 · MoE + LLaMA</span>
-      <h2>第三阶段 · 现代架构</h2>
-    </div>
-    <div class="chapters">
+    <!-- ============ PHASE 3 · MoE + LLaMA ============ -->
+    <section class="phase-sec" id="phase-4">
+      <div class="phase-title">
+        <span class="pt-num">PHASE 3 · MoE + LLaMA</span>
+        <h2>第三阶段 · 现代架构</h2>
+        <span class="pt-count">2 章</span>
+      </div>
+      <div class="chapters">
 
-      <!-- MoE · 专家混合 -->
-      <section class="card">
-        <div class="card-head"><span class="ch-num">CHAPTER 11</span></div>
-        <h3><a href="11_moe_viz.html#step-1">第 11 章 · 手搓 MoE:参数翻倍,算力不变</a></h3>
-        <p class="desc">把第 3 章 GPT 的 FFN 拆成 <code>4 个专家 + 路由器</code>:top-2 派单、分工自己涌现、专家塌缩与负载均衡 aux loss,再算清"总参数 ↑ 激活算力不变"这笔账。最后一步换上 DeepSeek 系的细粒度专家、共享专家与偏置均衡,在同一台模型上跑五组对照。全部在 <code>1.35M</code> 参数上跑通,大概算全球最小的 MoE 之一,机制却和 671B 的 DeepSeek 同款。配套代码 <code>09_moe.py</code>。</p>
-        <ul class="steps">
+        <article class="card" id="ch-11">
+          <span class="ch-num">CHAPTER 11</span>
+          <h3><a href="11_moe_viz.html#step-1">第 11 章 · 手搓 MoE:参数翻倍,算力不变</a></h3>
+          <p class="desc">把第 3 章 GPT 的 FFN 拆成 <code>4 个专家 + 路由器</code>:top-2 派单、分工自己涌现、专家塌缩与负载均衡 aux loss,再算清"总参数 ↑ 激活算力不变"这笔账。最后一步换上 DeepSeek 系的细粒度专家、共享专家与偏置均衡,在同一台模型上跑五组对照。全部在 <code>1.35M</code> 参数上跑通,大概算全球最小的 MoE 之一,机制却和 671B 的 DeepSeek 同款。配套代码 <code>09_moe.py</code>。</p>
+          <div class="card-foot">
+            <details><summary>共 6 步</summary>
+              <ul class="steps">
           <li><a href="11_moe_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">全员上岗的 FFN</span><span class="arrow">→</span></a></li>
           <li><a href="11_moe_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">路由器:给 token 派单</span><span class="arrow">→</span></a></li>
           <li><a href="11_moe_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">分工是训出来的</span><span class="arrow">→</span></a></li>
           <li><a href="11_moe_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">偏心与塌缩</span><span class="arrow">→</span></a></li>
           <li><a href="11_moe_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">算账 & 落到代码</span><span class="arrow">→</span></a></li>
           <li><a href="11_moe_viz.html#step-6"><span class="sn">STEP 6</span><span class="st">细粒度 · 共享专家 · 偏置均衡</span><span class="arrow">→</span></a></li>
-        </ul>
-        <div class="card-foot">共 6 步 · <a href="11_moe_viz.html#step-1">从第一步开始 →</a></div>
-      </section>
+          
+              </ul>
+            </details>
+            <a class="go" href="11_moe_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
 
-      <!-- LLaMA 四件套 -->
-      <section class="card">
-        <div class="card-head"><span class="ch-num">CHAPTER 12</span></div>
-        <h3><a href="12_llama_viz.html#step-1">第 12 章 · 把 GPT-2 升级成 LLaMA:四个零件</a></h3>
-        <p class="desc">第 3 章那台 GPT 是 2019 年的样子。今天的开源模型换掉的不是 Transformer 本身,而是它身上四个零件:<code>RoPE</code> 把位置变成旋转角(注意力只看相对距离)、<code>RMSNorm</code> 少做一半、<code>SwiGLU</code> 给 FFN 装闸门、<code>GQA</code> 让 K/V 拼车(cache 减半)。每件都能单独开关,配套代码 <code>10_llama.py</code>,含六组真实对照训练。</p>
-        <ul class="steps">
+        <article class="card" id="ch-12">
+          <span class="ch-num">CHAPTER 12</span>
+          <h3><a href="12_llama_viz.html#step-1">第 12 章 · 把 GPT-2 升级成 LLaMA:四个零件</a></h3>
+          <p class="desc">第 3 章那台 GPT 是 2019 年的样子。今天的开源模型换掉的不是 Transformer 本身,而是它身上四个零件:<code>RoPE</code> 把位置变成旋转角(注意力只看相对距离)、<code>RMSNorm</code> 少做一半、<code>SwiGLU</code> 给 FFN 装闸门、<code>GQA</code> 让 K/V 拼车(cache 减半)。每件都能单独开关,配套代码 <code>10_llama.py</code>,含六组真实对照训练。</p>
+          <div class="card-foot">
+            <details><summary>共 6 步</summary>
+              <ul class="steps">
           <li><a href="12_llama_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">老架构的四处别扭</span><span class="arrow">→</span></a></li>
           <li><a href="12_llama_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">RoPE:位置变成角度</span><span class="arrow">→</span></a></li>
           <li><a href="12_llama_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">RMSNorm:少做一半</span><span class="arrow">→</span></a></li>
           <li><a href="12_llama_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">SwiGLU:给 FFN 装闸门</span><span class="arrow">→</span></a></li>
           <li><a href="12_llama_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">GQA:K/V 拼车</span><span class="arrow">→</span></a></li>
           <li><a href="12_llama_viz.html#step-6"><span class="sn">STEP 6</span><span class="st">四件齐上 · 算总账</span><span class="arrow">→</span></a></li>
-        </ul>
-        <div class="card-foot">共 6 步 · <a href="12_llama_viz.html#step-1">从第一步开始 →</a></div>
-      </section>
+          
+              </ul>
+            </details>
+            <a class="go" href="12_llama_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
 
-    </div>
-  </section>
+      </div>
+    </section>
 
-  <section class="phase-sec">
-    <div class="phase-title">
-      <span class="pt-num">PHASE 4 · 长上下文与推理效率</span>
-      <h2>第四阶段 · 长上下文与推理效率</h2>
-    </div>
-    <div class="chapters">
+    <!-- ============ PHASE 4 · 长上下文与推理效率 ============ -->
+    <section class="phase-sec" id="phase-5">
+      <div class="phase-title">
+        <span class="pt-num">PHASE 4 · 长上下文与推理效率</span>
+        <h2>第四阶段 · 长上下文与推理效率</h2>
+        <span class="pt-count">5 章</span>
+      </div>
+      <div class="chapters">
 
-      <!-- 线性注意力 -->
-      <section class="card">
-        <div class="card-head"><span class="ch-num">CHAPTER 13</span></div>
-        <h3><a href="13_linear_attention_viz.html#step-1">第 13 章 · 线性注意力:把 KV cache 换成固定大小的记忆板</a></h3>
-        <p class="desc">全注意力推理时每个 token 都要存 K/V,上下文越长 cache 越大。线性注意力每个头只留一块 32×32 的记忆板:写入是加一个外积,<code>delta rule</code> 先擦再写,遗忘门 α 按比例衰减,合起来就是 Qwen3-Next 用的 <code>Gated DeltaNet</code>。配套代码 <code>11_linear_attn.py</code>,9 组真实训练:测试长度拉到 512,全注意力 val loss 涨到 3.52,GDN 停在 1.53;键值检索 N=32 时 GDN 答对 99.9%,只加不减的 linear 16.6%。最后看工业界为什么用 3:1 混合。</p>
-        <ul class="steps">
+        <article class="card" id="ch-13">
+          <span class="ch-num">CHAPTER 13</span>
+          <h3><a href="13_linear_attention_viz.html#step-1">第 13 章 · 线性注意力:把 KV cache 换成固定大小的记忆板</a></h3>
+          <p class="desc">全注意力推理时每个 token 都要存 K/V,上下文越长 cache 越大。线性注意力每个头只留一块 32×32 的记忆板:写入是加一个外积,<code>delta rule</code> 先擦再写,遗忘门 α 按比例衰减,合起来就是 Qwen3-Next 用的 <code>Gated DeltaNet</code>。配套代码 <code>11_linear_attn.py</code>,9 组真实训练:测试长度拉到 512,全注意力 val loss 涨到 3.52,GDN 停在 1.53;键值检索 N=32 时 GDN 答对 99.9%,只加不减的 linear 16.6%。最后看工业界为什么用 3:1 混合。</p>
+          <div class="card-foot">
+            <details><summary>共 5 步</summary>
+              <ul class="steps">
           <li><a href="13_linear_attention_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">KV cache 越存越长</span><span class="arrow">→</span></a></li>
           <li><a href="13_linear_attention_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">记忆板:写入是加外积</span><span class="arrow">→</span></a></li>
           <li><a href="13_linear_attention_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">先擦再写:delta 与遗忘门</span><span class="arrow">→</span></a></li>
           <li><a href="13_linear_attention_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">五种层配方 · 真实对照</span><span class="arrow">→</span></a></li>
           <li><a href="13_linear_attention_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">精确检索与 3:1 混合</span><span class="arrow">→</span></a></li>
-        </ul>
-        <div class="card-foot">共 5 步 · <a href="13_linear_attention_viz.html#step-1">从第一步开始 →</a></div>
-      </section>
+          
+              </ul>
+            </details>
+            <a class="go" href="13_linear_attention_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
 
-      <!-- 稀疏注意力 -->
-      <section class="card">
-        <div class="card-head"><span class="ch-num">CHAPTER 14</span></div>
-        <h3><a href="14_sparse_attention_viz.html#step-1">第 14 章 · 稀疏注意力:每个 query 只挑一部分历史去读</a></h3>
-        <p class="desc">K/V 照样全存,每个 query 只挑一小部分去算。照 DeepSeek 的 <code>NSA</code> 手写三条支路:压缩给每块留摘要、挑选只细看 top-n 块、滑窗兜住最近的字,再用 sigmoid 门加权。配套代码 <code>12_sparse_attn.py</code>:256 上下文平均每个 query 读 76.8 个 key(全注意力 128.5);远处找钥匙任务上只滑窗 3.1%(乱猜),NSA 99.85%。再对照 DSA、DeepSeek-V4 的 CSA/HCA 与 Qwen3.8 的 QSA。</p>
-        <ul class="steps">
+        <article class="card" id="ch-14">
+          <span class="ch-num">CHAPTER 14</span>
+          <h3><a href="14_sparse_attention_viz.html#step-1">第 14 章 · 稀疏注意力:每个 query 只挑一部分历史去读</a></h3>
+          <p class="desc">K/V 照样全存,每个 query 只挑一小部分去算。照 DeepSeek 的 <code>NSA</code> 手写三条支路:压缩给每块留摘要、挑选只细看 top-n 块、滑窗兜住最近的字,再用 sigmoid 门加权。配套代码 <code>12_sparse_attn.py</code>:256 上下文平均每个 query 读 76.8 个 key(全注意力 128.5);远处找钥匙任务上只滑窗 3.1%(乱猜),NSA 99.85%。再对照 DSA、DeepSeek-V4 的 CSA/HCA 与 Qwen3.8 的 QSA。</p>
+          <div class="card-foot">
+            <details><summary>共 5 步</summary>
+              <ul class="steps">
           <li><a href="14_sparse_attention_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">每个 query 读多少</span><span class="arrow">→</span></a></li>
           <li><a href="14_sparse_attention_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">压缩:一块一个摘要</span><span class="arrow">→</span></a></li>
           <li><a href="14_sparse_attention_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">挑选:只细看 top-n 块</span><span class="arrow">→</span></a></li>
           <li><a href="14_sparse_attention_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">滑窗与门控</span><span class="arrow">→</span></a></li>
           <li><a href="14_sparse_attention_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">真实对照 · 工业版</span><span class="arrow">→</span></a></li>
-        </ul>
-        <div class="card-foot">共 5 步 · <a href="14_sparse_attention_viz.html#step-1">从第一步开始 →</a></div>
-      </section>
+          
+              </ul>
+            </details>
+            <a class="go" href="14_sparse_attention_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
 
-
-      <!-- N-gram 查表 -->
-      <section class="card">
-        <div class="card-head"><span class="ch-num">CHAPTER 15</span></div>
-        <h3><a href="15_ngram_memory_viz.html#step-1">第 15 章 · N-gram 查表:给模型挂一本短语词典</a></h3>
-        <p class="desc">给第 12 章的小模型挂一张哈希 n-gram 表:每个 token 按最近两三个 token 算出 8 个行号,只读 8 行 × 16 维,再由一个门决定加多少进残差流。表涨到主干的 4.6 倍,每 token 算力不变;行号在 forward 之前就能算出,表可以留在主机内存。配套代码 <code>13_engram.py</code>,FineWeb-Edu 上 5000 步 val loss 降约 0.06(单种子),tiny shakespeare 字符级反例里表把训练集背了下来,另测了表在 GPU / CPU 的吞吐。</p>
-        <ul class="steps">
+        <article class="card" id="ch-15">
+          <span class="ch-num">CHAPTER 15</span>
+          <h3><a href="15_ngram_memory_viz.html#step-1">第 15 章 · N-gram 查表:给模型挂一本短语词典</a></h3>
+          <p class="desc">给第 12 章的小模型挂一张哈希 n-gram 表:每个 token 按最近两三个 token 算出 8 个行号,只读 8 行 × 16 维,再由一个门决定加多少进残差流。表涨到主干的 4.6 倍,每 token 算力不变;行号在 forward 之前就能算出,表可以留在主机内存。配套代码 <code>13_engram.py</code>,FineWeb-Edu 上 5000 步 val loss 降约 0.06(单种子),tiny shakespeare 字符级反例里表把训练集背了下来,另测了表在 GPU / CPU 的吞吐。</p>
+          <div class="card-foot">
+            <details><summary>共 5 步</summary>
+              <ul class="steps">
           <li><a href="15_ngram_memory_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">容量和算力拆开</span><span class="arrow">→</span></a></li>
           <li><a href="15_ngram_memory_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">哈希:行号只看最近几个 token</span><span class="arrow">→</span></a></li>
           <li><a href="15_ngram_memory_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">门控:记忆对不对得上</span><span class="arrow">→</span></a></li>
           <li><a href="15_ngram_memory_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">真实对照与反例</span><span class="arrow">→</span></a></li>
           <li><a href="15_ngram_memory_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">表可以不进 GPU</span><span class="arrow">→</span></a></li>
-        </ul>
-        <div class="card-foot">共 5 步 · <a href="15_ngram_memory_viz.html#step-1">从第一步开始 →</a></div>
-      </section>
+          
+              </ul>
+            </details>
+            <a class="go" href="15_ngram_memory_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
 
-      <!-- 投机解码与 MTP -->
-      <section class="card">
-        <div class="card-head"><span class="ch-num">CHAPTER 16</span></div>
-        <h3><a href="16_speculative_decoding_viz.html#step-1">第 16 章 · 投机解码与 MTP:先便宜地猜,再一次验收</a></h3>
-        <p class="desc">自回归生成每吐一个字都要跑一次主模型。投机解码让草稿员先猜 γ 个字,主模型一次 forward 算出这些位置的 p,以 <code>min(1, p/q)</code> 接受、拒绝就从 <code>max(0, p−q)</code> 重抽,输出分布不变。配套代码 <code>14_mtp.py</code>,在 RTX 4090 上实测:1 层小草稿模型接受率 0.667–0.745,γ=6 时每次主 forward 吐 3.09 个字;DeepSeek-V3 式 MTP 头接受率 0.899,墙钟 1.27×;20 万次模拟后与 p 的总变差距离 0.0005。最后算清玩具规模下省了 forward 为什么没怎么省时间。</p>
-        <ul class="steps">
+        <article class="card" id="ch-16">
+          <span class="ch-num">CHAPTER 16</span>
+          <h3><a href="16_speculative_decoding_viz.html#step-1">第 16 章 · 投机解码与 MTP:先便宜地猜,再一次验收</a></h3>
+          <p class="desc">自回归生成每吐一个字都要跑一次主模型。投机解码让草稿员先猜 γ 个字,主模型一次 forward 算出这些位置的 p,以 <code>min(1, p/q)</code> 接受、拒绝就从 <code>max(0, p−q)</code> 重抽,输出分布不变。配套代码 <code>14_mtp.py</code>,在 RTX 4090 上实测:1 层小草稿模型接受率 0.667–0.745,γ=6 时每次主 forward 吐 3.09 个字;DeepSeek-V3 式 MTP 头接受率 0.899,墙钟 1.27×;20 万次模拟后与 p 的总变差距离 0.0005。最后算清玩具规模下省了 forward 为什么没怎么省时间。</p>
+          <div class="card-foot">
+            <details><summary>共 5 步</summary>
+              <ul class="steps">
           <li><a href="16_speculative_decoding_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">一次 forward 验收一串</span><span class="arrow">→</span></a></li>
           <li><a href="16_speculative_decoding_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">接受规则:min(1, p/q)</span><span class="arrow">→</span></a></li>
           <li><a href="16_speculative_decoding_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">γ 猜几个</span><span class="arrow">→</span></a></li>
           <li><a href="16_speculative_decoding_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">MTP:主模型自带草稿头</span><span class="arrow">→</span></a></li>
           <li><a href="16_speculative_decoding_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">真实账本</span><span class="arrow">→</span></a></li>
-        </ul>
-        <div class="card-foot">共 5 步 · <a href="16_speculative_decoding_viz.html#step-1">从第一步开始 →</a></div>
-      </section>
+          
+              </ul>
+            </details>
+            <a class="go" href="16_speculative_decoding_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
 
-      <!-- 量化 -->
-      <section class="card">
-        <div class="card-head"><span class="ch-num">CHAPTER 17</span></div>
-        <h3><a href="17_quantization_viz.html#step-1">第 17 章 · 量化:把 124M 从 32 位压到 4 位</a></h3>
-        <p class="desc">把第 6 章训出来的 GPT-2 124M 量化到 8 / 4 / 3 / 2 位:一个 <code>scale</code> 管多少权重决定误差,一个 10σ 的离群值就能让整矩阵 int4 崩到 val loss 9.93,留出 0.1% 离群值又回到 3.26。再拆开 <code>Q4_K</code>、<code>NVFP4</code>、<code>MXFP4</code> 三种 4 位格式怎么存 scale。配套代码 <code>15_quant.py</code>,15 组真实评测:4.5 位的 NVFP4 从 497.9 MB 压到 126.9 MB,val loss 多 0.04。Phase 4 收尾。</p>
-        <ul class="steps">
+        <article class="card" id="ch-17">
+          <span class="ch-num">CHAPTER 17</span>
+          <h3><a href="17_quantization_viz.html#step-1">第 17 章 · 量化:把 124M 从 32 位压到 4 位</a></h3>
+          <p class="desc">把第 6 章训出来的 GPT-2 124M 量化到 8 / 4 / 3 / 2 位:一个 <code>scale</code> 管多少权重决定误差,一个 10σ 的离群值就能让整矩阵 int4 崩到 val loss 9.93,留出 0.1% 离群值又回到 3.26。再拆开 <code>Q4_K</code>、<code>NVFP4</code>、<code>MXFP4</code> 三种 4 位格式怎么存 scale。配套代码 <code>15_quant.py</code>,15 组真实评测:4.5 位的 NVFP4 从 497.9 MB 压到 126.9 MB,val loss 多 0.04。Phase 4 收尾。</p>
+          <div class="card-foot">
+            <details><summary>共 5 步</summary>
+              <ul class="steps">
           <li><a href="17_quantization_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">一个权重要几位</span><span class="arrow">→</span></a></li>
           <li><a href="17_quantization_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">一个 scale 管多少个</span><span class="arrow">→</span></a></li>
           <li><a href="17_quantization_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">离群值撑大格子</span><span class="arrow">→</span></a></li>
           <li><a href="17_quantization_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">三种 4 位格式</span><span class="arrow">→</span></a></li>
           <li><a href="17_quantization_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">124M 的真实账本</span><span class="arrow">→</span></a></li>
-        </ul>
-        <div class="card-foot">共 5 步 · <a href="17_quantization_viz.html#step-1">从第一步开始 →</a></div>
-      </section>
+          
+              </ul>
+            </details>
+            <a class="go" href="17_quantization_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
 
-    </div>
-  </section>
+      </div>
+    </section>
 
-  <!-- ============ 页脚 ============ -->
-  <footer>
-    一个从零理解大语言模型的教学项目 —— 先<b>看懂直觉</b>,再读代码。
-    全部页面均为单文件、零依赖,离线双击即可打开。遇到不懂的术语,查 <a href="glossary.html" style="color:var(--accent);text-decoration:none;font-weight:600">名词表</a>;
-    想看边角料故事,翻 <a href="notes.html" style="color:var(--accent);text-decoration:none;font-weight:600">学习札记 🥚</a>。
-    <div class="progress">进度:全 17 章上线 🎉 第 1–3 章打地基 + 整机俯瞰 + 124M 训练与推理 + 后训练白皮书 + 手搓三关(SFT / LoRA / DPO)+ 现代架构两关(MoE、LLaMA 四件套)+ 长上下文与推理效率五关(线性注意力、稀疏注意力、N-gram 查表、投机解码、量化)</div>
-    <div style="margin-top:14px">
-      觉得有帮助?到 <a href="https://github.com/tao-hpu/llm-from-scratch" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">GitHub 仓库 ⭐ 点个 Star</a> 是对作者最大的鼓励,也方便你回来追更新。
-    </div>
-    <!--site-copyright-->
-    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:12px;color:var(--ink2)">
-      © 2026 <a href="https://fim.ai" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">FIM Labs</a> · 从零手写大语言模型 · MIT License
-    </div>
-  </footer>
+    <!-- ============ PHASE 5 · 补齐全链路 ============ -->
+    <section class="phase-sec" id="phase-6">
+      <div class="phase-title">
+        <span class="pt-num">PHASE 5 · 补齐全链路</span>
+        <h2>第五阶段 · 补齐全链路</h2>
+        <span class="pt-count">4 章</span>
+      </div>
+      <div class="chapters">
 
+        <article class="card" id="ch-18">
+          <span class="ch-num">CHAPTER 18</span>
+          <h3><a href="18_bpe_viz.html#step-1">第 18 章 · 手写 BPE:自己训一个分词器</a></h3>
+          <p class="desc">第 6 章起一直调 tiktoken,这一关自己写:从 256 个字节出发,数相邻对、合并出现最多的一对,在 8 MB FineWeb-Edu 上训出 16,384 词表,编码再解码逐字还原。配套代码 <code>16_bpe.py</code>,纯 CPU 约 2 分钟:每 token 4.25 字节(GPT-2 的 50,257 词表 4.62);只按空格预切分时,词表里 2,279 个 token 是「词 + 标点」的变体,GPT-2 正则下只有 7 个;英文语料训出的词表一个汉字都没合并。</p>
+          <div class="card-foot">
+            <details><summary>共 5 步</summary>
+              <ul class="steps">
+          <li><a href="18_bpe_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">任何文本先变成字节</span><span class="arrow">→</span></a></li>
+          <li><a href="18_bpe_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">数对,合并一次</span><span class="arrow">→</span></a></li>
+          <li><a href="18_bpe_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">预切分:合并只在段内</span><span class="arrow">→</span></a></li>
+          <li><a href="18_bpe_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">词表多大</span><span class="arrow">→</span></a></li>
+          <li><a href="18_bpe_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">训出来的分词器</span><span class="arrow">→</span></a></li>
+          
+              </ul>
+            </details>
+            <a class="go" href="18_bpe_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
+
+        <article class="card" id="ch-19">
+          <span class="ch-num">CHAPTER 19</span>
+          <h3><a href="19_flash_attention_viz.html#step-1">第 19 章 · 手写 FlashAttention:拆开 SDPA 这个黑盒</a></h3>
+          <p class="desc">朴素注意力要把 T×T 的分数矩阵整个写进显存,T = 4096 时约 7.5 GB。online softmax 边读边更新最大值与分母,分块之后这个矩阵不再落到显存。配套代码 <code>17_flash_attn.py</code>,手写一个 Triton 前向 kernel:RTX 4090 上 T = 4096 用时 0.77 ms、占 24 MB,PyTorch 的 SDPA 0.76 ms;朴素写法 31.8 ms,T = 8192 起显存不够。换进第 6 章的 124M,val loss 与 SDPA 相差 0.0002。</p>
+          <div class="card-foot">
+            <details><summary>共 5 步</summary>
+              <ul class="steps">
+          <li><a href="19_flash_attention_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">T×T 矩阵有多大</span><span class="arrow">→</span></a></li>
+          <li><a href="19_flash_attention_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">online softmax</span><span class="arrow">→</span></a></li>
+          <li><a href="19_flash_attention_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">分块:哪些数留在片上</span><span class="arrow">→</span></a></li>
+          <li><a href="19_flash_attention_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">写成 Triton kernel</span><span class="arrow">→</span></a></li>
+          <li><a href="19_flash_attention_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">实测与换进 124M</span><span class="arrow">→</span></a></li>
+          
+              </ul>
+            </details>
+            <a class="go" href="19_flash_attention_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
+
+        <article class="card" id="ch-20">
+          <span class="ch-num">CHAPTER 20</span>
+          <h3><a href="20_scaling_law_viz.html#step-1">第 20 章 · Scaling Law:用小模型预测 124M 的 loss</a></h3>
+          <p class="desc">第 6 章把 124M 训了一整天。能不能先训一批小模型,算出它会训到多少?训 23 次 0.6M–25M 参数的小模型(5000 万到 16 亿 token),拟合 <code>L(N, D) = E + A/N^α + B/D^β</code>,外推到 124M 训 10B token:预测 3.36,实测 3.03。换三组拟合点对照,外推越远误差越大,主拟合的 bootstrap 区间也没盖住实测。配套代码 <code>18_scaling.py</code>,顺带排查两次训练发散:第 2 层注意力分数涨到约 1000 万,加 qk-norm 后同配置 val loss 从 4.95 降到 4.19。</p>
+          <div class="card-foot">
+            <details><summary>共 5 步</summary>
+              <ul class="steps">
+          <li><a href="20_scaling_law_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">一批小模型</span><span class="arrow">→</span></a></li>
+          <li><a href="20_scaling_law_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">N 和 D 两个方向</span><span class="arrow">→</span></a></li>
+          <li><a href="20_scaling_law_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">拟合一个公式</span><span class="arrow">→</span></a></li>
+          <li><a href="20_scaling_law_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">算力怎么分</span><span class="arrow">→</span></a></li>
+          <li><a href="20_scaling_law_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">外推到 124M</span><span class="arrow">→</span></a></li>
+          
+              </ul>
+            </details>
+            <a class="go" href="20_scaling_law_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
+
+        <article class="card" id="ch-21">
+          <span class="ch-num">CHAPTER 21</span>
+          <h3><a href="21_rlvr_grpo_viz.html#step-1">第 21 章 · RLVR 与 GRPO:只给判分器,不给答案</a></h3>
+          <p class="desc">只给一个会对答案的判分器,不给标准答案:同一道题采样 8 次,组内比较得出优势,按优势更新。配套代码 <code>19_grpo.py</code>,把 124M 教会两位数加法,并在同一热身起点、同一评测、同样 4096 道题下和 SFT、DPO 同台比,学习率各自按 dev 挑。热身 1000 道的起点上 GRPO 从 41.0% 到 84.8%,有标准答案的 SFT 到 93.0%,离线 DPO 47.8%(学习率 3e-8,再大就掉到 warm 以下);热身 200 道的起点上 GRPO 的组大多 8 次全错,几乎学不到。Phase 5 收尾。</p>
+          <div class="card-foot">
+            <details><summary>共 5 步</summary>
+              <ul class="steps">
+          <li><a href="21_rlvr_grpo_viz.html#step-1"><span class="sn">STEP 1</span><span class="st">判分器只会对答案</span><span class="arrow">→</span></a></li>
+          <li><a href="21_rlvr_grpo_viz.html#step-2"><span class="sn">STEP 2</span><span class="st">组内比较:优势</span><span class="arrow">→</span></a></li>
+          <li><a href="21_rlvr_grpo_viz.html#step-3"><span class="sn">STEP 3</span><span class="st">全错的组没有信号</span><span class="arrow">→</span></a></li>
+          <li><a href="21_rlvr_grpo_viz.html#step-4"><span class="sn">STEP 4</span><span class="st">三条路同台</span><span class="arrow">→</span></a></li>
+          <li><a href="21_rlvr_grpo_viz.html#step-5"><span class="sn">STEP 5</span><span class="st">组大小与 KL</span><span class="arrow">→</span></a></li>
+          
+              </ul>
+            </details>
+            <a class="go" href="21_rlvr_grpo_viz.html#step-1">开始 →</a>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ============ 页脚 ============ -->
+    <footer>
+      <!--site-copyright-->
+      © 2026 <a href="https://fim.ai" target="_blank" rel="noopener">FIM Labs</a> · 从零手写大语言模型 · MIT License · <a href="about.html">关于本项目</a>
+    </footer>
+
+  </main>
 </div>
 
 <script>
-  /* 占位卡片:点击/回车给出"即将上线"提示,不跳转 */
+  /* 目录栏跟随滚动:当前阶段高亮 */
   (function(){
-    document.querySelectorAll('[data-soon]').forEach(function(el){
-      function notify(){
-        var orig = el.innerHTML;
-        el.innerHTML = '🚧 这个阶段还在打磨中,先把已上线的内容吃透吧!';
-        setTimeout(function(){ el.innerHTML = orig; }, 1800);
-      }
-      el.addEventListener('click', notify);
-      el.addEventListener('keydown', function(e){
-        if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); notify(); }
-      });
+    var secs = [].slice.call(document.querySelectorAll('.phase-sec'));
+    var items = {};
+    document.querySelectorAll('.toc > li').forEach(function(li){
+      items[li.querySelector('.ph').getAttribute('href').slice(1)] = li;
     });
+    function update(){
+      var cur = secs[0].id;
+      secs.forEach(function(s){ if(s.getBoundingClientRect().top < window.innerHeight * 0.35) cur = s.id; });
+      if(window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) cur = secs[secs.length - 1].id;
+      Object.keys(items).forEach(function(k){ items[k].classList.toggle('on', k === cur); });
+    }
+    window.addEventListener('scroll', update, {passive:true});
+    window.addEventListener('load', update);
+    window.addEventListener('hashchange', update);
+    update();
   })();
 </script>
 </body>

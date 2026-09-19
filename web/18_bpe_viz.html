@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>手写 BPE · 自己训一个分词器</title>
+<meta name="description" content="不再调 tiktoken:从 256 个字节出发,数相邻对、合并出现最多的一对,在 8 MB FineWeb-Edu 上训出 16,384 词表的字节级 BPE。预切分为什么要按字母和标点分开、词表多大换多少压缩率、中文为什么贵,附真实训练结果。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 18 章 · 手写 BPE · 从零手写大语言模型">
+<meta property="og:description" content="不再调 tiktoken:从 256 个字节出发,数相邻对、合并出现最多的一对,在 8 MB FineWeb-Edu 上训出 16,384 词表的字节级 BPE。预切分为什么要按字母和标点分开、词表多大换多少压缩率、中文为什么贵,附真实训练结果。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/18_bpe_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 18 章 · 手写 BPE · 从零手写大语言模型">
+<meta name="twitter:description" content="不再调 tiktoken:从 256 个字节出发,数相邻对、合并出现最多的一对,在 8 MB FineWeb-Edu 上训出 16,384 词表的字节级 BPE。预切分为什么要按字母和标点分开、词表多大换多少压缩率、中文为什么贵,附真实训练结果。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
+<style>
+
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --good:#3f7d63; --good-soft:#D7EBE0; --bad:#9a3a22; --bad-soft:#F3D9CE;
+    --e0:#b8512f; --e0s:#F7E6DE; --e1:#3a63c0; --e1s:#E5EBF9;
+    --e2:#3f7d63; --e2s:#E4EFE9; --e3:#a3548c; --e3s:#F6E6F0;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 24px 90px;}
+
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:790px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  .steps-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:26px 0 18px;}
+  .step-tab{background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 14px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13.5px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 20px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:10px;padding:10px 14px;}
+
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;align-items:center;}
+  .btn-row.small .btn{font-size:13px;padding:7px 13px;}
+
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:24px 0 6px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  .codepath{font-family:var(--mono);font-size:11.5px;color:var(--ink2);background:#F4F2EA;
+    border:1px solid var(--border);border-radius:8px;padding:5px 10px;display:inline-block;margin-top:10px;}
+  .codepath b{color:var(--accent);}
+
+  /* 名词气泡 */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:280px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;font-family:system-ui,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* 庆祝 */
+  .congrats{display:none;text-align:center;background:linear-gradient(135deg,#FBF1EA,#F6E6F0);
+    border:1px solid var(--accent-soft);border-radius:16px;padding:22px;margin-top:18px;}
+  .congrats.show{display:block;animation:fade .5s ease;}
+  .congrats .ct{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--accent);}
+  .congrats .cs{font-size:13.5px;color:var(--ink2);margin-top:6px;}
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;}
+
+  .nav{display:flex;justify-content:space-between;margin-top:22px;gap:10px;}
+  .checklist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:8px;}
+  .checklist li{display:flex;gap:10px;align-items:flex-start;font-size:13px;background:#fff;border:1px solid var(--border);
+    border-radius:10px;padding:10px 13px;}
+  .checklist li .ck{color:#3f7d63;font-weight:700;flex-shrink:0;}
+  .checklist li b{color:var(--accent);}
+  .rk-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0;}
+  .rk-row label{font-family:var(--mono);font-size:12.5px;font-weight:700;min-width:150px;}
+  .rk-val{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent);min-width:64px;text-align:center;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:8px;padding:2px 6px;}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;background:var(--accent-soft);
+    flex:1;min-width:150px;max-width:340px;outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.18);}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid #fff;}
+  .dotread{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:12px 0 4px;}
+  .dr{background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 13px;text-align:center;}
+  .dr .drv{font-family:var(--mono);font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .dr .drl{font-size:11.5px;color:var(--ink2);margin-top:2px;}
+  .lab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin:10px 0;}
+  .scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin:4px 0;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;}
+
+  /* ===== 本页:字节卡片 / token 片 ===== */
+  .txt-in{width:100%;font-family:var(--mono);font-size:15px;padding:10px 12px;border:1px solid var(--border);
+    border-radius:10px;background:#fff;color:var(--ink);outline:none;}
+  .txt-in:focus{border-color:var(--accent);}
+  .chars{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 4px;}
+  .ch{background:#fff;border:1px solid var(--border);border-radius:9px;padding:5px 7px 4px;text-align:center;min-width:38px;}
+  .ch .cg{font-size:17px;line-height:1.3;font-family:var(--serif);}
+  .ch .cb{display:flex;gap:2px;justify-content:center;margin-top:3px;}
+  .ch .cb span{font-family:var(--mono);font-size:10px;border-radius:4px;padding:0 3px;color:#fff;}
+  .toks{display:flex;flex-wrap:wrap;gap:3px;margin:8px 0 4px;line-height:1;}
+  .tk{font-family:var(--mono);font-size:13px;padding:4px 6px;border-radius:6px;white-space:pre;border:1px solid transparent;}
+  .tk.a{background:var(--e1s);color:#243f80;border-color:#cfdaf3;}
+  .tk.b{background:var(--e0s);color:#7a3218;border-color:#efcfc0;}
+  .tk.x{background:#ECEAE2;color:var(--ink2);font-size:11px;}
+  .tk.hl{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .sp{color:#B9B5AA;}
+  .pair-bars{margin:8px 0;}
+  .pb{display:flex;align-items:center;gap:10px;margin:4px 0;}
+  .pb .pn{font-family:var(--mono);font-size:12.5px;width:150px;flex-shrink:0;white-space:pre;}
+  .pb .pt{flex:1;height:18px;background:#F4F2EA;border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+  .pb .pf{height:100%;background:var(--e1);transition:width .3s ease;}
+  .pb.top .pf{background:var(--accent);}
+  .pb .pv{font-family:var(--mono);font-size:12px;width:34px;text-align:right;}
+  .merge-list{font-family:var(--mono);font-size:12.5px;display:flex;flex-direction:column;gap:3px;max-height:230px;overflow:auto;}
+  .merge-list div{background:#fff;border:1px solid var(--border);border-radius:7px;padding:3px 9px;white-space:pre;}
+  .merge-list div.new{border-color:var(--accent);background:#FBF1EA;}
+  .two-col{display:grid;grid-template-columns:1.2fr 1fr;gap:14px;}
+  @media (max-width:720px){.two-col{grid-template-columns:1fr;}}
+  .mini-h{font-family:var(--mono);font-size:11.5px;color:var(--ink2);font-weight:700;margin:4px 0;}
+  .cmp{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  @media (max-width:640px){.cmp{grid-template-columns:1fr;}}
+  .cmp .side{background:#fff;border:1px solid var(--border);border-radius:12px;padding:11px 13px;}
+  .cmp .side.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
+  .cmp .big{font-family:var(--mono);font-size:22px;font-weight:700;}
+  .cmp .cap{font-size:12px;color:var(--ink2);}
+  .cloud{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <header>
+    <span class="filename">18_bpe_viz.html</span>
+    <h1>手写 BPE:自己训一个分词器</h1>
+    <p class="subtitle">
+      第 1 章用字符级分词,65 个字符;第 6 章起一直直接调 <code>tiktoken.get_encoding("gpt2")</code>。
+      这一关从零写一个同类的
+      <span class="term" data-term="字节级 BPE · byte-level BPE" data-key="byte-level-bpe" data-def="初始词表是 256 个字节,反复把出现最多的相邻一对合并成新 token。任何 UTF-8 文本都能编码,没有未知字符。GPT-2 / GPT-4 / LLaMA 3 的分词器都属于这一类。">字节级 BPE</span>:
+      从 256 个字节出发,数相邻对、合并出现最多的一对,重复 16,128 次。配套代码 <code>phase5-fullstack/16_bpe.py</code>,
+      在第 6 章那份 <span class="term" data-term="FineWeb-Edu" data-key="fineweb" data-def="HuggingFace 发布的教育类网页语料,第 6 章训练 124M 用的就是它。">FineWeb-Edu</span> 的 8 MB 原文上训练,
+      再在另外 1 MB 上和 GPT-2 的分词器对照。Phase 5 补齐全链路,这是第一关。
+    </p>
+  </header>
+
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">任何文本先变成字节</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">数对,合并一次</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">预切分:合并只在段内</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">词表多大</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">训出来的分词器</div></div>
+  </div>
+
+  <div class="hp-bar">
+    <span class="hp-label">这一关</span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">训练语料 <b>8 MB</b> <i>FineWeb-Edu 原文</i></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">测试语料 <b>1 MB</b> <i>同一 shard 靠后,不重叠</i></span>
+    <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">词表 <b>16,384</b> <i>256 个字节 + 16,128 次合并</i></span>
+    <span class="hp-chip" style="color:#6B6B68;background:#ECEAE2">GPT-2 词表 <b>50,257</b> <i>对照</i></span>
+    <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">n_embd <b>768</b> <i>只用来算嵌入表多大</i></span>
+  </div>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>① 任何文本先变成字节</h2>
+    <p class="lead">
+      第 1 章的字符级词表只认莎士比亚里出现过的 65 个字符,换一段中文就编不出来。
+      字节级的做法是先把文本按 <b>UTF-8</b> 编成字节:英文字母 1 个字节,中文 3 个,emoji 4 个。
+      一个字节只有 256 种取值,所以初始词表固定是 <b>256</b>,任何文本都编得出来。改下面的文字试试:
+    </p>
+    <div class="btn-row small" id="presetBtns">
+      <button class="btn primary">英文</button>
+      <button class="btn">中文</button>
+      <button class="btn">混排 + emoji</button>
+    </div>
+    <div class="lab">
+      <input class="txt-in" id="txtIn" value="Hello, world!">
+      <div class="chars" id="charCards"></div>
+      <div class="legend">
+        <span><i style="background:var(--e2)"></i>1 字节(ASCII)</span>
+        <span><i style="background:var(--e1)"></i>2 字节</span>
+        <span><i style="background:var(--accent)"></i>3 字节(常用汉字)</span>
+        <span><i style="background:var(--e3)"></i>4 字节(emoji 等)</span>
+      </div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s1Chars">–</div><div class="drl">字符数</div></div>
+        <div class="dr"><div class="drv" id="s1Bytes" style="color:var(--accent)">–</div><div class="drl">字节数 = 初始 token 数</div></div>
+        <div class="dr"><div class="drv" id="s1Ctx">–</div><div class="drl">1024 上下文能装几个这样的句子</div></div>
+      </div>
+    </div>
+    <div class="note">初始词表 = 256 个字节,任何 UTF-8 文本都能编码,不会出现"未知字符"。代价是序列长:英文一个 token 只代表 1 个字节。</div>
+    <div class="codepath">↳ 代码:<b>16_bpe.py</b> 的 <code>train_bpe</code> 开头 <code>list(w.encode("utf-8"))</code></div>
+
+    <details class="dig">
+      <summary>为什么不拿 Unicode 字符当初始词表?</summary>
+      <div class="dig-body">
+        Unicode 有十几万个码位,全放进基础词表太大;只放训练语料里见过的,又会遇到没见过的字符。
+        GPT-2 论文 §2.2 的说法:字节级只需要 <b>256</b> 个基础符号,就能表示任意字符串,不需要未知符号。
+        字节的代价是中文、日文这类每字 3 个字节的文字,初始序列是英文的 3 倍长,要靠合并压回来(第 5 步看训出来的效果)。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>一个 token 只是半个汉字,解码时怎么办?</summary>
+      <div class="dig-body">
+        解码时先把每个 token 查回它代表的字节,整串拼起来,再按 UTF-8 解开。单独看一个 token 可能是半个汉字(比如 <code>&lt;e5&gt;&lt;85&gt;</code>),
+        拼上后一个就完整了。第 5 章 <code>05_sample.py</code> 的 <code>TokenStreamer</code> 边生成边打印,就是凑齐一个完整字符再输出,避免吐出 <code>�</code>。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:英文 1 个字节 1 个 token,1024 的上下文只装得下 1 KB 文本。把最常一起出现的两个字节合成一个 token,序列就短了。</div>
+  </section>
+
+  <!-- ============ STEP 2 ============ -->
+  <section class="panel" id="panel1">
+    <h2>② 数相邻对,合并出现最多的一对</h2>
+    <p class="lead">
+      下面是一小段玩具语料,已经按空格切成词(每个词前面的空格记成 <span class="sp">␣</span>,算词的一部分)。
+      左边是现在所有相邻对的出现次数,橙色那一对最多。点「合并一次」,它就变成一个新 token,记进
+      <span class="term" data-term="合并表 · merges" data-key="bpe-merges" data-def="BPE 训练的产物:按先后顺序记下的每一次合并(哪两个 token 合成了哪个新 token)。编码新文本时按这张表的顺序,能合就合。">合并表</span>:
+    </p>
+    <div class="btn-row" id="mergeBtns">
+      <button class="btn primary">合并一次</button>
+      <button class="btn">连续合并 5 次</button>
+      <button class="btn">重置</button>
+    </div>
+    <div class="lab">
+      <div class="mini-h" id="toyHead">语料</div>
+      <div class="toks" id="toyToks"></div>
+      <div class="two-col" style="margin-top:10px">
+        <div>
+          <div class="mini-h">相邻对出现次数(前 8)</div>
+          <div class="pair-bars" id="pairBars"></div>
+        </div>
+        <div>
+          <div class="mini-h">合并表</div>
+          <div class="merge-list" id="mergeList"></div>
+        </div>
+      </div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s2Vocab">–</div><div class="drl">词表大小(这段语料里的字节种类 + 合并次数)</div></div>
+        <div class="dr"><div class="drv" id="s2Len" style="color:var(--accent)">–</div><div class="drl">语料现在几个 token</div></div>
+        <div class="dr"><div class="drv" id="s2Ratio">–</div><div class="drl">每 token 平均几个字节</div></div>
+      </div>
+    </div>
+    <div class="note" id="s2Note"></div>
+    <div class="codepath">↳ 代码:<b>16_bpe.py</b> 的 <code>train_bpe</code>(真实版会记下每一对出现在哪些段里,合并时只改这些段)</div>
+
+    <details class="dig">
+      <summary>两对次数一样多,先合哪个?</summary>
+      <div class="dig-body">
+        规则里没有标准答案,只要固定一个次序,每次训练结果就一样。这个演示取先出现的那一对;<code>16_bpe.py</code> 用 Python <code>max</code> 在计数字典上取最大值,
+        次数相同时取字典里排在前面的,同样是确定的。不同实现在这里的选择不同,所以用同一份语料、同样的词表大小训出来的合并表可能不完全相同。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>编码新文本时,也要重新数对吗?</summary>
+      <div class="dig-body">
+        不用。训练完只留下合并表。编码时对每一段:在当前相邻对里找<b>合并表里排得最靠前</b>的一对,合掉,再找,直到没有一对在表里。
+        这就是 <code>16_bpe.py</code> 的 <code>make_encoder</code>,和 tiktoken 的规则相同。解码更简单:每个 token 查回它的字节,拼起来。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:这里是先按空格切词再合并,标点粘在词上,于是 "cat." 和 "cat" 成了两个不同的段。GPT-2 用一条正则切得更细,看看差在哪。</div>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="panel" id="panel2">
+    <h2>③ 预切分:合并只在段内发生</h2>
+    <p class="lead">
+      合并之前先把文本切成小段,合并不能跨段。GPT-2 的
+      <span class="term" data-term="预切分 · pre-tokenization" data-key="pretokenize" data-def="BPE 合并前先用规则把文本切成小段(词、数字、标点、空白),合并只在段内发生。GPT-2 用一条正则按字母 / 数字 / 其他符号分类切。">预切分</span>
+      正则把字母串、数字串、其他符号、空白分成不同的段;只按空格切时,标点跟着前面的词。切换看同一句话怎么分段:
+    </p>
+    <div class="btn-row" id="splitBtns">
+      <button class="btn primary">GPT-2 正则</button>
+      <button class="btn">只按空格</button>
+    </div>
+    <div class="lab">
+      <div class="toks" id="splitToks"></div>
+      <div class="mini-h" id="splitCount"></div>
+    </div>
+
+    <div class="sub-h"><span class="badge">实测</span>两种切法各训一个 16,384 词表</div>
+    <p class="lead" style="margin-bottom:10px">同样 8 MB 语料、同样 16,128 次合并,只换预切分。点一边看词表里字母和标点粘在一起的 token:</p>
+    <div class="cmp" id="cmpSides">
+      <div class="side sel" data-k="gpt2">
+        <div class="mini-h">GPT-2 正则</div>
+        <div class="big" id="cmpMixG">–</div>
+        <div class="cap">个 token 里字母和标点粘在一起</div>
+        <div class="big" id="cmpBptG" style="font-size:17px;margin-top:6px">–</div>
+        <div class="cap">测试语料每 token 字节数</div>
+      </div>
+      <div class="side" data-k="space">
+        <div class="mini-h">只按空格</div>
+        <div class="big" id="cmpMixS" style="color:var(--bad)">–</div>
+        <div class="cap">个 token 里字母和标点粘在一起</div>
+        <div class="big" id="cmpBptS" style="font-size:17px;margin-top:6px">–</div>
+        <div class="cap">测试语料每 token 字节数</div>
+      </div>
+    </div>
+    <div class="lab">
+      <div class="mini-h" id="mixH"></div>
+      <div class="cloud" id="mixCloud"></div>
+    </div>
+    <div class="note" id="s3Note"></div>
+    <div class="codepath">↳ 代码:<b>16_bpe.py</b> 的 <code>GPT2_SPLIT</code> / <code>SPACE_SPLIT</code> · 对照跑法 <code>--split space</code></div>
+
+    <details class="dig">
+      <summary>只按空格切,压缩率反而更高,为什么还要细切?</summary>
+      <div class="dig-body">
+        标点粘在词上时,<code>information,</code> 这样一个 token 能顶两个,测试语料上每 token 多装了 <b id="digBpt">–</b>。
+        代价在词表:<code>s,</code> <code>s.</code> <code>ing,</code> <code>ation.</code> 这类变体占掉 2,279 个位置,约 14%,
+        同一个词带不同标点的几种写法各有各的嵌入向量,各自只拿到一部分训练信号。
+        GPT-2 论文 §2.2 描述了这个现象:BPE 会学出 <code>dog.</code> <code>dog!</code> <code>dog?</code> 这类变体,词表和模型容量分配得不理想,所以禁止合并跨越字符类别。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>正则开头那几个 's 't 're 是做什么的?</summary>
+      <div class="dig-body">
+        英文缩写单独成段,<code>dog's</code> 切成 <code>dog</code> 和 <code>'s</code>,<code>don't</code> 切成 <code>don</code> 和 <code>'t</code>。
+        用 GPT-2 正则训出的词表里,字母和标点粘在一起的 7 个 token 全是这几个缩写。完整正则见 <code>16_bpe.py</code> 的 <code>GPT2_SPLIT</code>,取自 openai/gpt-2 仓库 <code>src/encoder.py</code>。
+        GPT-4 的 cl100k 改过这条正则:缩写不分大小写,数字最多 3 位一段。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:预切分定好了。合并多少次、词表多大才合适?</div>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="panel" id="panel3">
+    <h2>④ 词表多大:压缩率与嵌入表</h2>
+    <p class="lead">
+      同一个分词器,只用合并表的前一部分,就是一个更小的词表。下面是 1 MB 测试语料在不同词表下的
+      <span class="term" data-term="每 token 字节数 · 压缩率" data-key="bytes-per-token" data-def="一段文本的字节数除以编码后的 token 数。越大说明一个 token 平均代表的文本越多,同样的上下文长度能装更多内容。">每 token 字节数</span>,
+      灰点是 GPT-2 的 50,257 词表。拖滑块:
+    </p>
+    <div class="lab">
+      <div class="rk-row"><label>词表大小</label>
+        <input type="range" id="vocabR" min="0" max="6" step="1" value="4">
+        <span class="rk-val" id="vocabV">4,096</span></div>
+      <div class="scroll-x"><div id="sweepSvg" style="min-width:560px"></div></div>
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>GPT-2 正则预切分</span>
+        <span><i style="background:var(--e1)"></i>只按空格(对照)</span>
+        <span><i style="background:#B9B5AA"></i>GPT-2(tiktoken)</span>
+      </div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s4Bpt" style="color:var(--accent)">–</div><div class="drl">每 token 字节数</div></div>
+        <div class="dr"><div class="drv" id="s4Tok">–</div><div class="drl">1 MB 测试语料的 token 数</div></div>
+        <div class="dr"><div class="drv" id="s4Ctx">–</div><div class="drl">1024 上下文约装多少 KB 文本</div></div>
+        <div class="dr"><div class="drv" id="s4Emb" style="color:var(--e3)">–</div><div class="drl">嵌入表参数(词表 × n_embd=768)</div></div>
+      </div>
+    </div>
+    <div class="note" id="s4Note"></div>
+    <div class="codepath">↳ 代码:<b>16_bpe.py</b> 的 <code>make_encoder(merges, limit)</code>:只用前 limit 条合并</div>
+
+    <details class="dig">
+      <summary>词表越大越好吗?</summary>
+      <div class="dig-body">
+        两头都有代价。词表每翻一倍,嵌入表(与输出头共用)多 <code>词表 × n_embd</code> 个参数;第 6 章 124M 的 50,304 × 768 = 38.6M,占全部参数的约 31%。
+        输出层每一步都要对整个词表算 softmax,词表大,这一步也更贵。另一头,排在后面的合并对应的 token 出现次数少,嵌入学得差。
+        本页曲线越往右越平:从 256 到 512 每 token 多 1.02 字节,从 8,192 到 16,384 只多 0.38 字节。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>GPT-2 的 50,257 是怎么来的?</summary>
+      <div class="dig-body">
+        256 个字节 + 50,000 次合并 + 1 个 <code>&lt;|endoftext|&gt;</code> 特殊 token。第 6 章代码里向上取整到 50,304(128 的倍数),多出来的 47 行永远不会被用到。
+        它是在 GPT-2 自己的 WebText 上训的,不是 FineWeb-Edu;本页对照用的是同一段测试语料,两者训练语料不同,压缩率差距里也含有这部分影响。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:同一个句子在合并 0 次、100 次、全部 16,128 次时分别怎么切?中文又会怎样?</div>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="panel" id="panel4">
+    <h2>⑤ 训出来的分词器</h2>
+    <p class="lead">
+      选一个句子,再选合并次数,看它被切成哪些 token(相邻 token 交替着色,<code>&lt;e5&gt;</code> 这类是还没拼成完整字符的字节):
+    </p>
+    <div class="btn-row small" id="sentBtns">
+      <button class="btn primary">英文句子</button>
+      <button class="btn">代码</button>
+      <button class="btn">数字</button>
+      <button class="btn">中文</button>
+    </div>
+    <div class="btn-row small" id="kBtns"></div>
+    <div class="lab">
+      <div class="mini-h" id="segHead"></div>
+      <div class="toks" id="segToks"></div>
+    </div>
+    <div class="note" id="s5Note"></div>
+
+    <div class="sub-h"><span class="badge">词表</span>学出来的 token 长什么样</div>
+    <div class="btn-row small" id="bandBtns">
+      <button class="btn primary">最先合并的 40 个</button>
+      <button class="btn">第 4,000 次附近</button>
+      <button class="btn">最后合并的 40 个</button>
+      <button class="btn">最长的 16 个</button>
+    </div>
+    <div class="lab"><div class="cloud" id="bandCloud"></div></div>
+    <div class="note" id="bandNote"></div>
+
+    <details class="dig">
+      <summary>中文为什么一个字都没合并出来?</summary>
+      <div class="dig-body">
+        训练语料 FineWeb-Edu 是英文网页,8 MB 里几乎没有汉字,汉字的字节对出现次数排不进 16,128 次合并,
+        所以 22 个汉字编成 66 个 token,和字节数一样。GPT-2 的词表里有少量常用汉字(如本例的「光」「作」「的」),同一句是 45 个 token。
+        分词器的压缩率取决于训练语料里有什么:Qwen、DeepSeek 这类面向中文的模型在含大量中文的语料上训分词器,词表也更大(十几万),常用汉字和词都能合成单个 token。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>数字 8,045,311,447 为什么切得零零碎碎?</summary>
+      <div class="dig-body">
+        GPT-2 正则里数字串 <code>\p{N}+</code> 是一段,合并就在这段里按频率进行,哪几位合在一起取决于训练语料里哪些数字组合常见。
+        本分词器切成 <code>8</code> <code>,</code> <code>0</code> <code>45</code> …,GPT-2 切成 <code>045</code> <code>311</code> <code>447</code>,都不按位值对齐。
+        第 21 章做加法时就遇到这个问题:<code>37</code>、<code>85</code> 在 GPT-2 词表里各是一个整体 token,模型看不到个位和十位,所以那一章把数字逐位写开。
+      </div>
+    </details>
+
+    <div class="sub-h"><span class="badge">达标</span>本关实测</div>
+    <ul class="checklist" id="okList"></ul>
+    <div class="codepath">↳ 跑法:<code>python 16_bpe.py --json runs/ch18_bpe.json</code>(纯 CPU)· 对照 <code>--split space</code></div>
+
+    <div class="congrats" id="congrats">
+      <div class="ct">🎉 手写 BPE · 通关</div>
+      <div class="cs">你从 256 个字节出发,用"数对、合并出现最多的一对"训出了一个 16,384 词表的分词器,编码再解码逐字还原;也看到预切分让词表少花在标点变体上,以及词表大小、训练语料怎样决定压缩率。下一关拆开注意力的另一个黑盒:FlashAttention。</div>
+    </div>
+  </section>
+
+  <div class="nav">
+    <button class="btn" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<canvas id="confetti"></canvas>
+
+<script>
+/* ================================================================
+   REAL-DATA:全部来自 phase5-fullstack/runs/ch18_bpe.json 与 ch18_bpe_space.json
+   命令:cd phase5-fullstack && python 16_bpe.py --json runs/ch18_bpe.json
+                               python 16_bpe.py --split space --json runs/ch18_bpe_space.json
+   训练语料:FineWeb-Edu val shard 解码回的原文前 8,000,000 字节;测试语料:其后靠后的 1,000,000 字节
+   sweep:[词表, token 数, 每 token 字节数];examples.rows:[合并次数 或 "gpt2", token 列表]
+   ================================================================ */
+const D={"train_bytes": 8000000, "test_bytes": 1000000, "train_seconds": 113.8, "n_merges": 16128, "sweep": [[256, 1000000, 1.0], [512, 495372, 2.019], [1024, 396795, 2.52], [2048, 336175, 2.975], [4096, 291119, 3.435], [8192, 258025, 3.876], [16384, 235165, 4.252]], "sweep_space": [[256, 1000000, 1.0], [512, 494294, 2.023], [1024, 394814, 2.533], [2048, 332251, 3.01], [4096, 286285, 3.493], [8192, 251686, 3.973], [16384, 226591, 4.413]], "gpt2": [50257, 216366, 4.622], "mixed": 7, "mixed_space": 2279, "mixed_ex": ["'s", "'t", "'re", "'ve", "'ll", "'m", "'d"], "mixed_space_ex": ["s,", "s.", "'s", "es,", "e,", "es.", "e.", "’s", "y,", "ed.", "y.", "ing,", "ed,", "a,", "ing.", "a.", "ation.", "ly,", "ation,", "er,", "ever,", "'t", "S.", "on,", "er.", "ies,", "ies.", "-s", "o,", "ion.", ".S.", "ion,", "ia,", " U.S.", "’t", "ers,", "-b", "r.", "ers.", " However,", "-p", "ity.", "ity,", "-d", "-f", " example,", "i,", "ly."], "first": [" t", " a", "he", "in", "re", " the", " o", "er", "on", "at", " s", "en", " c", "es", " w", "nd", "is", "or", "it", " p", "ed", " of", "al", " b", "an", " f", " in", "ing", "ar", " m", "ou", " and", " to", "ic", "ion", " d", "ro", "le", "as", " h"], "band4000": ["greg", " village", " Franc", " generation", " custom", " HIV", " requirements", " Foundation", " identified", "37", "hel", "des", "can", "cra", "heric", "acher", " Fl", " 27", "ellig", " vary", " gravel", " 186", " Then", " 1990", " Phys", " giving", " reprodu", " learned", " western", "aughter", "aught", " relatively", " differences", " atmosphere", " principles", " communication", " powerful", " won", " gal", " Av"], "last": [" Related", " chocolate", " methylation", " fortunate", "uchanan", " impacted", " impairments", " staples", " stays", " appetite", "ancellor", " researching", " uncomfort", " epigenetic", "hoea", " cumulative", "culoskeletal", " chondroitin", " physiological", " damaging", " Projects", " biz", " collaborative", " vigorous", " monsoon", " Nasser", " surrender", " poets", " shrubs", " counterparts", " filibuster", " asylum", " Baptist", " vacuum", " undoubtedly", " legislative", " measles", "Islamic", " newsletter", " jumping"], "longest": [" telecommunications", " responsibilities", " Australopithecus", " characteristics", " representatives", " recommendations", " environmentally", " interpretations", " Representatives", " internationally", " transplantation", " discrimination", " responsibility", " concentrations", " implementation", " Administration"], "examples": {"en": {"text": "Photosynthesis converts sunlight into chemical energy stored in glucose.", "chars": 72, "bytes": 72, "rows": [[0, ["P", "h", "o", "t", "o", "s", "y", "n", "t", "h", "e", "s", "i", "s", " ", "c", "o", "n", "v", "e", "r", "t", "s", " ", "s", "u", "n", "l", "i", "g", "h", "t", " ", "i", "n", "t", "o", " ", "c", "h", "e", "m", "i", "c", "a", "l", " ", "e", "n", "e", "r", "g", "y", " ", "s", "t", "o", "r", "e", "d", " ", "i", "n", " ", "g", "l", "u", "c", "o", "s", "e", "."]], [10, ["P", "h", "o", "t", "o", "s", "y", "n", "t", "he", "s", "i", "s", " ", "c", "on", "v", "er", "t", "s", " ", "s", "u", "n", "l", "i", "g", "h", "t", " ", "in", "t", "o", " ", "c", "he", "m", "i", "c", "a", "l", " ", "e", "n", "er", "g", "y", " ", "s", "t", "o", "re", "d", " ", "in", " ", "g", "l", "u", "c", "o", "s", "e", "."]], [100, ["P", "h", "ot", "o", "s", "y", "n", "t", "he", "s", "is", " con", "ver", "t", "s", " s", "u", "n", "l", "ig", "h", "t", " in", "t", "o", " c", "he", "m", "ic", "al", " ", "en", "er", "g", "y", " st", "o", "re", "d", " in", " g", "l", "u", "c", "o", "se", "."]], [1000, ["P", "h", "ot", "os", "y", "nt", "hes", "is", " con", "ver", "ts", " su", "n", "l", "ight", " into", " c", "hem", "ical", " en", "ergy", " st", "ore", "d", " in", " gl", "uc", "ose", "."]], [4000, ["P", "h", "ot", "os", "y", "nt", "hes", "is", " conver", "ts", " sun", "light", " into", " chemical", " energy", " st", "ored", " in", " gl", "uc", "ose", "."]], [16128, ["Ph", "ot", "os", "ynthesis", " converts", " sunlight", " into", " chemical", " energy", " stored", " in", " glucose", "."]], ["gpt2", ["Photos", "ynthesis", " converts", " sunlight", " into", " chemical", " energy", " stored", " in", " glucose", "."]]]}, "code": {"text": "for i in range(10):\n    total += i * i", "chars": 38, "bytes": 38, "rows": [[0, ["f", "o", "r", " ", "i", " ", "i", "n", " ", "r", "a", "n", "g", "e", "(", "1", "0", ")", ":", "\n", " ", " ", " ", " ", "t", "o", "t", "a", "l", " ", "+", "=", " ", "i", " ", "*", " ", "i"]], [10, ["f", "o", "r", " ", "i", " ", "in", " ", "r", "a", "n", "g", "e", "(", "1", "0", ")", ":", "\n", " ", " ", " ", " t", "o", "t", "a", "l", " ", "+", "=", " ", "i", " ", "*", " ", "i"]], [100, ["f", "or", " ", "i", " in", " ", "r", "an", "g", "e", "(", "1", "0", ")", ":", "\n", " ", " ", " ", " to", "t", "al", " ", "+", "=", " ", "i", " ", "*", " ", "i"]], [1000, ["f", "or", " ", "i", " in", " r", "ange", "(", "10", ")", ":", "\n", " ", " ", " ", " to", "t", "al", " ", "+", "=", " ", "i", " ", "*", " ", "i"]], [4000, ["for", " i", " in", " range", "(", "10", "):", "\n", " ", " ", " ", " total", " ", "+", "=", " i", " ", "*", " i"]], [16128, ["for", " i", " in", " range", "(", "10", "):", "\n", " ", " ", " ", " total", " +", "=", " i", " *", " i"]], ["gpt2", ["for", " i", " in", " range", "(", "10", "):", "\n", " ", " ", " ", " total", " +=", " i", " *", " i"]]]}, "num": {"text": "In 2023, the population reached 8,045,311,447.", "chars": 46, "bytes": 46, "rows": [[0, ["I", "n", " ", "2", "0", "2", "3", ",", " ", "t", "h", "e", " ", "p", "o", "p", "u", "l", "a", "t", "i", "o", "n", " ", "r", "e", "a", "c", "h", "e", "d", " ", "8", ",", "0", "4", "5", ",", "3", "1", "1", ",", "4", "4", "7", "."]], [10, ["I", "n", " ", "2", "0", "2", "3", ",", " the", " ", "p", "o", "p", "u", "l", "at", "i", "on", " ", "re", "a", "c", "he", "d", " ", "8", ",", "0", "4", "5", ",", "3", "1", "1", ",", "4", "4", "7", "."]], [100, ["I", "n", " ", "2", "0", "2", "3", ",", " the", " p", "o", "p", "ul", "ation", " re", "a", "c", "he", "d", " ", "8", ",", "0", "4", "5", ",", "3", "1", "1", ",", "4", "4", "7", "."]], [1000, ["In", " 20", "2", "3", ",", " the", " pop", "ulation", " re", "ac", "hed", " 8", ",", "0", "4", "5", ",", "3", "11", ",", "4", "4", "7", "."]], [4000, ["In", " 20", "23", ",", " the", " population", " re", "ached", " 8", ",", "0", "45", ",", "3", "11", ",", "4", "4", "7", "."]], [16128, ["In", " 20", "23", ",", " the", " population", " reached", " 8", ",", "0", "45", ",", "3", "11", ",", "4", "47", "."]], ["gpt2", ["In", " 20", "23", ",", " the", " population", " reached", " 8", ",", "045", ",", "311", ",", "447", "."]]]}, "zh": {"text": "光合作用把阳光转化为储存在葡萄糖里的化学能。", "chars": 22, "bytes": 66, "rows": [[0, ["<e5>", "<85>", "<89>", "<e5>", "<90>", "<88>", "<e4>", "<bd>", "<9c>", "<e7>", "<94>", "<a8>", "<e6>", "<8a>", "<8a>", "<e9>", "<98>", "<b3>", "<e5>", "<85>", "<89>", "<e8>", "<bd>", "<ac>", "<e5>", "<8c>", "<96>", "<e4>", "<b8>", "<ba>", "<e5>", "<82>", "<a8>", "<e5>", "<ad>", "<98>", "<e5>", "<9c>", "<a8>", "<e8>", "<91>", "<a1>", "<e8>", "<90>", "<84>", "<e7>", "<b3>", "<96>", "<e9>", "<87>", "<8c>", "<e7>", "<9a>", "<84>", "<e5>", "<8c>", "<96>", "<e5>", "<ad>", "<a6>", "<e8>", "<83>", "<bd>", "<e3>", "<80>", "<82>"]], [10, ["<e5>", "<85>", "<89>", "<e5>", "<90>", "<88>", "<e4>", "<bd>", "<9c>", "<e7>", "<94>", "<a8>", "<e6>", "<8a>", "<8a>", "<e9>", "<98>", "<b3>", "<e5>", "<85>", "<89>", "<e8>", "<bd>", "<ac>", "<e5>", "<8c>", "<96>", "<e4>", "<b8>", "<ba>", "<e5>", "<82>", "<a8>", "<e5>", "<ad>", "<98>", "<e5>", "<9c>", "<a8>", "<e8>", "<91>", "<a1>", "<e8>", "<90>", "<84>", "<e7>", "<b3>", "<96>", "<e9>", "<87>", "<8c>", "<e7>", "<9a>", "<84>", "<e5>", "<8c>", "<96>", "<e5>", "<ad>", "<a6>", "<e8>", "<83>", "<bd>", "<e3>", "<80>", "<82>"]], [100, ["<e5>", "<85>", "<89>", "<e5>", "<90>", "<88>", "<e4>", "<bd>", "<9c>", "<e7>", "<94>", "<a8>", "<e6>", "<8a>", "<8a>", "<e9>", "<98>", "<b3>", "<e5>", "<85>", "<89>", "<e8>", "<bd>", "<ac>", "<e5>", "<8c>", "<96>", "<e4>", "<b8>", "<ba>", "<e5>", "<82>", "<a8>", "<e5>", "<ad>", "<98>", "<e5>", "<9c>", "<a8>", "<e8>", "<91>", "<a1>", "<e8>", "<90>", "<84>", "<e7>", "<b3>", "<96>", "<e9>", "<87>", "<8c>", "<e7>", "<9a>", "<84>", "<e5>", "<8c>", "<96>", "<e5>", "<ad>", "<a6>", "<e8>", "<83>", "<bd>", "<e3>", "<80>", "<82>"]], [1000, ["<e5>", "<85>", "<89>", "<e5>", "<90>", "<88>", "<e4>", "<bd>", "<9c>", "<e7>", "<94>", "<a8>", "<e6>", "<8a>", "<8a>", "<e9>", "<98>", "<b3>", "<e5>", "<85>", "<89>", "<e8>", "<bd>", "<ac>", "<e5>", "<8c>", "<96>", "<e4>", "<b8>", "<ba>", "<e5>", "<82>", "<a8>", "<e5>", "<ad>", "<98>", "<e5>", "<9c>", "<a8>", "<e8>", "<91>", "<a1>", "<e8>", "<90>", "<84>", "<e7>", "<b3>", "<96>", "<e9>", "<87>", "<8c>", "<e7>", "<9a>", "<84>", "<e5>", "<8c>", "<96>", "<e5>", "<ad>", "<a6>", "<e8>", "<83>", "<bd>", "<e3>", "<80>", "<82>"]], [4000, ["<e5>", "<85>", "<89>", "<e5>", "<90>", "<88>", "<e4>", "<bd>", "<9c>", "<e7>", "<94>", "<a8>", "<e6>", "<8a>", "<8a>", "<e9>", "<98>", "<b3>", "<e5>", "<85>", "<89>", "<e8>", "<bd>", "<ac>", "<e5>", "<8c>", "<96>", "<e4>", "<b8>", "<ba>", "<e5>", "<82>", "<a8>", "<e5>", "<ad>", "<98>", "<e5>", "<9c>", "<a8>", "<e8>", "<91>", "<a1>", "<e8>", "<90>", "<84>", "<e7>", "<b3>", "<96>", "<e9>", "<87>", "<8c>", "<e7>", "<9a>", "<84>", "<e5>", "<8c>", "<96>", "<e5>", "<ad>", "<a6>", "<e8>", "<83>", "<bd>", "<e3>", "<80>", "<82>"]], [16128, ["<e5>", "<85>", "<89>", "<e5>", "<90>", "<88>", "<e4>", "<bd>", "<9c>", "<e7>", "<94>", "<a8>", "<e6>", "<8a>", "<8a>", "<e9>", "<98>", "<b3>", "<e5>", "<85>", "<89>", "<e8>", "<bd>", "<ac>", "<e5>", "<8c>", "<96>", "<e4>", "<b8>", "<ba>", "<e5>", "<82>", "<a8>", "<e5>", "<ad>", "<98>", "<e5>", "<9c>", "<a8>", "<e8>", "<91>", "<a1>", "<e8>", "<90>", "<84>", "<e7>", "<b3>", "<96>", "<e9>", "<87>", "<8c>", "<e7>", "<9a>", "<84>", "<e5>", "<8c>", "<96>", "<e5>", "<ad>", "<a6>", "<e8>", "<83>", "<bd>", "<e3>", "<80>", "<82>"]], ["gpt2", ["光", "<e5><90>", "<88>", "作", "<e7><94>", "<a8>", "<e6>", "<8a>", "<8a>", "<e9>", "<98>", "<b3>", "光", "<e8>", "<bd>", "<ac>", "<e5><8c>", "<96>", "<e4><b8>", "<ba>", "<e5><82>", "<a8>", "<e5><ad>", "<98>", "<e5><9c>", "<a8>", "<e8>", "<91>", "<a1>", "<e8>", "<90>", "<84>", "<e7>", "<b3>", "<96>", "<e9><87>", "<8c>", "的", "<e5><8c>", "<96>", "<e5><ad>", "<a6>", "<e8><83>", "<bd>", "。"]]]}}};
+
+const $=id=>document.getElementById(id);
+function setActiveBtn(containerId,n){
+  document.querySelectorAll('#'+containerId+' .btn').forEach((b,i)=>b.classList.toggle('primary',i===n));
+}
+const en=v=>v.toLocaleString('en-US');
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function tokHTML(t,cls){
+  const vis=esc(t).replace(/ /g,'<span class="sp">␣</span>').replace(/\n/g,'<span class="sp">↵</span>');
+  return `<span class="tk ${cls}">${vis}</span>`;
+}
+
+/* ============ 步骤切换 ============ */
+const NSTEP=5;
+const tabs=document.querySelectorAll('.step-tab');
+const panels=[];for(let i=0;i<NSTEP;i++)panels.push($('panel'+i));
+let cur=0;
+function goto(i){
+  cur=Math.max(0,Math.min(NSTEP-1,i));
+  tabs.forEach(t=>t.classList.toggle('active',+t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active',idx===cur));
+  $('prevBtn').disabled = cur===0;
+  $('nextBtn').textContent = cur===NSTEP-1 ? '完成 🎉' : '下一步 →';
+  const hash='#step-'+(cur+1);
+  if(location.hash!==hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+$('prevBtn').addEventListener('click',()=>goto(cur-1));
+$('nextBtn').addEventListener('click',()=>{ if(cur===NSTEP-1) celebrate(); else goto(cur+1); });
+
+/* ============ STEP 1:UTF-8 字节 ============ */
+const PRESETS=['Hello, world!','光合作用把阳光转化为化学能。','LLM 从零手写 🙂 ok'];
+const BCOL={1:'var(--e2)',2:'var(--e1)',3:'var(--accent)',4:'var(--e3)'};
+const te=new TextEncoder();
+function renderBytes(){
+  const s=$('txtIn').value;
+  let html='',nb=0;const cs=Array.from(s);
+  cs.forEach(c=>{
+    const b=te.encode(c); nb+=b.length;
+    const g=c===' '?'<span class="sp">␣</span>':esc(c);
+    html+=`<div class="ch"><div class="cg">${g}</div><div class="cb">${Array.from(b).map(x=>`<span style="background:${BCOL[b.length]}">${x.toString(16).padStart(2,'0')}</span>`).join('')}</div></div>`;
+  });
+  $('charCards').innerHTML=html||'<span style="color:var(--ink2);font-size:13px">(空)</span>';
+  $('s1Chars').textContent=en(cs.length);
+  $('s1Bytes').textContent=en(nb);
+  $('s1Ctx').textContent=nb?en(Math.floor(1024/nb)):'–';
+}
+$('txtIn').addEventListener('input',()=>{setActiveBtn('presetBtns',-1);renderBytes();});
+document.querySelectorAll('#presetBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{
+  setActiveBtn('presetBtns',i); $('txtIn').value=PRESETS[i]; renderBytes();
+}));
+renderBytes();
+
+/* ============ STEP 2:玩具 BPE ============ */
+const TOY='the cat sat on the mat. the cat ate the rat. that fat cat sat there.';
+let toyWords, toyMerges, lastMerged=null;
+function toyReset(){
+  toyWords=(TOY.match(/ ?\S+/g)||[]).map(w=>Array.from(w));
+  toyMerges=[]; lastMerged=null;
+}
+function toyPairs(){
+  const cnt=new Map();
+  toyWords.forEach(w=>{ for(let i=0;i+1<w.length;i++){ const k=w[i]+'\u0000'+w[i+1]; cnt.set(k,(cnt.get(k)||0)+1); } });
+  return [...cnt.entries()].map(([k,v])=>{const [a,b]=k.split('\u0000');return {a,b,n:v};});
+}
+function toyMergeOnce(){
+  const ps=toyPairs(); if(!ps.length) return false;
+  let best=ps[0]; ps.forEach(p=>{ if(p.n>best.n) best=p; });          // 次数相同取先出现的
+  if(best.n<2) return false;
+  const nt=best.a+best.b;
+  toyWords=toyWords.map(w=>{ const o=[]; for(let i=0;i<w.length;i++){ if(i+1<w.length&&w[i]===best.a&&w[i+1]===best.b){o.push(nt);i++;} else o.push(w[i]); } return o; });
+  toyMerges.push({a:best.a,b:best.b,t:nt,n:best.n}); lastMerged=nt;
+  return true;
+}
+function vis(t){ return esc(t).replace(/ /g,'<span class="sp">␣</span>'); }
+function renderToy(){
+  const all=toyWords.flat();
+  $('toyHead').textContent=`语料(${TOY.length} 个字符,按空格切成 ${toyWords.length} 个词)`;
+  let k=0;
+  $('toyToks').innerHTML=toyWords.map(w=>w.map(t=>tokHTML(t, t===lastMerged?'hl':((k++)%2?'b':'a'))).join('')).join('<span style="width:8px;display:inline-block"></span>');
+  const ps=toyPairs().sort((x,y)=>y.n-x.n).slice(0,8);
+  const mx=ps.length?ps[0].n:1;
+  $('pairBars').innerHTML=ps.map((p,i)=>`<div class="pb ${i===0&&p.n>=2?'top':''}"><span class="pn">${vis(p.a)} + ${vis(p.b)}</span><span class="pt"><span class="pf" style="display:block;width:${p.n/mx*100}%"></span></span><span class="pv">${p.n}</span></div>`).join('')||'<div class="mini-h">没有能合并的对了</div>';
+  $('mergeList').innerHTML=toyMerges.length?toyMerges.map((m,i)=>`<div class="${i===toyMerges.length-1?'new':''}">#${i+1}  ${vis(m.a)} + ${vis(m.b)} → ${vis(m.t)}   (${m.n} 次)</div>`).reverse().join(''):'<div style="color:var(--ink2)">(还没有合并)</div>';
+  const base=new Set(Array.from(TOY)).size;
+  $('s2Vocab').textContent=`${base} + ${toyMerges.length}`;
+  $('s2Len').textContent=all.length;
+  $('s2Ratio').textContent=(TOY.length/all.length).toFixed(2);
+  const m=toyMerges[toyMerges.length-1];
+  $('s2Note').innerHTML=m?`第 ${toyMerges.length} 次合并:<b>${vis(m.a)} + ${vis(m.b)} → ${vis(m.t)}</b>,它在语料里出现 ${m.n} 次,语料从 ${TOY.length} 个 token 缩到 ${all.length} 个。`
+    :`现在每个字符(这段语料全是 ASCII,一个字符就是一个字节)各是一个 token,共 ${all.length} 个。`;
+}
+document.querySelectorAll('#mergeBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{
+  setActiveBtn('mergeBtns',i);
+  if(i===0) toyMergeOnce();
+  else if(i===1){ for(let j=0;j<5;j++) if(!toyMergeOnce()) break; }
+  else toyReset();
+  renderToy();
+}));
+toyReset(); renderToy();
+
+/* ============ STEP 3:预切分 ============ */
+const SPLIT_TXT="The dog's bone. The dog! Is it the dog? It costs 1,250 dollars.";
+const RE_GPT2=/'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+/gu;
+const RE_SPACE=/ ?\S+|\s+/g;
+let splitMode=0, cmpMode='gpt2';
+function renderSplit(){
+  const segs=SPLIT_TXT.match(splitMode===0?RE_GPT2:RE_SPACE);
+  $('splitToks').innerHTML=segs.map((s,i)=>tokHTML(s,i%2?'b':'a')).join('');
+  const dogs=segs.filter(s=>/dog/.test(s));
+  $('splitCount').innerHTML=`${segs.length} 段 · 含 dog 的段:${[...new Set(dogs)].map(d=>'<code>'+vis(d)+'</code>').join(' ')}(${new Set(dogs).size} 种写法)`;
+}
+document.querySelectorAll('#splitBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{ setActiveBtn('splitBtns',i); splitMode=i; renderSplit(); }));
+renderSplit();
+
+const V16=D.sweep[D.sweep.length-1], V16S=D.sweep_space[D.sweep_space.length-1];
+$('cmpMixG').textContent=en(D.mixed); $('cmpMixS').textContent=en(D.mixed_space);
+$('cmpBptG').textContent=V16[2].toFixed(3); $('cmpBptS').textContent=V16S[2].toFixed(3);
+$('digBpt').textContent=`${(V16S[2]-V16[2]).toFixed(3)} 字节(${((V16S[2]/V16[2]-1)*100).toFixed(1)}%)`;
+function renderCmp(){
+  document.querySelectorAll('#cmpSides .side').forEach(s=>s.classList.toggle('sel',s.dataset.k===cmpMode));
+  const ex=cmpMode==='gpt2'?D.mixed_ex:D.mixed_space_ex;
+  $('mixH').textContent=cmpMode==='gpt2'?`GPT-2 正则:全部 ${D.mixed} 个字母 + 标点 token`:`只按空格:${en(D.mixed_space)} 个里的前 ${ex.length} 个(按合并先后)`;
+  $('mixCloud').innerHTML=ex.map((t,i)=>tokHTML(t,i%2?'b':'a')).join('');
+}
+document.querySelectorAll('#cmpSides .side').forEach(s=>s.addEventListener('click',()=>{cmpMode=s.dataset.k;renderCmp();}));
+renderCmp();
+$('s3Note').innerHTML=`只按空格切,测试语料每 token 多 ${(V16S[2]-V16[2]).toFixed(3)} 字节;词表里 <b>${en(D.mixed_space)}</b> 个 token(${(D.mixed_space/D.n_merges*100).toFixed(1)}%)是"词 + 标点"的变体。GPT-2 正则下只有 ${D.mixed} 个,全是 's 't 这类缩写。`;
+
+/* ============ STEP 4:词表大小扫描 ============ */
+function renderSweep(){
+  const i=+$('vocabR').value, r=D.sweep[i], rs=D.sweep_space[i];
+  $('vocabV').textContent=en(r[0]);
+  const W=620,H=262,L=48,R=18,T=30,B=36;
+  const xs=v=>L+(Math.log2(v)-8)/(Math.log2(65536)-8)*(W-L-R);
+  const ys=v=>T+(1-(v-1)/(5-1))*(H-T-B);
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;font-family:ui-monospace,monospace">`;
+  for(let v=1;v<=5;v++){ s+=`<line x1="${L}" x2="${W-R}" y1="${ys(v)}" y2="${ys(v)}" stroke="#E5E2D9"/><text x="${L-8}" y="${ys(v)+4}" font-size="10.5" text-anchor="end" fill="#6B6B68">${v}</text>`; }
+  [256,1024,4096,16384,65536].forEach(v=>{ s+=`<text x="${xs(v)}" y="${H-B+16}" font-size="10.5" text-anchor="middle" fill="#6B6B68">${en(v)}</text>`; });
+  s+=`<text x="${(L+W-R)/2}" y="${H-4}" font-size="10.5" text-anchor="middle" fill="#6B6B68">词表大小(对数刻度)</text>`;
+  s+=`<text x="12" y="14" font-size="10.5" fill="#6B6B68">字节/token</text>`;
+  const line=(arr,col)=>`<polyline fill="none" stroke="${col}" stroke-width="2" points="${arr.map(a=>xs(a[0])+','+ys(a[2])).join(' ')}"/>`+arr.map(a=>`<circle cx="${xs(a[0])}" cy="${ys(a[2])}" r="3.2" fill="${col}"/>`).join('');
+  s+=line(D.sweep_space,'#3a63c0')+line(D.sweep,'#D97757');
+  s+=`<circle cx="${xs(D.gpt2[0])}" cy="${ys(D.gpt2[2])}" r="5" fill="#B9B5AA"/><text x="${xs(D.gpt2[0])-8}" y="${ys(D.gpt2[2])-9}" font-size="10.5" text-anchor="end" fill="#6B6B68">GPT-2 ${D.gpt2[2].toFixed(2)}</text>`;
+  s+=`<line x1="${xs(r[0])}" x2="${xs(r[0])}" y1="${T}" y2="${H-B}" stroke="#D97757" stroke-dasharray="3 3"/>`;
+  s+=`<circle cx="${xs(r[0])}" cy="${ys(r[2])}" r="6" fill="none" stroke="#D97757" stroke-width="2"/>`;
+  s+=`<text x="${xs(r[0])+8}" y="${ys(r[2])+16}" font-size="11" fill="#D97757" font-weight="700">${r[2].toFixed(2)}</text>`;
+  s+='</svg>';
+  $('sweepSvg').innerHTML=s;
+  $('s4Bpt').textContent=r[2].toFixed(3);
+  $('s4Tok').textContent=en(r[1]);
+  $('s4Ctx').textContent=(1024*r[2]/1000).toFixed(1)+' KB';
+  $('s4Emb').textContent=(r[0]*768/1e6).toFixed(1)+'M';
+  const prev=i>0?D.sweep[i-1]:null;
+  $('s4Note').innerHTML=prev?`从 ${en(prev[0])} 翻到 <b>${en(r[0])}</b>:每 token 多 ${(r[2]-prev[2]).toFixed(3)} 字节,测试语料少 ${en(prev[1]-r[1])} 个 token,嵌入表多 ${((r[0]-prev[0])*768/1e6).toFixed(2)}M 参数。只按空格切的同尺寸词表:${rs[2].toFixed(3)}。`
+    :`词表 256 时一个 token 就是一个字节,1 MB 测试语料编成 ${en(r[1])} 个 token。`;
+}
+$('vocabR').addEventListener('input',renderSweep);
+renderSweep();
+
+/* ============ STEP 5:例句 / 词表样例 ============ */
+const SENT_KEYS=['en','code','num','zh'];
+let sentK='en', kIdx=5;
+const K_LABELS=D.examples.en.rows.map(r=>r[0]==='gpt2'?'GPT-2':(r[0]===D.n_merges?`全部 ${en(r[0])} 次`:`合并 ${en(r[0])} 次`));
+$('kBtns').innerHTML=K_LABELS.map(t=>`<button class="btn">${t}</button>`).join('');
+document.querySelectorAll('#kBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{kIdx=i;renderSeg();}));
+document.querySelectorAll('#sentBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{ setActiveBtn('sentBtns',i); sentK=SENT_KEYS[i]; renderSeg(); }));
+function renderSeg(){
+  setActiveBtn('kBtns',kIdx);
+  const e=D.examples[sentK], row=e.rows[kIdx];
+  $('segHead').textContent=`${e.chars} 个字符 / ${e.bytes} 个字节 → ${row[1].length} 个 token`;
+  $('segToks').innerHTML=row[1].map((t,i)=>tokHTML(t,/^(<[0-9a-f]{2}>)+$/.test(t)?'x':(i%2?'b':'a'))).join('');
+  const full=e.rows[e.rows.length-2][1].length, g=e.rows[e.rows.length-1][1].length;
+  $('s5Note').innerHTML=`这句话:本分词器(${en(D.n_merges)} 次合并)<b>${full}</b> 个 token,GPT-2 <b>${g}</b> 个,原始字节 ${e.bytes} 个。`+
+    (sentK==='zh'?' 训练语料是英文,汉字的字节一个都没被合并。':'');
+}
+renderSeg();
+const BANDS=[[D.first,'最先合并的:常见字母组合和高频虚词,比如 ␣t、he、␣the、ing。'],
+  [D.band4000,'第 4,000 次附近:完整的常用词开始出现,也有 hel、acher 这类词的片段。'],
+  [D.last,'最后合并的:出现次数刚好排进前 16,128 的词,不少是专业词。'],
+  [D.longest,'最长的:训练语料里反复出现的长词整个成了一个 token。']];
+function renderBand(i){
+  setActiveBtn('bandBtns',i);
+  $('bandCloud').innerHTML=BANDS[i][0].map((t,j)=>tokHTML(t,j%2?'b':'a')).join('');
+  $('bandNote').textContent=BANDS[i][1];
+}
+document.querySelectorAll('#bandBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>renderBand(i)));
+renderBand(0);
+
+$('okList').innerHTML=[
+  `8 MB 训练语料,${en(D.n_merges)} 次合并,纯 Python 用时 <b>${Math.round(D.train_seconds)} 秒</b>`,
+  `1 MB 测试语料编码成 ${en(V16[1])} 个 token,再解码<b>逐字还原</b>(脚本里有断言)`,
+  `16,384 词表每 token <b>${V16[2].toFixed(3)}</b> 字节;GPT-2 的 50,257 词表 ${D.gpt2[2].toFixed(3)}`,
+  `预切分对照:GPT-2 正则下字母 + 标点 token ${D.mixed} 个,只按空格 <b>${en(D.mixed_space)}</b> 个`,
+  `中文例句 22 个字 = 66 字节 = 66 个 token(英文语料训出的词表没合并汉字),GPT-2 45 个`,
+].map(t=>`<li><span class="ck">✓</span><div>${t}</div></li>`).join('');
+
+/* ============ 名词气泡 ============ */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent, def=el.dataset.def||'', key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def+(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8; if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw; if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el)); el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* ============ 通关庆祝 ============ */
+function celebrate(){
+  $('congrats').classList.add('show');
+  const cv=$('confetti'); cv.style.display='block';
+  const ctx=cv.getContext('2d'); cv.width=innerWidth; cv.height=innerHeight;
+  const COL=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const ps=[];for(let i=0;i<150;i++)ps.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    vx:(Math.random()-0.5)*3,vy:2+Math.random()*4,s:5+Math.random()*7,c:COL[i%COL.length],a:Math.random()*6.28,va:(Math.random()-0.5)*0.3});
+  let t0=null;
+  function frame(ts){ if(!t0)t0=ts; const el=ts-t0;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.04;p.a+=p.va;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.a);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.6);ctx.restore();});
+    if(el<3400) requestAnimationFrame(frame); else { ctx.clearRect(0,0,cv.width,cv.height); cv.style.display='none'; }
+  }
+  requestAnimationFrame(frame);
+  $('congrats').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ============ 初始化:深链 ============ */
+const m=/^#step-(\d+)$/.exec(location.hash);
+goto(m?parseInt(m[1],10)-1:0);
+window.addEventListener('hashchange',()=>{const mm=/^#step-(\d+)$/.exec(location.hash);goto(mm?parseInt(mm[1],10)-1:0);});
+
+</script>
+<!--site-copyright-->
+<footer style="max-width:960px;margin:56px auto 0;padding:18px 24px 44px;border-top:1px solid var(--border);text-align:center;font-size:12px;color:var(--ink2);line-height:1.7">
+  © 2026 <a href="https://fim.ai" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">FIM Labs</a> · 从零手写大语言模型 · MIT License
+</footer>
+</body>
+</html>

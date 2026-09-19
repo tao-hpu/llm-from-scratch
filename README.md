@@ -2,7 +2,8 @@
 
 > 用最少的代码、最白的中文，把一个语言模型从「预测下一个字符」一路搭到「复现 GPT-2 124M」，
 > 再往后走到后训练(SFT / LoRA / DPO)、现代架构(MoE、LLaMA 四件套),
-> 以及长上下文与推理效率(线性注意力、稀疏注意力、N-gram 查表、投机解码、量化)。
+> 以及长上下文与推理效率(线性注意力、稀疏注意力、N-gram 查表、投机解码、量化),
+> 最后补齐全链路(手写 BPE 分词器、Triton FlashAttention、scaling law、RLVR / GRPO)。
 > 不调包、不填 YAML，每一行都看得懂为什么。
 >
 > **English version → [jump to bottom](#-english).**
@@ -37,6 +38,10 @@
 - [`web/15_ngram_memory_viz.html`](web/15_ngram_memory_viz.html) — 第 15 章 · N-gram 查表(对应 `13_engram.py`):按最近两三个字哈希查一张大表,表越大容量越大,每 token 读取量不变,表还能留在 CPU
 - [`web/16_speculative_decoding_viz.html`](web/16_speculative_decoding_viz.html) — 第 16 章 · 投机解码与 MTP(对应 `14_mtp.py`):草稿员先猜、主模型一次验收,接受规则保证输出分布不变;小草稿模型与 DeepSeek-V3 式 MTP 头两种草稿员
 - [`web/17_quantization_viz.html`](web/17_quantization_viz.html) — 第 17 章 · 量化(对应 `15_quant.py`):把第 6 章的 124M 从 32 位压到 2 位,对照 int8 / int4 各种 scale 粒度、Q4_K、NVFP4、MXFP4
+- [`web/18_bpe_viz.html`](web/18_bpe_viz.html) — 第 18 章 · 手写 BPE(对应 `16_bpe.py`):从 256 个字节出发数对、合并,在 8 MB FineWeb-Edu 上训出 16,384 词表;预切分对照、词表大小与压缩率、中文为什么贵
+- [`web/19_flash_attention_viz.html`](web/19_flash_attention_viz.html) — 第 19 章 · 手写 FlashAttention(对应 `17_flash_attn.py`):online softmax、分块、Triton 前向 kernel,在 RTX 4090 上和朴素写法、SDPA 比时间与显存,换进 124M 核对 loss
+- [`web/20_scaling_law_viz.html`](web/20_scaling_law_viz.html) — 第 20 章 · Scaling Law(对应 `18_scaling.py`):21 个小模型训练点拟合 L(N, D),外推第 6 章 124M 训 10B token 的 loss(预测 3.36、实测 3.03);换三组拟合点看外推越远误差越大,并排查两次训练发散(注意力 logit 增长,qk-norm 修复)
+- [`web/21_rlvr_grpo_viz.html`](web/21_rlvr_grpo_viz.html) — 第 21 章 · RLVR 与 GRPO(对应 `19_grpo.py`):只给判分器,把 124M 教会两位数加法;同一基座、同一评测下和 SFT、DPO 同台对照
 - [`web/glossary.html`](web/glossary.html) — 名词表(术语字典,正文术语 hover 即弹气泡)
 - [`web/notes.html`](web/notes.html) — 学习札记 / 彩蛋:正课之外的小故事(如 Transformer 前世今生:8 作者、翻译起源、家谱)
 
@@ -48,7 +53,8 @@
 
 - 只会用框架(LLaMA-Factory / TRL),你永远是「填配置的操作员」,模型一出问题就抓瞎。
 - 本仓库只回答一个问题:**这些轮子到底是怎么造出来的。**
-  从 bigram 到 GPT-2 124M、从 SFT/LoRA/DPO 到 MoE 与 LLaMA 四件套,再到线性/稀疏注意力、投机解码与量化,全部手搓,不调框架。
+  从 bigram 到 GPT-2 124M、从 SFT/LoRA/DPO 到 MoE 与 LLaMA 四件套,再到线性/稀疏注意力、投机解码与量化,
+  以及分词器、注意力 kernel、scaling law 和 RLVR,全部手搓,不调框架。
 - 把原理吃透之后再回头用生产工具,你填的每个配置项才知道它在动什么。
 
 ---
@@ -87,6 +93,13 @@ phase4-efficiency/   长上下文与推理效率（11/12/14 用 tiny shakespeare
   14_mtp.py            投机解码：小草稿模型与 MTP 头两种草稿员，验证贪心逐字一致、采样分布一致
   15_quant.py          量化：加载 124M 权重，对比 int8/int4 各种 scale 粒度、Q4_K、NVFP4、MXFP4 的 val loss
                        （15 需要 ../phase1-124m 的 10B 权重；13 与 15 读 FineWeb-Edu 验证片 edufineweb_val_000000.npy，依次在 phase4-efficiency/data/、phase1-124m/data/ 里找）
+
+phase5-fullstack/    补齐全链路：分词器 / 注意力 kernel / scaling law / RLVR
+  16_bpe.py            手写字节级 BPE：GPT-2 正则预切分 + 数对合并，训 16,384 词表，和 tiktoken 比压缩率（纯 CPU，--split space 做对照）
+  17_flash_attn.py     手写 FlashAttention：朴素 / PyTorch 分块 / Triton kernel 三层，对数、测时间显存，换进 124M 核对 loss（Triton 需要 N 卡）
+  18_scaling.py        Scaling law：train 训一个 (N, D) 点，evalckpt 评现成 checkpoint，fit 拟合 L(N,D) + bootstrap；--diag 记注意力分数与梯度范数，--qk-norm / --z-loss 做发散对照（训练需要 N 卡）
+  19_grpo.py           RLVR / GRPO：两位数加法 + 判分器，同一热身起点上 SFT / DPO / GRPO 同台对照（CUDA / MPS / CPU）
+  runs/queue_*.sh      各章真实对照用到的实验队列（输出的 json / log 不进 git）
 ```
 
 ---
@@ -120,7 +133,14 @@ phase4-efficiency/   长上下文与推理效率（11/12/14 用 tiny shakespeare
 - [x] **投机解码与 MTP**(`14_mtp.py`):草稿 + 验收,输出分布不变
 - [x] **量化**(`15_quant.py`):124M 权重从 32 位压到 2 位的真实账本
 
-> 到这里,这条学习线要手搓的东西就齐了:预训练 → 后训练 → 现代架构 → 长上下文与推理效率。
+### Phase 5 — 补齐全链路 ✅
+
+- [x] **手写 BPE**(`16_bpe.py`):字节级 BPE + GPT-2 预切分,自训 16,384 词表,编码解码逐字还原
+- [x] **手写 FlashAttention**(`17_flash_attn.py`):online softmax + 分块 + Triton 前向 kernel
+- [x] **Scaling law**(`18_scaling.py`):21 个小模型训练点拟合 L(N, D),外推 124M 偏高 0.33;附训练发散排查(qk-norm)
+- [x] **RLVR / GRPO**(`19_grpo.py`):只给判分器的强化学习,与 SFT、DPO 同台对照
+
+> 到这里,这条学习线要手搓的东西就齐了:分词 → 预训练 → 后训练 → 现代架构 → 长上下文与推理效率 → scaling law 与 RLVR。
 > **生产工具链(LLaMA-Factory / TRL / PEFT)不在本仓库范围内** —— 那是"怎么用现成轮子"的问题,
 > 而本仓库从头到尾只回答"轮子是怎么造出来的"。
 
@@ -220,10 +240,14 @@ python 05_sample.py --ckpt ckpt/latest.pt --prompt "The history of Rome" --n 3
 | GPT-2 124M **全量预训练**(04) | ✅ 必需 | ❌ | ❌ |
 | Phase 3 / Phase 4 玩具版(09–14) | ✅ | ✅ | ✅ 慢 |
 | 124M 量化评测(15) | ✅ | ✅ | ✅ 慢 |
+| 手写 BPE(16) | ✅ | ✅ | ✅(纯 CPU) |
+| FlashAttention Triton kernel(17) | ✅ 必需 | 无 Triton:朴素 / 分块对数 + T ≤ 2048 计时 | 同 MPS,慢 |
+| Scaling law 训练(18 train) | ✅ 必需 | ❌ | ❌ |
+| RLVR / GRPO(19) | ✅ | ✅ | ✅ 慢 |
 
 预训练那一步用了 bf16 / `torch.compile` / CUDA-only 的优化,所以需要一张 NVIDIA GPU(单卡 24G 如 4090 足够)。**其余一切在 Mac 和纯 CPU 上都能跑**——所以 macOS、Windows、Linux 都能复现这条学习线,只是「自己从头预训练 124M」需要 N 卡。
 
-页面里的真实对照数字大多在 Mac MPS 上跑出;第 13 章全部、第 14 章检索任务、第 11 章细粒度与共享专家、第 15 章吞吐、第 16 章在单卡 RTX 4090 上跑出,各页注明了硬件。
+页面里的真实对照数字大多在 Mac MPS 上跑出;第 13 章全部、第 14 章检索任务、第 11 章细粒度与共享专家、第 15 章吞吐、第 16 章、第 19–21 章在单卡 RTX 4090 上跑出(第 21 章热身 200 道起点的学习率扫描在 MPS 上),第 18 章在 CPU 上,各页注明了硬件。
 
 ---
 

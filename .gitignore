@@ -15,9 +15,11 @@ data10b/
 *.npy
 *.parquet
 
-# ===== 日志 =====
+# ===== 日志 / 实验产物 =====
+# runs/ 里的 json、log、checkpoint 不进仓;复现实验的队列脚本 queue_*.sh 进仓(页面里写了跑法)
 *.log
-runs/
+**/runs/*
+!**/runs/queue_*.sh
 
 # ===== Python =====
 __pycache__/
@@ -32,6 +34,7 @@ env/
 .idea/
 .vscode/
 .claude/
+.playwright-mcp/
 
 # ===== 个人规划稿（引用了私有科研线，勿发布）=====
 _规划稿-内部勿发.md

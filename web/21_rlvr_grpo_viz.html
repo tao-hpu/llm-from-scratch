@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RLVR 与 GRPO · 只给判分器</title>
+<meta name="description" content="不给标准答案,只给一个能判对错的程序:同一道题采样 8 次、组内比较、按优势更新,把 124M 教会两位数加法。同一基座、同一评测、同样 4096 道题,和 SFT、DPO 同台对照,并看起点弱时 RL 为什么拿不到信号。">
+<meta name="theme-color" content="#D97757">
+<!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
+<meta property="og:title" content="第 21 章 · RLVR 与 GRPO · 从零手写大语言模型">
+<meta property="og:description" content="不给标准答案,只给一个能判对错的程序:同一道题采样 8 次、组内比较、按优势更新,把 124M 教会两位数加法。同一基座、同一评测、同样 4096 道题,和 SFT、DPO 同台对照,并看起点弱时 RL 为什么拿不到信号。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://learn-llm.fim.ai/21_rlvr_grpo_viz.html">
+<meta property="og:image" content="https://learn-llm.fim.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="第 21 章 · RLVR 与 GRPO · 从零手写大语言模型">
+<meta name="twitter:description" content="不给标准答案,只给一个能判对错的程序:同一道题采样 8 次、组内比较、按优势更新,把 124M 教会两位数加法。同一基座、同一评测、同样 4096 道题,和 SFT、DPO 同台对照,并看起点弱时 RL 为什么拿不到信号。">
+<meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
+<style>
+
+  :root{
+    --bg:#F0EEE6; --card:#FAF9F5; --border:#E5E2D9;
+    --accent:#D97757; --accent-soft:#F2D9CE; --ink:#1A1A18; --ink2:#6B6B68;
+    --good:#3f7d63; --good-soft:#D7EBE0; --bad:#9a3a22; --bad-soft:#F3D9CE;
+    --e0:#b8512f; --e0s:#F7E6DE; --e1:#3a63c0; --e1s:#E5EBF9;
+    --e2:#3f7d63; --e2s:#E4EFE9; --e3:#a3548c; --e3s:#F6E6F0;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 24px 90px;}
+
+  .home-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:5px 12px;margin-bottom:16px;transition:all .2s ease;}
+  .home-link:hover{border-color:var(--accent);color:var(--accent);}
+
+  header{margin-bottom:24px;}
+  .filename{font-family:var(--mono);font-size:13px;color:var(--ink2);
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:4px 10px;display:inline-block;margin-bottom:14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.3;margin:0 0 10px;}
+  .subtitle{color:var(--ink2);font-size:15px;max-width:790px;margin:0;}
+  .subtitle code{font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:var(--accent);}
+
+  .steps-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:26px 0 18px;}
+  .step-tab{background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:11px 14px;cursor:pointer;transition:all .25s ease;text-align:left;}
+  .step-tab:hover{border-color:#cfc9ba;}
+  .step-tab.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff;}
+  .step-tab .num{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+  .step-tab .label{font-size:13.5px;font-weight:600;margin-top:2px;}
+  .step-tab.active .label{color:var(--accent);}
+
+  .hp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 14px;margin:0 0 20px;}
+  .hp-bar .hp-label{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px;}
+  .hp-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:8px;padding:3px 9px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;}
+  .hp-chip b{font-size:13.5px;}
+  .hp-chip i{font-style:normal;font-weight:400;font-size:11px;opacity:.85;}
+  .hp-note{font-size:12px;color:var(--ink2);}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px;display:none;animation:fade .4s ease;}
+  .panel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .panel h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0 0 6px;}
+  .panel .lead{color:var(--ink2);font-size:14.5px;margin:0 0 20px;}
+  .panel .lead code,.panel p code{font-family:var(--mono);font-size:13px;background:#F4F2EA;
+    border:1px solid var(--border);padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .note{font-size:13px;color:var(--ink2);background:#F4F2EA;border:1px dashed var(--border);
+    border-radius:10px;padding:12px 14px;margin-top:18px;}
+  .note b{color:var(--accent);font-weight:600;}
+  .note code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .next-hint{font-size:13px;color:var(--accent);font-weight:600;margin-top:16px;
+    background:#FBF1EA;border:1px solid #F0DDD0;border-radius:10px;padding:10px 14px;}
+
+  .dig{margin-top:12px;border:1px dashed var(--border);border-radius:10px;background:#F4F2EA;overflow:hidden;}
+  .dig>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;font-weight:600;
+    color:var(--accent);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dig>summary::-webkit-details-marker{display:none;}
+  .dig>summary::before{content:"▸";font-size:11px;transition:transform .2s ease;}
+  .dig[open]>summary::before{transform:rotate(90deg);}
+  .dig>summary:hover{background:#EEEBE1;}
+  .dig .dig-body{padding:2px 14px 13px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .dig .dig-body code{font-family:var(--mono);font-size:12.5px;background:#fff;border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:var(--accent);}
+  .dig .dig-body b{color:var(--accent);font-weight:600;}
+
+  button.btn{font-family:system-ui,sans-serif;font-size:14px;font-weight:600;
+    background:#fff;color:var(--ink2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 16px;cursor:pointer;transition:all .2s ease,transform .1s ease;}
+  button.btn:hover{border-color:#cfc9ba;color:var(--ink);}
+  button.btn:active{transform:translateY(1px);}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.btn.primary:hover{filter:brightness(1.05);color:#fff;border-color:var(--accent);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px;align-items:center;}
+  .btn-row.small .btn{font-size:13px;padding:7px 13px;}
+
+  .sub-h{font-family:var(--serif);font-size:16px;font-weight:600;margin:24px 0 6px;}
+  .sub-h .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;
+    background:var(--accent);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle;}
+
+  .codepath{font-family:var(--mono);font-size:11.5px;color:var(--ink2);background:#F4F2EA;
+    border:1px solid var(--border);border-radius:8px;padding:5px 10px;display:inline-block;margin-top:10px;}
+  .codepath b{color:var(--accent);}
+
+  /* 名词气泡 */
+  .term{border-bottom:1px dashed var(--accent);cursor:help;color:inherit;}
+  #termTip{position:fixed;z-index:9998;max-width:280px;background:#fff;
+    border:1px solid var(--accent);box-shadow:0 8px 24px rgba(26,26,24,.14);
+    border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink);
+    opacity:0;pointer-events:none;transition:opacity .16s ease;font-family:system-ui,sans-serif;}
+  #termTip.show{opacity:1;pointer-events:auto;}
+  #termTip .tt-name{font-family:var(--serif);font-weight:600;color:var(--accent);font-size:14px;margin-bottom:4px;}
+  #termTip .tt-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--ink2);text-decoration:none;font-family:var(--mono);}
+  #termTip .tt-more:hover{color:var(--accent);}
+
+  /* 庆祝 */
+  .congrats{display:none;text-align:center;background:linear-gradient(135deg,#FBF1EA,#F6E6F0);
+    border:1px solid var(--accent-soft);border-radius:16px;padding:22px;margin-top:18px;}
+  .congrats.show{display:block;animation:fade .5s ease;}
+  .congrats .ct{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--accent);}
+  .congrats .cs{font-size:13.5px;color:var(--ink2);margin-top:6px;}
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;}
+
+  .nav{display:flex;justify-content:space-between;margin-top:22px;gap:10px;}
+  .checklist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:8px;}
+  .checklist li{display:flex;gap:10px;align-items:flex-start;font-size:13px;background:#fff;border:1px solid var(--border);
+    border-radius:10px;padding:10px 13px;}
+  .checklist li .ck{color:#3f7d63;font-weight:700;flex-shrink:0;}
+  .checklist li b{color:var(--accent);}
+  .dotread{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:12px 0 4px;}
+  .dr{background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 13px;text-align:center;}
+  .dr .drv{font-family:var(--mono);font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .dr .drl{font-size:11.5px;color:var(--ink2);margin-top:2px;}
+  .lab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin:10px 0;}
+  .scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin:4px 0;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;}
+  .mini-h{font-family:var(--mono);font-size:11.5px;color:var(--ink2);font-weight:700;margin:4px 0;}
+
+  /* ===== 本页 ===== */
+  .prob{font-family:var(--mono);font-size:20px;font-weight:700;margin:4px 0 10px;}
+  .prob .ans{color:var(--good);font-size:14px;font-weight:600;margin-left:10px;}
+  .samples{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;}
+  .smp{background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px 10px;text-align:center;cursor:default;transition:all .2s ease;}
+  .smp .st{font-family:var(--mono);font-size:15px;font-weight:700;white-space:pre;}
+  .smp .sr{font-size:11.5px;margin-top:2px;}
+  .smp.ok{border-color:#b9d9c8;background:var(--good-soft);}
+  .smp.ok .sr{color:var(--good);}
+  .smp.no .sr{color:var(--bad);}
+  .smp.click{cursor:pointer;}
+  .smp.click:hover{border-color:var(--accent);}
+  .advbars{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;height:150px;align-items:center;margin-top:10px;position:relative;}
+  .advcol{position:relative;height:100%;}
+  .advcol .ax{position:absolute;left:0;right:0;top:50%;border-top:1px solid #cfc9ba;}
+  .advcol .ab{position:absolute;left:18%;right:18%;border-radius:4px;transition:all .3s ease;}
+  .advcol .av{position:absolute;left:0;right:0;font-family:var(--mono);font-size:11px;text-align:center;}
+  table.tb{border-collapse:collapse;width:100%;font-size:12.5px;min-width:620px;}
+  table.tb th{font-family:var(--mono);font-size:11px;color:var(--ink2);text-align:right;font-weight:700;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap;}
+  table.tb th:first-child,table.tb td:first-child{text-align:left;}
+  table.tb td{padding:6px 8px;border-bottom:1px solid #EFECE3;font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  table.tb td.l{font-family:system-ui,sans-serif;text-align:left;}
+  table.tb tr.hl td{background:#FBF1EA;}
+  .pill{display:inline-block;font-family:var(--mono);font-size:11px;border-radius:6px;padding:1px 7px;color:#fff;}
+  .gbar{display:flex;align-items:center;gap:10px;margin:7px 0;}
+  .gbar .gn{font-family:var(--mono);font-size:12px;width:170px;flex-shrink:0;color:var(--ink2);}
+  .gbar .gt{flex:1;min-width:120px;height:22px;background:#F4F2EA;border:1px solid var(--border);border-radius:7px;overflow:hidden;position:relative;}
+  .gbar .gf{height:100%;transition:width .35s ease;}
+  .gbar .gm{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink);}
+  .gbar .gv{font-family:var(--mono);font-size:12.5px;font-weight:700;width:120px;text-align:right;flex-shrink:0;}
+  @media (max-width:640px){ .gbar{flex-wrap:wrap;row-gap:3px;} .gbar .gn{width:100%;} .gbar .gt{min-width:0;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="home-link" href="index.html">← 返回首页</a>
+
+  <header>
+    <span class="filename">21_rlvr_grpo_viz.html</span>
+    <h1>RLVR 与 GRPO:只给判分器,不给答案</h1>
+    <p class="subtitle">
+      第 8 章的 SFT 要标准答案,第 10 章的 DPO 要一对好坏回答。
+      <span class="term" data-term="RLVR · 可验证奖励的强化学习" data-key="rlvr" data-def="Reinforcement Learning with Verifiable Rewards:奖励来自能自动判对错的程序(对答案、跑测试),不来自人工打分或奖励模型。模型自己采样回答,判分器给分,按分数更新。">RLVR</span>
+      只要一个能自动判对错的程序:模型自己答,程序判分,按分数更新。本关用
+      <span class="term" data-term="GRPO · 组相对策略优化" data-key="grpo" data-def="同一道题采样 G 个回答,用组内平均奖励当基线、组内标准差做归一化,算出每个回答的优势,不需要价值网络。出自 DeepSeekMath(arXiv 2402.03300)。">GRPO</span>
+      把第 6 章的 124M 教会两位数加法,再在同一基座、同一评测、同样 4096 道题下和 SFT、DPO 同台比。配套代码 <code>phase5-fullstack/19_grpo.py</code>,在 RTX 4090 上跑完。
+    </p>
+  </header>
+
+  <div class="steps-nav">
+    <div class="step-tab active" data-step="0"><div class="num">STEP 1</div><div class="label">判分器只会对答案</div></div>
+    <div class="step-tab" data-step="1"><div class="num">STEP 2</div><div class="label">组内比较:优势</div></div>
+    <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">全错的组没有信号</div></div>
+    <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">三条路同台</div></div>
+    <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">组大小与 KL</div></div>
+  </div>
+
+  <div class="hp-bar">
+    <span class="hp-label">这一关</span>
+    <span class="hp-chip" style="color:#3a63c0;background:#E5EBF9">基座 <b>124M</b> <i>第 6 章 · 10B token</i></span>
+    <span class="hp-chip" style="color:#b8512f;background:#F7E6DE">G <b>8</b> <i>每道题采样几次</i></span>
+    <span class="hp-chip" style="color:#3f7d63;background:#E4EFE9">训练题 <b>4,096</b> <i>每条路都一样</i></span>
+    <span class="hp-chip" style="color:#a3548c;background:#F6E6F0">batch <b>16</b> <i>每步几道题 → 256 步</i></span>
+    <span class="hp-chip" style="color:#a87b1f;background:#FAEFD6">β <b>0.04</b> <i>KL 系数</i></span>
+    <span class="hp-chip" style="color:#6B6B68;background:#ECEAE2">评测 <b>500</b> <i>没见过的题 · dev 另 200 道</i></span>
+    <span class="hp-note">G 的 8 与 pass@8 的 8 含义不同:前者是训练时每题采几次,后者是评测时采几次</span>
+  </div>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="panel active" id="panel0">
+    <h2>① 判分器只会对答案</h2>
+    <p class="lead">
+      任务是两位数加法,数字逐位写:<code>6 0 + 9 2 =</code>,正确回答 <code> 1 5 2</code>。
+      <span class="term" data-term="判分器 · verifier" data-key="verifier" data-def="检查模型回答对不对的程序,只输出分数(这里答对 1、答错 0),不告诉模型正确答案是什么。">判分器</span>
+      是 <code>verify</code> 函数里的一行比较:回答去掉空格,等不等于正确的和。下面是训练第一批里的真实采样(温度 1,同一道题 8 次)。换一道题:
+    </p>
+    <div class="btn-row small" id="grpBtns"></div>
+    <div class="lab">
+      <div class="prob" id="probTxt"></div>
+      <div class="samples" id="smpBox"></div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s1Ok" style="color:var(--good)">–</div><div class="drl">答对几个(奖励 1)</div></div>
+        <div class="dr"><div class="drv" id="s1Mean">–</div><div class="drl">组内平均奖励</div></div>
+        <div class="dr"><div class="drv" id="s1Step">–</div><div class="drl">训练第几步采的</div></div>
+      </div>
+    </div>
+    <div class="note" id="s1Note"></div>
+    <div class="codepath">↳ 代码:<b>19_grpo.py</b> 的 <code>verify</code> · <code>generate</code>(每道题生成 G 个回答)</div>
+
+    <details class="dig">
+      <summary>题目为什么写成 "6 0 + 9 2",不写 "60 + 92"?</summary>
+      <div class="dig-body">
+        GPT-2 的词表里 10 到 99、20 到 198 各是一个整体 token,<code>60</code> 和 <code>152</code> 都是单个 token,模型看不到个位和十位,只能死记 90 × 90 张表。
+        用那种写法先试过:4096 道题 SFT 后 500 道评测题只对 5% 到 9%。逐位用空格隔开后每个数字一个 token,同样 4096 道题 SFT 能到六成以上。
+        分词怎样影响数字,见 <a href="18_bpe_viz.html#step-5" style="color:var(--accent)">第 18 章 STEP 5</a>。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>基座一开始会做加法吗?为什么要先"热身"?</summary>
+      <div class="dig-body">
+        基本不会。124M 基座对 500 道评测题贪心解码只对 <b id="baseAcc">–</b>,采样 8 次至少一次对的比例 <b id="baseP8">–</b>,很多回答连格式都不对。
+        RL 的信号来自"同一道题里有的对、有的错",全错就学不到东西(第 3 步)。所以先用一小批带答案的题做一次热身 SFT,得到共同起点 warm,再从 warm 分出三条路。
+        本页有两个起点:热身 200 道(warm 贪心 <b id="w200Acc">–</b>)和热身 1000 道(<b id="w1000Acc">–</b>)。热身用的题和训练题、评测题都不重叠。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:8 个回答各拿到 0 或 1。怎样把"这一个比同组其他的好"变成更新方向?</div>
+  </section>
+
+  <!-- ============ STEP 2 ============ -->
+  <section class="panel" id="panel1">
+    <h2>② 组内比较:每个回答的优势</h2>
+    <p class="lead">
+      GRPO 不训价值网络,用同组的平均奖励当基线:
+      <span class="term" data-term="优势 · advantage" data-key="advantage" data-def="一个回答比基线好多少。GRPO 里 A = (r − 组内均值) / 组内标准差;A > 0 的回答被加强,A < 0 的被压低,组内奖励全相同时 A 全为 0。">优势</span>
+      <code>A = (r − 组内均值) / 组内标准差</code>。比平均好的回答 A &gt; 0,更新时它的概率被抬高;比平均差的被压低。
+      点下面 8 个回答,切换对错,看优势怎么变:
+    </p>
+    <div class="btn-row small" id="presetBtns">
+      <button class="btn">1 对 7 错</button>
+      <button class="btn primary">4 对 4 错</button>
+      <button class="btn">7 对 1 错</button>
+      <button class="btn">全错</button>
+      <button class="btn">全对</button>
+    </div>
+    <div class="lab">
+      <div class="samples" id="togBox"></div>
+      <div class="advbars" id="advBars"></div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s2Mean">–</div><div class="drl">组内均值(基线)</div></div>
+        <div class="dr"><div class="drv" id="s2Std">–</div><div class="drl">组内标准差</div></div>
+        <div class="dr"><div class="drv" id="s2Aok" style="color:var(--good)">–</div><div class="drl">答对的那条 A</div></div>
+        <div class="dr"><div class="drv" id="s2Ano" style="color:var(--bad)">–</div><div class="drl">答错的那条 A</div></div>
+      </div>
+    </div>
+    <div class="note" id="s2Note"></div>
+    <div class="codepath">↳ 代码:<b>19_grpo.py</b> 的 <code>run_grpo</code>,【步骤 3】<code>adv = (rg − 均值) / (标准差 + 1e-4)</code></div>
+
+    <details class="dig">
+      <summary>然后怎么更新?和 SFT 差在哪?</summary>
+      <div class="dig-body">
+        loss = −A · log π(回答) + β · KL,按回答里的 token 平均。log π(回答) 就是第 8 章 SFT 的那个量:SFT 对标准答案做 −log π,相当于每条回答的 A 都是 1;
+        GRPO 对模型<b>自己采样</b>的回答做,A 可正可负。KL 项用论文 (4) 式的估计 π_ref/π − log(π_ref/π) − 1,拉住模型别离热身起点太远。
+        这里每批采样只更新一次,更新前后是同一个策略,PPO 的比值裁剪 clip(π/π_old) 恒等于 1,代码里省掉了。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>1 对 7 错时,答对那条的优势为什么比 7 对 1 错时大这么多?</summary>
+      <div class="dig-body">
+        除以标准差之后,少数派的 |A| 大。1 对 7 错:均值 0.125,标准差 0.354,答对那条 A = 2.47,每条答错的 −0.35;7 对 1 错反过来。
+        效果是:难题上偶然答对的那一次被强力加强,容易题上偶然答错的那一次被强力压低。
+        按标准差归一化会让不同难度的题权重不同,Dr. GRPO(Liu et al., arXiv 2503.20783)认为这带来偏差,建议去掉除以标准差;本脚本按 DeepSeekMath 原式保留。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>和 PPO、第 10 章的 DPO 比,GRPO 少了什么?</summary>
+      <div class="dig-body">
+        比 PPO 少了价值网络(critic)。PPO 要另训一个和策略差不多大的网络估计每个状态的期望回报当基线;GRPO 同一道题采 G 个,拿组内均值当基线,省掉这个网络。
+        DeepSeekMath §4.1 的动机就是省下 critic 的显存和算力。
+        和 DPO 比:DPO 用离线的成对数据,不在训练中采样;GRPO 每一步都用当前模型采样,判分器当场打分。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:"全错"时 8 条的优势都是 0,这道题对更新毫无贡献。训练中这种组有多少?</div>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="panel" id="panel2">
+    <h2>③ 全错的组没有信号</h2>
+    <p class="lead">
+      两个起点各跑一次 GRPO:每步 16 道题,记下其中 8 次全错、8 次全对的比例,以及采样的平均奖励和 dev 题上的贪心准确率。切换起点:
+    </p>
+    <div class="btn-row" id="startBtns">
+      <button class="btn primary">热身 200 道</button>
+      <button class="btn">热身 1000 道</button>
+    </div>
+    <div class="lab">
+      <div class="scroll-x"><div id="sigSvg" style="min-width:560px"></div></div>
+      <div class="legend">
+        <span><i style="background:var(--bad)"></i>8 次全错的组</span>
+        <span><i style="background:#B9B5AA"></i>8 次全对的组</span>
+        <span><i style="background:var(--e1)"></i>采样平均奖励</span>
+        <span><i style="background:var(--accent)"></i>dev 贪心准确率</span>
+      </div>
+      <div class="dotread">
+        <div class="dr"><div class="drv" id="s3Warm">–</div><div class="drl">起点:贪心 / pass@8</div></div>
+        <div class="dr"><div class="drv" id="s3Dead" style="color:var(--bad)">–</div><div class="drl">训练中没有信号的组(全错 + 全对)</div></div>
+        <div class="dr"><div class="drv" id="s3Final" style="color:var(--accent)">–</div><div class="drl">GRPO 后评测贪心</div></div>
+      </div>
+    </div>
+    <div class="note" id="s3Note"></div>
+
+    <details class="dig">
+      <summary>pass@8 是什么,为什么拿它看起点?</summary>
+      <div class="dig-body">
+        <span class="term" data-term="pass@k" data-key="pass-at-k" data-def="每道题采样 k 次,至少一次答对的题所占比例。它衡量模型能不能采样出正确答案,贪心准确率(pass@1)衡量它最常给出的答案对不对。">pass@k</span>
+        是每道题采样 k 次、至少一次答对的比例。GRPO 训练时一组正好是 8 次采样,所以起点的 pass@8 基本就是"一道题能不能凑出至少一个对的"的概率:
+        pass@8 低,大多数组全错,没有信号。热身 200 道的起点 pass@8 只有 <b id="p8w200">–</b>,热身 1000 道是 <b id="p8w1000">–</b>。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>DeepSeek-R1-Zero 直接从基座做 RL,为什么这里不行?</summary>
+      <div class="dig-body">
+        R1-Zero(DeepSeek-AI,arXiv 2501.12948)从 DeepSeek-V3-Base 出发,基座本身已经能在一部分数学题上采样出正确答案,RL 有信号可放大。
+        这里的 124M 基座对两位数加法 pass@8 约为 0,RL 无从下手,所以要先热身。
+        同一篇报告里,R1 正式版在 RL 之前也先用几千条长思维链数据做了冷启动 SFT。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:两个起点上,GRPO 和只给答案的 SFT、离线 DPO 相比如何?</div>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="panel" id="panel3">
+    <h2>④ 三条路同台:同一起点、同一评测、同样 4096 道题</h2>
+    <p class="lead">
+      三条路从同一份热身权重出发,看同一串 4096 道训练题,在同样 500 道没见过的题上评测。每个起点上,每条路各扫 3 到 6 个学习率,按 dev 题挑。切换起点:
+    </p>
+    <div class="btn-row" id="cmpBtns">
+      <button class="btn">热身 200 道</button>
+      <button class="btn primary">热身 1000 道</button>
+    </div>
+    <div class="lab scroll-x"><table class="tb" id="cmpTable"></table></div>
+    <div class="lab">
+      <div class="mini-h">dev 题贪心准确率随训练步数</div>
+      <div class="scroll-x"><div id="curveSvg" style="min-width:560px"></div></div>
+      <div class="legend">
+        <span><i style="background:#3a63c0"></i>SFT</span>
+        <span><i style="background:#a3548c"></i>DPO</span>
+        <span><i style="background:#D97757"></i>GRPO</span>
+        <span><i style="background:#B9B5AA"></i>起点 warm</span>
+      </div>
+    </div>
+    <div class="note" id="s4Note"></div>
+    <div class="codepath">↳ 代码:<b>19_grpo.py</b> 的 <code>run_sft</code> / <code>run_dpo</code> / <code>run_grpo</code> · 学习率扫描 <code>runs/queue_grpo_lr.sh</code> 与 <code>queue_grpo.sh</code></div>
+
+    <details class="dig">
+      <summary>三条路各用了什么"监督"?算力一样吗?</summary>
+      <div class="dig-body">
+        <b>SFT</b>:4096 道题的标准答案,每道题 1 次前向 + 反向。
+        <b>DPO</b>:不用答案,warm 对每道题采 8 次,判分器从中挑一对一错凑成偏好对,凑不出(全对或全错)的题丢掉;训练时同样 256 步。
+        <b>GRPO</b>:不用答案,每一步当场对 16 道题各采 8 次,判分器打分,8 条回答都参与反向。
+        所以"同样 4096 道题"指看过的题相同;GRPO 的生成和反向是 SFT 的约 8 倍。换成 SFT 看更多带答案的题,准确率也会继续涨,本页没有做这组。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>学习率是怎么挑的?</summary>
+      <div class="dig-body"><div class="scroll-x" id="lrTable"></div>
+        每个学习率跑完整的 256 步,看 200 道 dev 题的贪心准确率,取最高的;评测题的准确率列在旁边,只用来对照,不参与挑选。dev 只有 200 道,差一两个百分点就是差两三道题,几个学习率接近时,挑中哪个带有偶然性;dev 并列时取较大的学习率。最优值落在扫描区间边上时,再往外补点,直到它落在区间内部。全部在 RTX 4090 上跑。</div>
+    </details>
+
+    <details class="dig">
+      <summary>DPO 为什么只在很小的学习率下才涨?</summary>
+      <div class="dig-body" id="dpoDig">–</div>
+    </details>
+
+    <details class="dig">
+      <summary>只给判分器的 GRPO,和有标准答案的 SFT 差多少?</summary>
+      <div class="dig-body" id="grpoDig">–</div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:组大小 G 和 KL 项对结果的影响。</div>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="panel" id="panel4">
+    <h2>⑤ 组大小与 KL</h2>
+    <p class="lead">
+      都从热身 1000 道的起点出发,学习率 3e-6、4096 道题不变,只改一个设置。每一行的竖线是起点 warm 的评测贪心准确率:
+    </p>
+    <div class="btn-row small" id="ablBtns">
+      <button class="btn primary">组大小 G</button>
+      <button class="btn">KL 项</button>
+    </div>
+    <div class="lab" id="ablBars"></div>
+    <div class="note" id="s5Note"></div>
+
+    <details class="dig">
+      <summary>G 越大越好吗?</summary>
+      <div class="dig-body">
+        G 大,一组里更容易同时有对有错,全错 / 全对的组少,基线也估得更准;代价是每道题的采样和反向随 G 线性增加。
+        G = 2 时一组只有两条,要么一对一错(A 为 ±1),要么全同(无信号)。
+        DeepSeekMath §4.2 的设置是每题采 64 个。这里 G = 16 的开销是 G = 8 的两倍。
+        没有信号的组的比例随 G 单调下降,准确率却不是:G = 4 比 G = 2 还低。每个设置只跑了一个随机种子,这种先后可能来自噪声,不宜解读。
+      </div>
+    </details>
+
+    <details class="dig">
+      <summary>去掉 KL 反而更高,为什么还要它?</summary>
+      <div class="dig-body">
+        KL 项防止模型离起点太远:奖励只看最后的数字对不对,没有 KL 时模型可以把其他行为(比如续写别的文本的能力)改得面目全非,判分器看不见。
+        这里任务单一、只训 256 步,KL 的约束只表现为稍慢一点的提升。DAPO(Yu et al., arXiv 2503.14476)等后续工作在长思维链推理上去掉了 KL 项;
+        是否保留取决于任务和训练长度,本页的一组对照不足以下结论。
+      </div>
+    </details>
+
+    <div class="sub-h"><span class="badge">达标</span>本关实测</div>
+    <ul class="checklist" id="okList"></ul>
+    <div class="codepath">↳ 跑法:<code>bash runs/queue_grpo_lr.sh && bash runs/queue_grpo.sh</code>(CUDA / MPS / CPU;RTX 4090 上每次约 2 分钟)</div>
+
+    <div class="congrats" id="congrats">
+      <div class="ct">🎉 RLVR 与 GRPO · 通关 · Phase 5 收尾</div>
+      <div class="cs">你只给了一个会对答案的判分器,就让 124M 学会了两位数加法:同一道题采样 8 次,组内比较得出优势,按优势更新。也看到起点采样不出对的答案时 RL 拿不到信号。Phase 5 从分词器、FlashAttention、scaling law 走到 RLVR,补齐了这条学习线的全链路。</div>
+    </div>
+  </section>
+
+  <div class="nav">
+    <button class="btn" id="prevBtn">← 上一步</button>
+    <button class="btn primary" id="nextBtn">下一步 →</button>
+  </div>
+
+</div>
+
+<canvas id="confetti"></canvas>
+
+<script>
+/* ================================================================
+   REAL-DATA:全部来自 phase5-fullstack/runs/ch21_*.json(RTX 4090)
+   命令:cd phase5-fullstack && bash runs/queue_grpo_lr.sh && bash runs/queue_grpo.sh
+   w200 / w1000:两个热身起点;base / warm / 三条路的最终评测(500 道评测题)与训练曲线(dev 200 道);
+     三条路的数取按 dev 挑中的学习率那一次;lr:每个学习率的 dev / 评测贪心准确率
+   groups:GRPO 训练中记下的真实采样组;ablate:G 与 KL 的对照
+   ================================================================ */
+const D={"w200": {"base": {"pass1": 0.0, "pass1_carry": 0.0, "pass1_nocarry": 0.0, "pass8": 0.0, "sample_acc": 0.0}, "warm": {"pass1": 0.05, "pass1_carry": 0.0335, "pass1_nocarry": 0.0619, "pass8": 0.184, "sample_acc": 0.028, "dev": 0.085}, "arms": {"sft": {"final": {"pass1": 0.664, "pass1_carry": 0.6555, "pass1_nocarry": 0.6701, "pass8": 0.916, "sample_acc": 0.4555, "dev": 0.71}, "curve": [{"step": 32, "loss": 1.1245, "acc": 0.065}, {"step": 64, "loss": 0.946, "acc": 0.11}, {"step": 96, "loss": 0.7704, "acc": 0.185}, {"step": 128, "loss": 0.6311, "acc": 0.355}, {"step": 160, "loss": 0.5175, "acc": 0.405}, {"step": 192, "loss": 0.4644, "acc": 0.34}, {"step": 224, "loss": 0.2995, "acc": 0.545}, {"step": 256, "loss": 0.3385, "acc": 0.71}], "lr": "3e-5"}, "dpo": {"final": {"pass1": 0.054, "pass1_carry": 0.0383, "pass1_nocarry": 0.0653, "pass8": 0.196, "sample_acc": 0.0328, "dev": 0.095}, "curve": [{"step": 32, "loss": 0.6911, "acc": 0.095, "pref_acc": 0.6875}, {"step": 64, "loss": 0.6847, "acc": 0.095, "pref_acc": 0.6875}, {"step": 96, "loss": 0.6775, "acc": 0.1, "pref_acc": 0.5625}, {"step": 128, "loss": 0.692, "acc": 0.105, "pref_acc": 0.5}, {"step": 160, "loss": 0.6892, "acc": 0.11, "pref_acc": 0.6875}, {"step": 192, "loss": 0.6826, "acc": 0.11, "pref_acc": 0.5}, {"step": 224, "loss": 0.6629, "acc": 0.095, "pref_acc": 0.8125}, {"step": 256, "loss": 0.686, "acc": 0.095, "pref_acc": 0.5}], "lr": "1e-7", "n_pairs": 711}, "grpo": {"final": {"pass1": 0.066, "pass1_carry": 0.0287, "pass1_nocarry": 0.0928, "pass8": 0.256, "sample_acc": 0.0512, "dev": 0.125}, "curve": [{"step": 32, "reward": 0.0261, "all_wrong": 0.832, "all_right": 0.0, "kl": 0.01145, "acc": 0.08}, {"step": 64, "reward": 0.0303, "all_wrong": 0.8262, "all_right": 0.0, "kl": 0.0112, "acc": 0.095}, {"step": 96, "reward": 0.0366, "all_wrong": 0.791, "all_right": 0.0, "kl": 0.0309, "acc": 0.1}, {"step": 128, "reward": 0.0383, "all_wrong": 0.7812, "all_right": 0.0, "kl": 0.02735, "acc": 0.09}, {"step": 160, "reward": 0.041, "all_wrong": 0.7891, "all_right": 0.0, "kl": 0.03334, "acc": 0.07}, {"step": 192, "reward": 0.0369, "all_wrong": 0.7949, "all_right": 0.0, "kl": 0.03735, "acc": 0.105}, {"step": 224, "reward": 0.0352, "all_wrong": 0.8086, "all_right": 0.0, "kl": 0.05183, "acc": 0.105}, {"step": 256, "reward": 0.0442, "all_wrong": 0.7754, "all_right": 0.002, "kl": 0.05116, "acc": 0.125}], "lr": "1e-6"}}}, "w1000": {"base": {"pass1": 0.0, "pass1_carry": 0.0, "pass1_nocarry": 0.0, "pass8": 0.0, "sample_acc": 0.0}, "warm": {"pass1": 0.41, "pass1_carry": 0.3349, "pass1_nocarry": 0.4639, "pass8": 0.752, "sample_acc": 0.3015, "dev": 0.455}, "arms": {"sft": {"final": {"pass1": 0.93, "pass1_carry": 0.8708, "pass1_nocarry": 0.9725, "pass8": 0.992, "sample_acc": 0.6412, "dev": 0.935}, "curve": [{"step": 32, "loss": 0.2433, "acc": 0.74}, {"step": 64, "loss": 0.3156, "acc": 0.81}, {"step": 96, "loss": 0.2246, "acc": 0.85}, {"step": 128, "loss": 0.1787, "acc": 0.785}, {"step": 160, "loss": 0.1872, "acc": 0.845}, {"step": 192, "loss": 0.182, "acc": 0.865}, {"step": 224, "loss": 0.1892, "acc": 0.925}, {"step": 256, "loss": 0.1274, "acc": 0.935}], "lr": "3e-6"}, "dpo": {"final": {"pass1": 0.478, "pass1_carry": 0.2871, "pass1_nocarry": 0.6151, "pass8": 0.84, "sample_acc": 0.3663, "dev": 0.51}, "curve": [{"step": 32, "loss": 0.6881, "acc": 0.47, "pref_acc": 0.8125}, {"step": 64, "loss": 0.6864, "acc": 0.475, "pref_acc": 0.625}, {"step": 96, "loss": 0.6854, "acc": 0.475, "pref_acc": 0.75}, {"step": 128, "loss": 0.6937, "acc": 0.505, "pref_acc": 0.5}, {"step": 160, "loss": 0.6668, "acc": 0.505, "pref_acc": 0.625}, {"step": 192, "loss": 0.6759, "acc": 0.49, "pref_acc": 0.625}, {"step": 224, "loss": 0.6661, "acc": 0.5, "pref_acc": 0.875}, {"step": 256, "loss": 0.6827, "acc": 0.51, "pref_acc": 0.5}], "lr": "3e-8", "n_pairs": 2956}, "grpo": {"final": {"pass1": 0.848, "pass1_carry": 0.8038, "pass1_nocarry": 0.8797, "pass8": 0.966, "sample_acc": 0.691, "dev": 0.895}, "curve": [{"step": 32, "reward": 0.3655, "all_wrong": 0.1641, "all_right": 0.0234, "kl": 0.20144, "acc": 0.58}, {"step": 64, "reward": 0.4529, "all_wrong": 0.1016, "all_right": 0.0508, "kl": 0.22467, "acc": 0.66}, {"step": 96, "reward": 0.4333, "all_wrong": 0.1367, "all_right": 0.0684, "kl": 0.27643, "acc": 0.645}, {"step": 128, "reward": 0.5198, "all_wrong": 0.0957, "all_right": 0.0957, "kl": 0.25899, "acc": 0.725}, {"step": 160, "reward": 0.5571, "all_wrong": 0.0645, "all_right": 0.1289, "kl": 0.2753, "acc": 0.805}, {"step": 192, "reward": 0.561, "all_wrong": 0.0859, "all_right": 0.1074, "kl": 0.34027, "acc": 0.64}, {"step": 224, "reward": 0.5859, "all_wrong": 0.0645, "all_right": 0.1602, "kl": 0.35689, "acc": 0.815}, {"step": 256, "reward": 0.6394, "all_wrong": 0.0566, "all_right": 0.1875, "kl": 0.34386, "acc": 0.895}], "lr": "1e-5"}}}, "lr": {"w200": {"sft": [["1e-5", 0.61, 0.688], ["3e-5", 0.71, 0.664], ["1e-4", 0.02, 0.03]], "dpo": [["1e-8", 0.095, 0.054], ["3e-8", 0.095, 0.058], ["1e-7", 0.095, 0.054], ["3e-7", 0.075, 0.054], ["1e-6", 0.075, 0.04], ["3e-6", 0.045, 0.066]], "grpo": [["3e-7", 0.105, 0.046], ["1e-6", 0.125, 0.066], ["3e-6", 0.115, 0.12], ["1e-5", 0.11, 0.064], ["3e-5", 0.06, 0.084]]}, "w1000": {"sft": [["1e-6", 0.855, 0.834], ["3e-6", 0.935, 0.93], ["1e-5", 0.905, 0.904], ["3e-5", 0.7, 0.676], ["1e-4", 0.35, 0.378]], "dpo": [["1e-8", 0.475, 0.458], ["3e-8", 0.51, 0.478], ["1e-7", 0.305, 0.35], ["3e-7", 0.155, 0.194], ["1e-6", 0.195, 0.224]], "grpo": [["1e-6", 0.82, 0.776], ["3e-6", 0.845, 0.802], ["1e-5", 0.895, 0.848], ["3e-5", 0.33, 0.29]]}}, "groups": [{"step": 1, "prompt": "6 0 + 9 2 =", "answer": 152, "samples": [" 1 5 2\n", " 1 6 2\n", " 1 5 2\n", " 1 5 2\n", " 1 5 2\n", " 1 5 2\n", " 1 5 2\n", " 1 5 2\n"], "reward": [1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], "adv": [0.353, -2.474, 0.353, 0.353, 0.353, 0.353, 0.353, 0.353]}, {"step": 2, "prompt": "1 8 + 1 0 =", "answer": 28, "samples": ["3 9\n", " 3 8\n", " 2 8\n", " 2 9\n", " 3 8\n", " 2 8\n", " 2 9\n", " 2 8\n"], "reward": [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0], "adv": [-0.724, -0.724, 1.207, -0.724, -0.724, 1.207, -0.724, 1.207]}, {"step": 3, "prompt": "1 1 + 5 6 =", "answer": 67, "samples": [" 7 7\n", " 7 7\n", " 7 8\n", " 7 7\n", " 7 7\n", " 6 7\n", " 7 7\n", " 7 7\n"], "reward": [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0], "adv": [-0.353, -0.353, -0.353, -0.353, -0.353, 2.474, -0.353, -0.353]}, {"step": 64, "prompt": "6 0 + 4 2 =", "answer": 102, "samples": [" 1 0 2\n", " 1 0 2\n", " 1 0 2\n", " 1 0 2\n", " 1 0 2\n", " 9 2\n", " 1 0 2\n", " 1 0 2\n"], "reward": [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0], "adv": [0.353, 0.353, 0.353, 0.353, 0.353, -2.474, 0.353, 0.353]}, {"step": 128, "prompt": "4 2 + 1 1 =", "answer": 53, "samples": [" 5 3\n", " 5 3\n", " 6 3\n", " 5 3\n", " 6 3\n", " 5 3\n", " 5 3\n", " 5 3\n"], "reward": [1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0], "adv": [0.54, 0.54, -1.62, 0.54, -1.62, 0.54, 0.54, 0.54]}, {"step": 256, "prompt": "7 3 + 5 8 =", "answer": 131, "samples": [" 1 3 1\n", " 1 3 1\n", " 1 3 1\n", " 1 3 1\n", " 1 3 1\n", " 1 3 1\n", " 1 3 1\n", " 1 3 1\n"], "reward": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], "adv": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}], "ablate": {"G": [{"G": 2, "pass1": 0.692, "pass8": 0.91, "dead": 0.6430750000000001}, {"G": 4, "pass1": 0.578, "pass8": 0.864, "dead": 0.327625}, {"G": 8, "pass1": 0.802, "pass8": 0.952, "dead": 0.1379625}, {"G": 16, "pass1": 0.88, "pass8": 0.986, "dead": 0.0412625}], "kl": [{"kl": 0.04, "pass1": 0.802, "pass8": 0.952, "kl_end": 0.26525}, {"kl": 0, "pass1": 0.838, "pass8": 0.962, "kl_end": 0.28393}]}, "dpo_note": "DPO 的偏好对是离线造的:warm 对每道题采 8 次,挑一对一错。热身 200 道的起点只凑出 711 对,热身 1000 道凑出 2956 对。热身 1000 道的起点上,学习率 3e-8 时从 warm 的 41.0% 升到 <b>47.8%</b>;学习率到 1e-7 就降到 35.0%,再大降得更多(见上面的学习率表)。热身 200 道的起点上,1e-8 到 1e-7 的 dev 准确率一样,并列取较大的 1e-7,评测 5.4%,和 warm 的 5.0% 基本持平;再大就往下掉。DPO 的损失只要求 chosen 比 rejected 的对数概率<b>相对</b>拉开,两者可以一起下降;这里 chosen 与 rejected 往往只差一位数字(如 1 5 2 与 1 6 2),学习率稍大,拉开差距最省事的办法之一就是把整段回答的概率一起压低,准确率随之下降。这是本页这一种设置(离线、每题一对、256 步)下的结果,不代表 DPO 在别的任务上的表现。", "grpo_note": "热身 1000 道的起点上,各自按 dev 挑学习率后:SFT <b>93.0%</b>,GRPO <b>84.8%</b>。GRPO 一个标准答案都没用,但这个任务的答案就是完整解,SFT 拿到的信息最多;GRPO 每道题 8 条回答参与更新,算力约是 SFT 的 8 倍。有标准答案时直接 SFT 更划算;RLVR 适合只能验证、拿不到标准解的场合,比如代码能跑测试、数学题只知道最终答案没有解题过程。起点弱时 GRPO 几乎学不到(热身 200 道:SFT 66.4%,GRPO 6.6%)。另一个教训:三条路都用扫描的起始学习率(sft 3e-5、dpo 3e-7、grpo 3e-6)时,热身 1000 道起点上 GRPO 80.2%、SFT 67.6%,看起来 GRPO 更好;按新起点重新挑学习率后顺序反过来。学习率不按起点重新挑,对照就会失真。只跑了一个随机种子。", "ok": ["基座 124M 两位数加法贪心 0.0%;热身 200 道后 5.0%,热身 1000 道后 41.0%", "热身 1000 道起点:GRPO 只用判分器,评测贪心 <b>84.8%</b>;同样 4096 道题的 SFT 93.0%,DPO 47.8%", "热身 200 道起点:GRPO 训练中平均 80.0% 的组全错或全对,只到 6.6%;SFT 66.4%", "组大小 G = 2 / 4 / 8 / 16:评测贪心 69.2% / 57.8% / 80.2% / 88.0%", "去掉 KL 项:83.8%(带 KL 80.2%)", "每个起点上每条路扫 3 到 6 个学习率,按 dev 题挑;500 道评测题不参与挑选"]};
+
+const $=id=>document.getElementById(id);
+function setActiveBtn(containerId,n){
+  document.querySelectorAll('#'+containerId+' .btn').forEach((b,i)=>b.classList.toggle('primary',i===n));
+}
+const pct=v=>(v*100).toFixed(1)+'%';
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+/* ============ 步骤切换 ============ */
+const NSTEP=5;
+const tabs=document.querySelectorAll('.step-tab');
+const panels=[];for(let i=0;i<NSTEP;i++)panels.push($('panel'+i));
+let cur=0;
+function goto(i){
+  cur=Math.max(0,Math.min(NSTEP-1,i));
+  tabs.forEach(t=>t.classList.toggle('active',+t.dataset.step===cur));
+  panels.forEach((p,idx)=>p.classList.toggle('active',idx===cur));
+  $('prevBtn').disabled = cur===0;
+  $('nextBtn').textContent = cur===NSTEP-1 ? '完成 🎉' : '下一步 →';
+  const hash='#step-'+(cur+1);
+  if(location.hash!==hash) history.replaceState(null,'',hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+tabs.forEach(t=>t.addEventListener('click',()=>goto(+t.dataset.step)));
+$('prevBtn').addEventListener('click',()=>goto(cur-1));
+$('nextBtn').addEventListener('click',()=>{ if(cur===NSTEP-1) celebrate(); else goto(cur+1); });
+
+/* ============ STEP 1:真实采样组 ============ */
+const GR=D.groups;
+$('grpBtns').innerHTML=GR.map(g=>`<button class="btn">${esc(g.prompt)}</button>`).join('');
+function showSample(t){ return esc(t.replace(/\n$/,'')).replace(/^ /,'␣'); }
+function renderGroup(i){
+  setActiveBtn('grpBtns',i);
+  const g=GR[i];
+  $('probTxt').innerHTML=`${esc(g.prompt)} <span class="ans">正确答案 ${g.answer}</span>`;
+  $('smpBox').innerHTML=g.samples.map((s,j)=>`<div class="smp ${g.reward[j]?'ok':'no'}"><div class="st">${showSample(s)}</div><div class="sr">${g.reward[j]?'✓ 奖励 1':'✗ 奖励 0'}</div></div>`).join('');
+  const ok=g.reward.filter(x=>x).length;
+  $('s1Ok').textContent=`${ok} / ${g.reward.length}`;
+  $('s1Mean').textContent=(ok/g.reward.length).toFixed(3);
+  $('s1Step').textContent=g.step;
+  $('s1Note').innerHTML=`判分器只输出 0 / 1,不告诉模型正确答案是多少。`+(ok===0?'这一组全错。':(ok===g.reward.length?'这一组全对。':`这一组 ${ok} 对 ${g.reward.length-ok} 错,对错混在一起,下一步就从这种组里算出更新方向。`))
+    +` 这些组来自热身 1000 道的起点(第 ${g.step} 步是训练中途采的)。`;
+}
+document.querySelectorAll('#grpBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>renderGroup(i)));
+renderGroup(0);
+$('baseAcc').textContent=pct(D.w200.base.pass1); $('baseP8').textContent=pct(D.w200.base.pass8);
+$('w200Acc').textContent=pct(D.w200.warm.pass1); $('w1000Acc').textContent=pct(D.w1000.warm.pass1);
+
+/* ============ STEP 2:优势 ============ */
+const PRE=[[1,0,0,0,0,0,0,0],[1,1,0,1,0,0,1,0],[1,1,1,1,1,1,1,0],[0,0,0,0,0,0,0,0],[1,1,1,1,1,1,1,1]];
+let tog=PRE[1].slice();
+function advOf(r){
+  const n=r.length, m=r.reduce((a,b)=>a+b,0)/n;
+  const sd=Math.sqrt(r.reduce((a,b)=>a+(b-m)*(b-m),0)/(n-1));      // torch.std 默认无偏(除以 n−1)
+  return {m,sd,a:r.map(x=>(x-m)/(sd+1e-4))};
+}
+function renderAdv(){
+  $('togBox').innerHTML=tog.map((v,j)=>`<div class="smp click ${v?'ok':'no'}" data-j="${j}"><div class="st">回答 ${j+1}</div><div class="sr">${v?'✓ 对':'✗ 错'}</div></div>`).join('');
+  document.querySelectorAll('#togBox .smp').forEach(el=>el.addEventListener('click',()=>{tog[+el.dataset.j]^=1;setActiveBtn('presetBtns',-1);renderAdv();}));
+  const {m,sd,a}=advOf(tog), mx=2.8;
+  $('advBars').innerHTML=a.map(v=>{
+    const h=Math.min(1,Math.abs(v)/mx)*50;
+    const top=v>=0?50-h:50;
+    return `<div class="advcol"><div class="ax"></div><div class="ab" style="top:${top}%;height:${Math.max(h,0.6)}%;background:${v>0?'var(--good)':(v<0?'var(--bad)':'#B9B5AA')}"></div><div class="av" style="top:${v>=0?Math.max(0,top-12):Math.min(88,top+h+1)}%">${v.toFixed(2)}</div></div>`;
+  }).join('');
+  $('s2Mean').textContent=m.toFixed(3); $('s2Std').textContent=sd.toFixed(3);
+  const iOk=tog.indexOf(1), iNo=tog.indexOf(0);
+  $('s2Aok').textContent=iOk>=0?a[iOk].toFixed(2):'–'; $('s2Ano').textContent=iNo>=0?a[iNo].toFixed(2):'–';
+  const k=tog.filter(x=>x).length;
+  $('s2Note').innerHTML=(k===0||k===8)?`${k===0?'全错':'全对'}:每条回答都等于均值,<b>8 条的优势全是 0</b>,这道题对这一步的更新没有贡献。`
+    :`${k} 对 ${8-k} 错:答对的每条 A = ${a[iOk].toFixed(2)},答错的每条 A = ${a[iNo].toFixed(2)}。一组的优势加起来是 0,更新只改变"对的和错的之间"的相对概率。`;
+}
+document.querySelectorAll('#presetBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{setActiveBtn('presetBtns',i);tog=PRE[i].slice();renderAdv();}));
+renderAdv();
+
+/* ============ STEP 3:信号 ============ */
+function lineChart(el,series,opts){
+  const W=620,H=240,L=44,R=14,T=14,B=34;
+  const xmax=opts.xmax, xs=v=>L+v/xmax*(W-L-R), ys=v=>T+(1-v)*(H-T-B);
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;font-family:ui-monospace,monospace">`;
+  for(let v=0;v<=1.0001;v+=0.25){ s+=`<line x1="${L}" x2="${W-R}" y1="${ys(v)}" y2="${ys(v)}" stroke="#E5E2D9"/><text x="${L-6}" y="${ys(v)+4}" font-size="10.5" text-anchor="end" fill="#6B6B68">${Math.round(v*100)}%</text>`; }
+  opts.xticks.forEach(v=>{ s+=`<text x="${xs(v)}" y="${H-B+15}" font-size="10.5" text-anchor="middle" fill="#6B6B68">${v}</text>`; });
+  s+=`<text x="${(L+W-R)/2}" y="${H-4}" font-size="10.5" text-anchor="middle" fill="#6B6B68">${opts.xlabel}</text>`;
+  series.forEach(se=>{
+    if(se.hline!==undefined){ s+=`<line x1="${L}" x2="${W-R}" y1="${ys(se.hline)}" y2="${ys(se.hline)}" stroke="${se.col}" stroke-dasharray="4 4" stroke-width="1.5"/>`; return; }
+    const pts=se.pts.map(p=>xs(p[0])+','+ys(p[1])).join(' ');
+    s+=`<polyline fill="none" stroke="${se.col}" stroke-width="2" ${se.dash?'stroke-dasharray="5 4"':''} points="${pts}"/>`;
+    se.pts.forEach(p=>{ s+=`<circle cx="${xs(p[0])}" cy="${ys(p[1])}" r="2.6" fill="${se.col}"/>`; });
+  });
+  s+='</svg>'; $(el).innerHTML=s;
+}
+let startK='w200';
+function renderSig(){
+  const R=D[startK], c=R.arms.grpo.curve;
+  lineChart('sigSvg',[
+    {pts:c.map(p=>[p.step,p.all_wrong]),col:'#9a3a22'},
+    {pts:c.map(p=>[p.step,p.all_right]),col:'#B9B5AA'},
+    {pts:c.map(p=>[p.step,p.reward]),col:'#3a63c0',dash:1},
+    {pts:c.map(p=>[p.step,p.acc]),col:'#D97757'},
+  ],{xmax:256,xticks:[0,64,128,192,256],xlabel:'GRPO 训练步数(每步 16 道题 × 8 次采样)'});
+  const dead=c.reduce((a,p)=>a+p.all_wrong+p.all_right,0)/c.length;
+  $('s3Warm').textContent=`${pct(R.warm.pass1)} / ${pct(R.warm.pass8)}`;
+  $('s3Dead').textContent=pct(dead);
+  $('s3Final').textContent=pct(R.arms.grpo.final.pass1);
+  $('s3Note').innerHTML=startK==='w200'
+    ?`热身 200 道的起点:训练全程平均 <b>${pct(dead)}</b> 的组没有信号(几乎全是全错),GRPO 只把评测贪心准确率从 ${pct(R.warm.pass1)} 提到 ${pct(R.arms.grpo.final.pass1)}。`
+    :`热身 1000 道的起点:开头约 ${pct(c[0].all_wrong)} 的组全错,之后降到 ${pct(c[c.length-1].all_wrong)};评测贪心准确率从 ${pct(R.warm.pass1)} 到 <b>${pct(R.arms.grpo.final.pass1)}</b>。`;
+}
+document.querySelectorAll('#startBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{setActiveBtn('startBtns',i);startK=i?'w1000':'w200';renderSig();}));
+renderSig();
+$('p8w200').textContent=pct(D.w200.warm.pass8); $('p8w1000').textContent=pct(D.w1000.warm.pass8);
+
+/* ============ STEP 4:同台 ============ */
+let cmpK='w1000';
+const ARM=[['sft','SFT','#3a63c0','标准答案'],['dpo','DPO','#a3548c','判分器挑的偏好对'],['grpo','GRPO','#D97757','判分器当场打分']];
+function renderCmp(){
+  const R=D[cmpK];
+  const row=(name,sup,f,lr,hl)=>`<tr class="${hl?'hl':''}"><td class="l">${name}</td><td class="l" style="color:var(--ink2);font-size:12px">${sup}</td><td>${lr||'–'}</td><td><b>${pct(f.pass1)}</b></td><td>${pct(f.pass1_carry)}</td><td>${pct(f.pass1_nocarry)}</td><td>${pct(f.pass8)}</td></tr>`;
+  const best=ARM.reduce((b,a)=>R.arms[a[0]].final.pass1>R.arms[b[0]].final.pass1?a:b);
+  $('cmpTable').innerHTML=`<thead><tr><th>模型</th><th style="text-align:left">用了什么</th><th>学习率</th><th>评测贪心</th><th>有进位</th><th>无进位</th><th>pass@8</th></tr></thead><tbody>`+
+    row('基座 124M','—',R.base,null)+row('起点 warm',`${cmpK==='w200'?200:1000} 道带答案的题`,R.warm,null)+
+    ARM.map(a=>row(a[1],a[3]+(a[0]==='dpo'?`(${R.arms.dpo.n_pairs} 对)`:''),R.arms[a[0]].final,R.arms[a[0]].lr,a===best)).join('')+'</tbody>';
+  lineChart('curveSvg',[
+    {hline:R.warm.dev,col:'#B9B5AA'},
+    ...ARM.map(a=>({pts:[[0,R.warm.dev]].concat(R.arms[a[0]].curve.map(p=>[p.step,p.acc])),col:a[2]}))
+  ],{xmax:256,xticks:[0,64,128,192,256],xlabel:'训练步数(每步 16 道题)'});
+  const s=R.arms.sft.final.pass1,g=R.arms.grpo.final.pass1,d=R.arms.dpo.final.pass1;
+  $('s4Note').innerHTML=cmpK==='w200'
+    ?`起点弱(warm 贪心 ${pct(R.warm.pass1)}):有标准答案的 SFT 到 <b>${pct(s)}</b>;GRPO 大部分组全错,只到 ${pct(g)};DPO ${pct(d)}。`
+    :`起点能采样出对的答案(warm pass@8 ${pct(R.warm.pass8)}):GRPO 到 <b>${pct(g)}</b>,SFT ${pct(s)},DPO ${pct(d)}。`;
+}
+document.querySelectorAll('#cmpBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{setActiveBtn('cmpBtns',i);cmpK=i?'w1000':'w200';renderCmp();}));
+renderCmp();
+$('dpoDig').innerHTML=D.dpo_note;
+function renderLr(){
+  const L=D.lr[cmpK], R=D[cmpK];
+  $('lrTable').innerHTML=`<table class="tb" style="min-width:420px;margin:4px 0 8px"><thead><tr><th>路</th><th>学习率</th><th>dev 贪心</th><th>评测贪心</th></tr></thead><tbody>`+
+    ARM.map(a=>L[a[0]].map(r=>`<tr class="${r[0]===R.arms[a[0]].lr?'hl':''}"><td>${a[1]}</td><td>${r[0]}</td><td>${pct(r[1])}</td><td>${pct(r[2])}</td></tr>`).join('')).join('')+'</tbody></table>';
+}
+renderLr();
+document.querySelectorAll('#cmpBtns .btn').forEach(b=>b.addEventListener('click',renderLr));
+$('grpoDig').innerHTML=D.grpo_note;
+
+/* ============ STEP 5:消融 ============ */
+let ablMode=0;
+function renderAbl(){
+  setActiveBtn('ablBtns',ablMode);
+  const rows=ablMode===0?D.ablate.G.map(r=>[`G = ${r.G}`+(r.G===8?'(默认)':''),r]):D.ablate.kl.map(r=>[r.kl?`β = ${r.kl}(默认)`:'β = 0(去掉 KL)',r]);
+  const w=D.w1000.warm.pass1;
+  $('ablBars').innerHTML=rows.map(([n,r])=>`<div class="gbar"><span class="gn">${n}</span><span class="gt"><span class="gf" style="display:block;width:${r.pass1*100}%;background:${(ablMode===0?r.G===8:r.kl)?'var(--accent)':'var(--e1)'}"></span><span class="gm" style="left:${w*100}%"></span></span><span class="gv">${pct(r.pass1)} · p@8 ${pct(r.pass8)}</span></div>`).join('')
+    +`<div class="mini-h">条长 = 评测贪心准确率;竖线 = 起点 warm ${pct(w)}</div>`;
+  $('s5Note').innerHTML=ablMode===0
+    ?D.ablate.G.map(r=>`G = ${r.G}:没有信号的组平均 ${pct(r.dead)}`).join(';')+'。G 越大,一组里同时有对有错的机会越大。'
+    :`去掉 KL 后评测贪心 ${pct(D.ablate.kl[1].pass1)},带 KL(β = 0.04)${pct(D.ablate.kl[0].pass1)};训练结束时带 KL 那次与起点的逐 token KL 约 ${D.ablate.kl[0].kl_end.toFixed(3)}。`;
+}
+document.querySelectorAll('#ablBtns .btn').forEach((b,i)=>b.addEventListener('click',()=>{ablMode=i;renderAbl();}));
+renderAbl();
+
+$('okList').innerHTML=D.ok.map(t=>`<li><span class="ck">✓</span><div>${t}</div></li>`).join('');
+
+/* ============ 名词气泡 ============ */
+(function(){
+  const tip=document.createElement('div'); tip.id='termTip'; document.body.appendChild(tip);
+  let hideTimer=null;
+  function show(el){
+    clearTimeout(hideTimer);
+    const name=el.dataset.term||el.textContent, def=el.dataset.def||'', key=el.dataset.key;
+    tip.innerHTML='<div class="tt-name">'+name+'</div>'+def+(key?'<a class="tt-more" href="glossary.html#'+key+'">更多 → 名词表 ↗</a>':'');
+    tip.classList.add('show');
+    const r=el.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left, top=r.top-th-8; if(top<8) top=r.bottom+8;
+    if(left+tw>window.innerWidth-8) left=window.innerWidth-8-tw; if(left<8) left=8;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ hideTimer=setTimeout(()=>tip.classList.remove('show'),140); }
+  document.querySelectorAll('.term').forEach(el=>{
+    el.addEventListener('mouseenter',()=>show(el)); el.addEventListener('mouseleave',hide);
+    el.addEventListener('click',e=>{e.stopPropagation();show(el);});
+  });
+  tip.addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave',hide);
+  document.addEventListener('click',()=>tip.classList.remove('show'));
+})();
+
+/* ============ 通关庆祝 ============ */
+function celebrate(){
+  $('congrats').classList.add('show');
+  const cv=$('confetti'); cv.style.display='block';
+  const ctx=cv.getContext('2d'); cv.width=innerWidth; cv.height=innerHeight;
+  const COL=['#D97757','#E8B04B','#6FAE8F','#5B8DEF','#D98AC0','#1A1A18'];
+  const ps=[];for(let i=0;i<150;i++)ps.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*0.4,
+    vx:(Math.random()-0.5)*3,vy:2+Math.random()*4,s:5+Math.random()*7,c:COL[i%COL.length],a:Math.random()*6.28,va:(Math.random()-0.5)*0.3});
+  let t0=null;
+  function frame(ts){ if(!t0)t0=ts; const el=ts-t0;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.04;p.a+=p.va;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.a);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.6);ctx.restore();});
+    if(el<3400) requestAnimationFrame(frame); else { ctx.clearRect(0,0,cv.width,cv.height); cv.style.display='none'; }
+  }
+  requestAnimationFrame(frame);
+  $('congrats').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ============ 初始化:深链 ============ */
+const m=/^#step-(\d+)$/.exec(location.hash);
+goto(m?parseInt(m[1],10)-1:0);
+window.addEventListener('hashchange',()=>{const mm=/^#step-(\d+)$/.exec(location.hash);goto(mm?parseInt(mm[1],10)-1:0);});
+
+</script>
+<!--site-copyright-->
+<footer style="max-width:960px;margin:56px auto 0;padding:18px 24px 44px;border-top:1px solid var(--border);text-align:center;font-size:12px;color:var(--ink2);line-height:1.7">
+  © 2026 <a href="https://fim.ai" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">FIM Labs</a> · 从零手写大语言模型 · MIT License
+</footer>
+</body>
+</html>
