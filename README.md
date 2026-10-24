@@ -141,8 +141,10 @@ phase5-fullstack/    补齐全链路：分词器 / 注意力 kernel / scaling la
 - [x] **RLVR / GRPO**(`19_grpo.py`):只给判分器的强化学习,与 SFT、DPO 同台对照
 
 > 到这里,这条学习线要手搓的东西就齐了:分词 → 预训练 → 后训练 → 现代架构 → 长上下文与推理效率 → scaling law 与 RLVR。
-> **生产工具链(LLaMA-Factory / TRL / PEFT)不在本仓库范围内** —— 那是"怎么用现成轮子"的问题,
+> **生产工具链(LLaMA-Factory / TRL / PEFT)不在本仓库范围内**:那是"怎么用现成轮子"的问题,
 > 而本仓库从头到尾只回答"轮子是怎么造出来的"。
+> 学完这条线想接着学用轮子,推荐上海交大的 [《动手学大模型》dive-into-llms](https://github.com/Lordog/dive-into-llms):
+> 11 章,每章 PPT + 实验手册 + Notebook,拿 Qwen / GPT-2 配 HF、TRL 做微调、PPO-RLHF、提示工程与安全实验。两边正好互补。
 
 ---
 
