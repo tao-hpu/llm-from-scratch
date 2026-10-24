@@ -18,3 +18,8 @@
 ## 教学风格
 
 像第 1 章那样**真正一步步推进**:5 步左右一关,每步一个可亲手拨动的交互 + `↳ 下一步` 钩子,先给直觉再落到代码。一关讲清一条主线,别把页面堆成名词解释。
+
+## notebooks/ 是生成物,不手改
+
+`notebooks/*.ipynb` 由 `tools/build_notebooks.py` 从各章 `.py` 生成(分节注释 → markdown 标题,节间代码 → code cell)。
+改脚本后跑 `python tools/build_notebooks.py` 重新生成;`--check` 校验一致。新章节要进 Notebook,在该工具的 `CHAPTERS` 表加一行。

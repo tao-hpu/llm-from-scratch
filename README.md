@@ -229,6 +229,32 @@ python 05_sample.py --ckpt ckpt/latest.pt --prompt "The history of Rome" --n 3
 
 > ⚠️ 这是**预训练基座模型**,只会「续写」不会「答题」。给它 `Q: What is 2+2? A:` 它也只会接着编文本——「会回答问题」是 Phase 2 的 SFT 才教的。模型只用英文 FineWeb-Edu 训练,**不会中文,请用英文 prompt**。
 
+### 3. Notebook 版(浏览器里逐格跑,不装环境)
+
+[`notebooks/`](notebooks/) 下每章一本 `.ipynb`,点 Colab 徽章直接打开。它们由 [`tools/build_notebooks.py`](tools/build_notebooks.py) **从同名脚本自动生成**:
+脚本里的分节注释变成标题,节与节之间的代码各成一格;开头多一格环境准备(clone、装包、下载权重、填命令行参数);下表也由它生成。
+**代码以 `.py` 为准,Notebook 不手改**;改了脚本跑 `python tools/build_notebooks.py` 重新生成,`--check` 校验两边一致。
+
+<!-- notebooks-table:start -->
+| 章 | Notebook | Colab | 需要什么 |
+|:---:|---|---|---|
+| 1 | [`01_bigram.ipynb`](notebooks/01_bigram.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/01_bigram.ipynb) | 无,CPU 几分钟 |
+| 2 | [`02_attention.ipynb`](notebooks/02_attention.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/02_attention.ipynb) | 无 |
+| 3 | [`03_transformer.ipynb`](notebooks/03_transformer.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/03_transformer.ipynb) | 无 |
+| 5 | [`05_sample.ipynb`](notebooks/05_sample.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/05_sample.ipynb) | 自动下载 124M 权重(约 500 MB) |
+| 8 | [`06_sft.ipynb`](notebooks/06_sft.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/06_sft.ipynb) | 同上 |
+| 9 | [`07_lora.ipynb`](notebooks/07_lora.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/07_lora.ipynb) | 同上 |
+| 10 | [`08_dpo.ipynb`](notebooks/08_dpo.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/08_dpo.ipynb) | 同上;没有 SFT 权重时先跑一遍 06 |
+| 11 | [`09_moe.ipynb`](notebooks/09_moe.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/09_moe.ipynb) | 无 |
+| 12 | [`10_llama.ipynb`](notebooks/10_llama.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/10_llama.ipynb) | 无 |
+| 13 | [`11_linear_attn.ipynb`](notebooks/11_linear_attn.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/11_linear_attn.ipynb) | 无 |
+| 14 | [`12_sparse_attn.ipynb`](notebooks/12_sparse_attn.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/12_sparse_attn.ipynb) | 无 |
+| 16 | [`14_mtp.ipynb`](notebooks/14_mtp.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/14_mtp.ipynb) | 无 |
+| 21 | [`19_grpo.ipynb`](notebooks/19_grpo.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/19_grpo.ipynb) | 自动下载 124M 权重 |
+<!-- notebooks-table:end -->
+
+没做成 Notebook 的:`04`(预训练一天,要 N 卡)、`13_engram` / `15_quant` / `16_bpe`(要 FineWeb-Edu 验证片,仓库未发布)、`17_flash_attn` / `18_scaling`(Triton 与 scaling 训练要 N 卡)。
+
 ---
 
 ## 硬件与平台
