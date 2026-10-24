@@ -332,14 +332,52 @@ def page_targets():
         text = open(path, encoding="utf-8").read()
         text = replace_between(text, WEB_MARK, page_links(entry, with_nb), entry["page"])
         # 样式写进页面原有的 <style> 块(每页只许一个 <style>),第一次缺标记就在 </style> 前补上
-        if WEB_CSS_MARK[0] not in text:
-            m = re.search(r"^([ \t]*)</style>", text, re.M)
-            if not m:
-                raise SystemExit(f"web/{entry['page']} 里找不到 </style>")
-            text = text[:m.start()] + f"{m.group(1)}{WEB_CSS_MARK[0]}\n{m.group(1)}{WEB_CSS_MARK[1]}\n" + text[m.start():]
+        text = ensure_css_marks(text, entry["page"])
         text = replace_between(text, WEB_CSS_MARK, WEB_CSS, entry["page"])
         out.append((path, text))
     return out
+
+
+# ---------------------------------------------------------------------------
+# 首页卡片里的 Colab 入口(每张有 Notebook 的卡片,「开始 →」左边)
+# ---------------------------------------------------------------------------
+INDEX_MARK = ("<!-- colab-link:start -->", "<!-- colab-link:end -->")
+INDEX_CSS = (".card-foot .colab{position:absolute;right:66px;top:9px;font-size:12px;color:var(--ink2);text-decoration:none;"
+             "border:1px solid var(--border);border-radius:6px;padding:1px 7px;background:#fff;}\n"
+             ".card-foot .colab:hover{color:var(--accent);border-color:var(--accent);}")
+
+
+def ensure_css_marks(text, page):
+    """页面的 <style> 块里没有样式标记就在 </style> 前补一对(每页只许一个 <style>)。"""
+    if WEB_CSS_MARK[0] in text:
+        return text
+    m = re.search(r"^([ \t]*)</style>", text, re.M)
+    if not m:
+        raise SystemExit(f"web/{page} 里找不到 </style>")
+    return text[:m.start()] + f"{m.group(1)}{WEB_CSS_MARK[0]}\n{m.group(1)}{WEB_CSS_MARK[1]}\n" + text[m.start():]
+
+
+def index_target():
+    path = os.path.join(WEB_DIR, "index.html")
+    text = open(path, encoding="utf-8").read()
+    for ch in CHAPTERS:
+        card = re.search(rf'<article class="card" id="ch-{ch["ch"]:02d}">.*?</article>', text, re.S)
+        if not card:
+            raise SystemExit(f"index.html 里找不到第 {ch['ch']} 章的卡片 <article id=\"ch-{ch['ch']:02d}\">")
+        body = card.group(0)
+        if INDEX_MARK[0] not in body:
+            # 第一次:标记放在「开始 →」那一行前面,同缩进
+            m = re.search(r'^([ \t]*)<a class="go" ', body, re.M)
+            if not m:
+                raise SystemExit(f"index.html 第 {ch['ch']} 章卡片里找不到 <a class=\"go\">")
+            body = body[:m.start()] + f"{m.group(1)}{INDEX_MARK[0]}\n{m.group(1)}{INDEX_MARK[1]}\n" + body[m.start():]
+        link = (f'<a class="colab" href="{COLAB_BASE}{nb_name_of(ch)}" target="_blank" rel="noopener" '
+                f'title="在 Colab 里跑这一章的代码">▶ Colab</a>')
+        body = replace_between(body, INDEX_MARK, link, f"index.html 第 {ch['ch']} 章卡片")
+        text = text[:card.start()] + body + text[card.end():]
+    text = ensure_css_marks(text, "index.html")
+    text = replace_between(text, WEB_CSS_MARK, INDEX_CSS, "index.html")
+    return path, text
 
 
 def main():
@@ -351,6 +389,7 @@ def main():
     readme_old = open(README, encoding="utf-8").read()
     targets.append((README, readme_with_table(readme_old)))
     targets += page_targets()
+    targets.append(index_target())
     stale = []
     for path, text in targets:
         old = open(path, encoding="utf-8").read() if os.path.exists(path) else None
