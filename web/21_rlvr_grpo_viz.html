@@ -185,6 +185,10 @@
   .gbar .gm{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink);}
   .gbar .gv{font-family:var(--mono);font-size:12.5px;font-weight:700;width:120px;text-align:right;flex-shrink:0;}
   @media (max-width:640px){ .gbar{flex-wrap:wrap;row-gap:3px;} .gbar .gn{width:100%;} .gbar .gt{min-width:0;} }
+/* code-links-css:start */
+.code-link{text-decoration:none;margin-left:6px;}
+.code-link:hover{border-color:var(--accent);color:var(--accent);}
+/* code-links-css:end */
 </style>
 </head>
 <body>
@@ -194,6 +198,10 @@
 
   <header>
     <span class="filename">21_rlvr_grpo_viz.html</span>
+    <!-- code-links:start -->
+    <a class="filename code-link" href="https://github.com/tao-hpu/llm-from-scratch/blob/main/phase5-fullstack/19_grpo.py" target="_blank" rel="noopener">📄 源码 19_grpo.py</a>
+    <a class="filename code-link" href="https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/19_grpo.ipynb" target="_blank" rel="noopener">▶ 在 Colab 里跑这一章</a>
+    <!-- code-links:end -->
     <h1>RLVR 与 GRPO:只给判分器,不给答案</h1>
     <p class="subtitle">
       第 8 章的 SFT 要标准答案,第 10 章的 DPO 要一对好坏回答。

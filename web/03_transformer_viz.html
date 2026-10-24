@@ -229,6 +229,10 @@
     opacity:0;transition:opacity .45s ease,transform .45s ease;}
   .congrats.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
   .congrats span{display:block;margin-top:6px;font-family:system-ui,sans-serif;font-size:13px;font-weight:400;color:var(--ink2);}
+/* code-links-css:start */
+.code-link{text-decoration:none;margin-left:6px;}
+.code-link:hover{border-color:var(--accent);color:var(--accent);}
+/* code-links-css:end */
 </style>
 </head>
 <body>
@@ -239,6 +243,10 @@
   <!-- ============ 顶部标题区 ============ -->
   <header>
     <span class="filename">03_transformer_viz.html</span>
+    <!-- code-links:start -->
+    <a class="filename code-link" href="https://github.com/tao-hpu/llm-from-scratch/blob/main/phase1-nanogpt/03_transformer.py" target="_blank" rel="noopener">📄 源码 03_transformer.py</a>
+    <a class="filename code-link" href="https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/03_transformer.ipynb" target="_blank" rel="noopener">▶ 在 Colab 里跑这一章</a>
+    <!-- code-links:end -->
     <h1>完整 Transformer:四块新积木,拼出 GPT</h1>
     <p class="subtitle">
       配套 <code>03_transformer.py</code>。第 2 章是<b>单头</b>注意力。这一章加四样东西凑成完整 GPT:

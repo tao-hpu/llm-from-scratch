@@ -183,6 +183,30 @@ for p in chapters + ["index.html", "glossary.html", "notes.html", "about.html"]:
     if p not in spec:
         bad(f"可视化规范.md: 文件表里没有 {p}，新增页忘了登记")
 
+# ------------------------------------------- 6. <script> 块必须能解析
+# 批量改页面最容易把 CSS / HTML 误塞进 <script>(一次真发生过:15 个页面的交互全死)。
+# 先用正则抓"长得像 CSS 规则"的行;有 node 的话再逐块 node --check,语法错直接报。
+import shutil
+import subprocess
+import tempfile
+
+NODE = shutil.which("node")
+for p in pages:
+    blocks = re.findall(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", src[p], flags=re.S)
+    for k, js in enumerate(blocks):
+        if re.search(r"^\s*\.[\w-]+(?::[\w-]+)?\s*\{[^}]*\}\s*$", js, flags=re.M):
+            bad(f"{p}: 第 {k+1} 个 <script> 块里混进了 CSS 规则，整块 JS 会报语法错")
+        if NODE:
+            with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
+                f.write(js)
+            r = subprocess.run([NODE, "--check", f.name], capture_output=True, text=True)
+            os.unlink(f.name)
+            if r.returncode != 0:
+                first = next((ln for ln in r.stderr.splitlines() if ln.strip() and "node:" not in ln), r.stderr.strip()[:120])
+                bad(f"{p}: 第 {k+1} 个 <script> 块 node --check 不通过：{first}")
+if not NODE:
+    notes.append("没找到 node,跳过了 <script> 块的语法检查(只跑了正则)")
+
 # --------------------------------------------------------------------- 输出
 print(f"检查 {len(pages)} 个页面(其中章节页 {len(chapters)} 个)\n")
 for n in notes:

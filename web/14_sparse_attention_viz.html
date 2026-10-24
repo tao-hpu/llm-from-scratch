@@ -243,6 +243,10 @@
   .minitbl td{padding:3px 14px 3px 0;color:var(--ink2);}
   .minitbl td b{color:var(--accent);font-weight:700;}
 
+/* code-links-css:start */
+.code-link{text-decoration:none;margin-left:6px;}
+.code-link:hover{border-color:var(--accent);color:var(--accent);}
+/* code-links-css:end */
 </style>
 </head>
 <body>
@@ -252,6 +256,10 @@
 
   <header>
     <span class="filename">14_sparse_attention_viz.html</span>
+    <!-- code-links:start -->
+    <a class="filename code-link" href="https://github.com/tao-hpu/llm-from-scratch/blob/main/phase4-efficiency/12_sparse_attn.py" target="_blank" rel="noopener">📄 源码 12_sparse_attn.py</a>
+    <a class="filename code-link" href="https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/12_sparse_attn.ipynb" target="_blank" rel="noopener">▶ 在 Colab 里跑这一章</a>
+    <!-- code-links:end -->
     <h1>稀疏注意力:每个 query 只挑一部分历史去读</h1>
     <p class="subtitle">
       第 13 章把 <span class="term" data-term="KV-cache · 键值缓存" data-key="kv-cache" data-def="把过去每个 token 的 K/V 缓存下来,生成新 token 时只算新的一列,避免重算整段。">KV cache</span>

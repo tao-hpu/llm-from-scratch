@@ -463,6 +463,10 @@
     display:block;margin-top:6px;font-family:system-ui,sans-serif;
     font-size:13px;font-weight:400;color:var(--ink2);
   }
+/* code-links-css:start */
+.code-link{text-decoration:none;margin-left:6px;}
+.code-link:hover{border-color:var(--accent);color:var(--accent);}
+/* code-links-css:end */
 </style>
 </head>
 <body>
@@ -472,6 +476,10 @@
   <a class="home-link" href="index.html">← 返回首页</a>
   <header>
     <span class="filename">01_bigram_crossentropy_viz.html</span>
+    <!-- code-links:start -->
+    <a class="filename code-link" href="https://github.com/tao-hpu/llm-from-scratch/blob/main/phase1-nanogpt/01_bigram.py" target="_blank" rel="noopener">📄 源码 01_bigram.py</a>
+    <a class="filename code-link" href="https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/01_bigram.ipynb" target="_blank" rel="noopener">▶ 在 Colab 里跑这一章</a>
+    <!-- code-links:end -->
     <h1>logits 摊平 &amp; 交叉熵到底在算什么</h1>
     <p class="subtitle">
       逐步拆解 nanoGPT bigram <code>forward</code> 的最后两行:

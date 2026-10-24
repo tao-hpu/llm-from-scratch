@@ -250,6 +250,10 @@
   .congrats .ct{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--accent);}
   .congrats .cs{font-size:13.5px;color:var(--ink2);margin-top:6px;}
   #confetti{position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;}
+/* code-links-css:start */
+.code-link{text-decoration:none;margin-left:6px;}
+.code-link:hover{border-color:var(--accent);color:var(--accent);}
+/* code-links-css:end */
 </style>
 </head>
 <body>
@@ -259,6 +263,10 @@
 
   <header>
     <span class="filename">11_moe_viz.html</span>
+    <!-- code-links:start -->
+    <a class="filename code-link" href="https://github.com/tao-hpu/llm-from-scratch/blob/main/phase3-moe/09_moe.py" target="_blank" rel="noopener">📄 源码 09_moe.py</a>
+    <a class="filename code-link" href="https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/09_moe.ipynb" target="_blank" rel="noopener">▶ 在 Colab 里跑这一章</a>
+    <!-- code-links:end -->
     <h1>手搓 MoE:参数翻倍,算力不变</h1>
     <p class="subtitle">
       第 3 章的 GPT 里,FFN 是<b>每个 token 都要过的同一个小 MLP</b>。

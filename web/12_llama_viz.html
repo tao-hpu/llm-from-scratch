@@ -255,6 +255,10 @@
   .abrow .av{font-family:var(--mono);font-size:12.5px;font-weight:700;width:96px;text-align:right;flex-shrink:0;
     font-variant-numeric:tabular-nums;}
 
+/* code-links-css:start */
+.code-link{text-decoration:none;margin-left:6px;}
+.code-link:hover{border-color:var(--accent);color:var(--accent);}
+/* code-links-css:end */
 </style>
 </head>
 <body>
@@ -264,6 +268,10 @@
 
   <header>
     <span class="filename">12_llama_viz.html</span>
+    <!-- code-links:start -->
+    <a class="filename code-link" href="https://github.com/tao-hpu/llm-from-scratch/blob/main/phase3-moe/10_llama.py" target="_blank" rel="noopener">📄 源码 10_llama.py</a>
+    <a class="filename code-link" href="https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/10_llama.ipynb" target="_blank" rel="noopener">▶ 在 Colab 里跑这一章</a>
+    <!-- code-links:end -->
     <h1>把 GPT-2 升级成 LLaMA:四个零件</h1>
     <p class="subtitle">
       第 3 章那台 GPT 是 <b>2019 年</b>的样子。今天的开源模型(LLaMA / Qwen / Mistral / DeepSeek)长得不太一样了 ——

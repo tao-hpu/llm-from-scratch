@@ -205,6 +205,10 @@
   /* ===== STEP 5:吞吐条 ===== */
   .flow-cap{font-family:var(--mono);font-size:11.5px;color:var(--ink2);margin-top:6px;}
 
+/* code-links-css:start */
+.code-link{text-decoration:none;margin-left:6px;}
+.code-link:hover{border-color:var(--accent);color:var(--accent);}
+/* code-links-css:end */
 </style>
 </head>
 <body>
@@ -214,6 +218,9 @@
 
   <header>
     <span class="filename">15_ngram_memory_viz.html</span>
+    <!-- code-links:start -->
+    <a class="filename code-link" href="https://github.com/tao-hpu/llm-from-scratch/blob/main/phase4-efficiency/13_engram.py" target="_blank" rel="noopener">📄 源码 13_engram.py</a>
+    <!-- code-links:end -->
     <h1>N-gram 查表:给模型挂一本短语词典</h1>
     <p class="subtitle">
       第 11 章的 MoE 让总参数变多、每个 token 的算力不变。这一关换一种做法:在第 12 章那台小模型旁边挂一张大表,

@@ -332,6 +332,10 @@
     opacity:0;transition:opacity .45s ease,transform .45s ease;}
   .congrats.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
   .congrats span{display:block;margin-top:6px;font-family:system-ui,sans-serif;font-size:13px;font-weight:400;color:var(--ink2);}
+/* code-links-css:start */
+.code-link{text-decoration:none;margin-left:6px;}
+.code-link:hover{border-color:var(--accent);color:var(--accent);}
+/* code-links-css:end */
 </style>
 </head>
 <body>
@@ -342,6 +346,10 @@
   <!-- ============ 顶部标题区 ============ -->
   <header>
     <span class="filename">02_attention_viz.html</span>
+    <!-- code-links:start -->
+    <a class="filename code-link" href="https://github.com/tao-hpu/llm-from-scratch/blob/main/phase1-nanogpt/02_attention.py" target="_blank" rel="noopener">📄 源码 02_attention.py</a>
+    <a class="filename code-link" href="https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/02_attention.ipynb" target="_blank" rel="noopener">▶ 在 Colab 里跑这一章</a>
+    <!-- code-links:end -->
     <h1>自注意力:让每个位置学会"往回看"</h1>
     <p class="subtitle">
       配套 <code>02_attention.py</code>。上一章 bigram 只看前 1 个字符,撞在 <code>val loss ≈ 2.49</code> 的墙上。

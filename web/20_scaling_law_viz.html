@@ -179,6 +179,10 @@
   table.tb th:first-child,table.tb td:first-child{text-align:left;}
   table.tb td{padding:6px 8px;border-bottom:1px solid #EFECE3;font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
   table.tb tr.hl td{background:#FBF1EA;}
+/* code-links-css:start */
+.code-link{text-decoration:none;margin-left:6px;}
+.code-link:hover{border-color:var(--accent);color:var(--accent);}
+/* code-links-css:end */
 </style>
 </head>
 <body>
@@ -188,6 +192,9 @@
 
   <header>
     <span class="filename">20_scaling_law_viz.html</span>
+    <!-- code-links:start -->
+    <a class="filename code-link" href="https://github.com/tao-hpu/llm-from-scratch/blob/main/phase5-fullstack/18_scaling.py" target="_blank" rel="noopener">📄 源码 18_scaling.py</a>
+    <!-- code-links:end -->
     <h1>Scaling Law:用小模型预测 124M 的 loss</h1>
     <p class="subtitle">
       第 6 章花了 4090 一整天,把 124M 训了 10B token。能不能先训一批小模型(每个几分钟到两小时),算出大模型会训到多少?

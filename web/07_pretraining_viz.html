@@ -237,6 +237,10 @@
     opacity:0;transition:opacity .45s ease,transform .45s ease;}
   .congrats.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
   .congrats span{display:block;margin-top:6px;font-family:system-ui,sans-serif;font-size:13px;font-weight:400;color:var(--ink2);}
+/* code-links-css:start */
+.code-link{text-decoration:none;margin-left:6px;}
+.code-link:hover{border-color:var(--accent);color:var(--accent);}
+/* code-links-css:end */
 </style>
 </head>
 <body>
@@ -247,6 +251,9 @@
   <!-- ============ 顶部标题区 ============ -->
   <header>
     <span class="filename">07_pretraining_viz.html</span>
+    <!-- code-links:start -->
+    <a class="filename code-link" href="https://github.com/tao-hpu/llm-from-scratch/blob/main/phase1-124m/04_gpt2_124m.py" target="_blank" rel="noopener">📄 源码 04_gpt2_124m.py</a>
+    <!-- code-links:end -->
     <h1>真训练:把玩具 GPT 喂真实数据(预训练 GPT-2 124M)</h1>
     <p class="subtitle">
       本页对应 <code>phase1-124m/04_gpt2_124m.py</code>。架构内核和前几关<b>一模一样</b>(注意力 + FFN + 残差 + LayerNorm),

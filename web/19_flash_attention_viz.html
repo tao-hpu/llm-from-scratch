@@ -191,6 +191,10 @@
   .mem-col{flex:1;min-width:220px;}
   .memrow{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:12.5px;}
   .memrow .tag{font-family:var(--mono);font-size:11px;font-weight:700;border-radius:6px;padding:2px 7px;color:#fff;}
+/* code-links-css:start */
+.code-link{text-decoration:none;margin-left:6px;}
+.code-link:hover{border-color:var(--accent);color:var(--accent);}
+/* code-links-css:end */
 </style>
 </head>
 <body>
@@ -200,6 +204,9 @@
 
   <header>
     <span class="filename">19_flash_attention_viz.html</span>
+    <!-- code-links:start -->
+    <a class="filename code-link" href="https://github.com/tao-hpu/llm-from-scratch/blob/main/phase5-fullstack/17_flash_attn.py" target="_blank" rel="noopener">📄 源码 17_flash_attn.py</a>
+    <!-- code-links:end -->
     <h1>手写 FlashAttention:拆开 SDPA 这个黑盒</h1>
     <p class="subtitle">
       从第 6 章起,注意力一直是一行 <code>F.scaled_dot_product_attention</code>。它和第 2 章手写的注意力算的是同一个数,

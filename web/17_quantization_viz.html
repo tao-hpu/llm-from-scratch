@@ -215,6 +215,10 @@
   .stack{display:flex;height:26px;border-radius:7px;overflow:hidden;border:1px solid var(--border);background:#F4F2EA;margin:8px 0 4px;}
   .stack div{height:100%;transition:width .4s ease;}
 
+/* code-links-css:start */
+.code-link{text-decoration:none;margin-left:6px;}
+.code-link:hover{border-color:var(--accent);color:var(--accent);}
+/* code-links-css:end */
 </style>
 </head>
 <body>
@@ -224,6 +228,9 @@
 
   <header>
     <span class="filename">17_quantization_viz.html</span>
+    <!-- code-links:start -->
+    <a class="filename code-link" href="https://github.com/tao-hpu/llm-from-scratch/blob/main/phase4-efficiency/15_quant.py" target="_blank" rel="noopener">📄 源码 15_quant.py</a>
+    <!-- code-links:end -->
     <h1>量化:把 124M 从 32 位压到 4 位</h1>
     <p class="subtitle">
       第 6 章用 10B token 训出来的那个 GPT-2 124M,每个权重是 32 位浮点,整个模型 <b>497.9 MB</b>。

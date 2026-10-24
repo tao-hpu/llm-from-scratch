@@ -198,6 +198,10 @@
   .cmp .big{font-family:var(--mono);font-size:22px;font-weight:700;}
   .cmp .cap{font-size:12px;color:var(--ink2);}
   .cloud{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
+/* code-links-css:start */
+.code-link{text-decoration:none;margin-left:6px;}
+.code-link:hover{border-color:var(--accent);color:var(--accent);}
+/* code-links-css:end */
 </style>
 </head>
 <body>
@@ -207,6 +211,9 @@
 
   <header>
     <span class="filename">18_bpe_viz.html</span>
+    <!-- code-links:start -->
+    <a class="filename code-link" href="https://github.com/tao-hpu/llm-from-scratch/blob/main/phase5-fullstack/16_bpe.py" target="_blank" rel="noopener">📄 源码 16_bpe.py</a>
+    <!-- code-links:end -->
     <h1>手写 BPE:自己训一个分词器</h1>
     <p class="subtitle">
       第 1 章用字符级分词,65 个字符;第 6 章起一直直接调 <code>tiktoken.get_encoding("gpt2")</code>。

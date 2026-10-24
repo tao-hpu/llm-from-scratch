@@ -236,6 +236,10 @@
   .legend .lg-click{cursor:pointer;border-radius:6px;padding:1px 6px;border:1px solid transparent;}
   .legend .lg-click.sel{border-color:var(--accent);color:var(--ink);background:#fff;}
 
+/* code-links-css:start */
+.code-link{text-decoration:none;margin-left:6px;}
+.code-link:hover{border-color:var(--accent);color:var(--accent);}
+/* code-links-css:end */
 </style>
 </head>
 <body>
@@ -245,6 +249,10 @@
 
   <header>
     <span class="filename">13_linear_attention_viz.html</span>
+    <!-- code-links:start -->
+    <a class="filename code-link" href="https://github.com/tao-hpu/llm-from-scratch/blob/main/phase4-efficiency/11_linear_attn.py" target="_blank" rel="noopener">📄 源码 11_linear_attn.py</a>
+    <a class="filename code-link" href="https://colab.research.google.com/github/tao-hpu/llm-from-scratch/blob/main/notebooks/11_linear_attn.ipynb" target="_blank" rel="noopener">▶ 在 Colab 里跑这一章</a>
+    <!-- code-links:end -->
     <h1>线性注意力:把 KV cache 换成一块固定大小的记忆板</h1>
     <p class="subtitle">
       第 12 章的注意力推理时要把每个 token 的 K/V 都存下来,上下文越长,
