@@ -102,7 +102,7 @@
     <a href="#prompt">prompt</a><a href="#top-k">top_k</a><a href="#greedy">贪心解码</a><a href="#kv-cache">KV-cache</a>
     <a href="#post-training">后训练</a><a href="#preference-alignment">偏好对齐</a><a href="#full-finetune">全量微调</a>
     <a href="#peft">PEFT</a><a href="#lora">LoRA</a><a href="#loss-mask">loss mask</a>
-    <a href="#chat-template">对话模板</a><a href="#dpo">DPO</a><a href="#rlhf">RLHF</a>
+    <a href="#chat-template">对话模板</a><a href="#dpo">DPO</a><a href="#rlhf">RLHF</a><a href="#mid-training">中期训练</a><a href="#instruction-tuning">指令微调</a><a href="#reward-model">奖励模型</a><a href="#ppo">PPO</a><a href="#kl-penalty">KL 惩罚</a><a href="#rlaif">RLAIF</a><a href="#distillation">蒸馏</a>
     <a href="#bpe">BPE</a><a href="#fineweb">FineWeb-Edu</a><a href="#shard">shard</a><a href="#adamw">AdamW</a><a href="#bf16">bf16</a><a href="#flash-attention">Flash-Attention</a>
     <a href="#moe">MoE / 专家</a><a href="#router">路由器</a><a href="#load-balancing">负载均衡</a>
     <a href="#expert-collapse">专家塌缩</a><a href="#active-params">激活参数</a>
@@ -417,7 +417,7 @@
     <h3>后训练 / 预训练 / 基座模型 <span class="en">post-training · pre-training · base model</span></h3>
     <p><b>预训练</b>:在海量无标注文本上做"预测下一个 token",产出只会续写的<b>基座模型(base model)</b> —— Phase 1 做的就是这步。
     <b>后训练</b>:在 base 之上继续调,让它"会听话":包括 <a href="#sft" style="color:var(--accent)">SFT</a> 和 <a href="#preference-alignment" style="color:var(--accent)">偏好对齐</a>。
-    现代大模型 = <b>预训练 → SFT → 偏好对齐</b> 一条流水线,后一段都站在前一段权重的肩膀上。</p>
+    现代大模型的完整流水线是 <b>预训练(必需)→ <a href="#mid-training" style="color:var(--accent)">中期训练</a>(可选)→ SFT(常规)→ 偏好对齐(常规)→ <a href="#rlvr" style="color:var(--accent)">RLVR</a>(推理模型常规)</b>,安全训练贯穿其中;后一段都站在前一段权重的肩膀上。全链路地图见第 7 章第 2 步。</p>
   </div>
 
   <div class="gentry" id="preference-alignment">
@@ -471,8 +471,56 @@
   <div class="gentry" id="rlhf">
     <h3>RLHF / PPO <span class="en">Reinforcement Learning from Human Feedback</span></h3>
     <p>用<b>强化学习</b>做 <a href="#preference-alignment" style="color:var(--accent)">偏好对齐</a>:先用偏好数据训一个<b>奖励模型</b>给回答打分,
-    再用 <b>PPO</b>(一种 RL 算法)让模型<b>最大化奖励</b>。要在线采样 rollout、要价值网络,工程量比 <a href="#dpo" style="color:var(--accent)">DPO</a> 大数倍。
+    再用 <a href="#ppo" style="color:var(--accent)">PPO</a>(一种 RL 算法)让模型<b>最大化奖励</b>。要在线采样 rollout、要价值网络,工程量比 <a href="#dpo" style="color:var(--accent)">DPO</a> 大数倍。
     它和 DPO 是实现同一目标的两条路(<b>RLHF 走 RL,DPO 不走</b>)。本项目没有实现 RLHF / PPO;第 21 章实现了同属强化学习的 <a href="#grpo" style="color:var(--accent)">GRPO</a>,奖励来自<a href="#verifier" style="color:var(--accent)">判分器</a>而不是奖励模型。</p>
+  </div>
+
+  <div class="gentry" id="mid-training">
+    <h3>中期训练 <span class="en">mid-training</span></h3>
+    <p>预训练之后、<a href="#sft" style="color:var(--accent)">SFT</a> 之前的一段<b>可选</b>训练:loss 仍是"预测下一个 token",但数据换成更精选的代码、数学、教材、长文档,
+    或专门把上下文窗口拉长。它解决的是"底座在某些领域不够强、读不了长输入",不是"不会听话"。本项目没有这一段。</p>
+  </div>
+
+  <div class="gentry" id="instruction-tuning">
+    <h3>指令微调 <span class="en">instruction tuning</span></h3>
+    <p>用大量"指令 → 回答"数据做的 <a href="#sft" style="color:var(--accent)">SFT</a>。Google 的 FLAN 与 BigScience 的 T0(都在 2021 年)把几十个现成 NLP 数据集改写成自然语言指令来微调(FLAN 用了 62 个),
+    发现训过足够多种指令任务后,模型对<b>没见过的任务</b>也能照指令完成。今天说的 SFT,数据大多就是这种形式。</p>
+  </div>
+
+  <div class="gentry" id="reward-model">
+    <h3>奖励模型 <span class="en">reward model</span></h3>
+    <p>用"A 比 B 好"的偏好数据训出来的打分模型:输入一个回答,输出一个分数。<a href="#rlhf" style="color:var(--accent)">RLHF</a> 里由它代替人,给模型现场生成的每个回答打分。
+    <a href="#dpo" style="color:var(--accent)">DPO</a> 不需要它;<a href="#rlvr" style="color:var(--accent)">RLVR</a> 用<a href="#verifier" style="color:var(--accent)">判分器</a>代替它。</p>
+  </div>
+
+  <div class="gentry" id="ppo">
+    <h3>PPO <span class="en">Proximal Policy Optimization · 近端策略优化</span></h3>
+    <p>Schulman 等人(2017)提出的通用强化学习算法,最早用在游戏和机器人控制上。每一步更新被<b>裁剪</b>住、不许一次改太多,所以训练稳定。
+    在 <a href="#rlhf" style="color:var(--accent)">RLHF</a> 里,显存要同时放四个模型:正在训的主模型、算 <a href="#kl-penalty" style="color:var(--accent)">KL 惩罚</a>用的参考模型、<a href="#reward-model" style="color:var(--accent)">奖励模型</a>、估计优势的价值模型(critic)。
+    <a href="#grpo" style="color:var(--accent)">GRPO</a> 是它的简化版,去掉了价值模型。PPO 是"怎么更新"的算法,奖励可以来自奖励模型,也可以来自判分器。</p>
+  </div>
+
+  <div class="gentry" id="kl-penalty">
+    <h3>KL 惩罚 <span class="en">KL penalty</span></h3>
+    <p>强化学习阶段额外扣的一项分:主模型对同一输入给出的分布离<b>参考模型</b>(通常是 SFT 后冻结的版本)越远,扣得越多。
+    它防止模型为了刷高奖励跑偏,例如钻<a href="#reward-model" style="color:var(--accent)">奖励模型</a>的空子、输出越来越怪的文本。
+    <a href="#ppo" style="color:var(--accent)">PPO</a>、<a href="#grpo" style="color:var(--accent)">GRPO</a> 都带这一项;<a href="#dpo" style="color:var(--accent)">DPO</a> 的损失里也隐含了它。</p>
+  </div>
+
+  <div class="gentry" id="rlaif">
+    <h3>RLAIF / Constitutional AI <span class="en">Reinforcement Learning from AI Feedback</span></h3>
+    <p>流程同 <a href="#rlhf" style="color:var(--accent)">RLHF</a>,只是"哪个回答更好"改由另一个模型来判,减少人工标注。
+    Anthropic 的 Constitutional AI(Bai 等,2022)是代表:先写一套原则(constitution),由模型按原则批评、修改、比较回答,得到的偏好数据再用于训练。</p>
+  </div>
+
+  <div class="gentry" id="distillation">
+    <h3>蒸馏 <span class="en">distillation · knowledge distillation</span></h3>
+    <p>训练信号来自一个更强的<b>教师模型</b>。它说的是信号从哪来,不是某种训练方法,所以几种方法都能拿来做蒸馏:</p>
+    <p>· <b>软标签蒸馏</b>(Hinton 等,2015,这个词的出处):学生学教师在每个位置给所有词的概率分布,需要教师的 logits 且词表相同;<br>
+    · <b>数据蒸馏</b>:教师写答案,学生做 <a href="#sft" style="color:var(--accent)">SFT</a>。DeepSeek-R1 同时发布的几个小模型只做了这一步;<br>
+    · <b>偏好蒸馏</b>:教师当裁判给一批回答排好坏,学生用这些偏好数据做 <a href="#dpo" style="color:var(--accent)">DPO</a> 或 <a href="#rlaif" style="color:var(--accent)">RLAIF</a>;<br>
+    · <b>在线策略蒸馏</b>:学生自己生成,教师逐 token 给分,形式上接近强化学习。<br>
+    教师和学生是同一个模型时叫<b>自蒸馏</b>。各方法的位置见第 7 章第 6 步的分类表。</p>
   </div>
 
   <!-- ============ MoE 与稀疏激活 ============ -->

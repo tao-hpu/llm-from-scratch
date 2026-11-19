@@ -4,11 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Phase 2 开篇 · 后训练白皮书</title>
-<meta name="description" content="动手前先对齐全景:参数量 vs 数据量、任务 vs 手段(SFT/DPO × 全量/LoRA)、SFT 只动三处、RLHF 与 DPO 的关系。">
+<meta name="description" content="动手前先对齐全景:后训练全链路哪些必需、哪些常规,任务 vs 手段(SFT/DPO × 全量/LoRA),SFT 只动三处,RLHF 与 DPO 的关系,以及 SFT、DPO、RLHF、RLVR、蒸馏的分类表。">
 <meta name="theme-color" content="#D97757">
 <!-- Open Graph(分享卡片:各章共用首页那张 og.png)-->
 <meta property="og:title" content="第 7 章 · 后训练地图 · 从零手写大语言模型">
-<meta property="og:description" content="动手前先对齐全景:参数量 vs 数据量、任务 vs 手段(SFT/DPO × 全量/LoRA)、SFT 只动三处、RLHF 与 DPO 的关系。">
+<meta property="og:description" content="动手前先对齐全景:后训练全链路哪些必需、哪些常规,任务 vs 手段(SFT/DPO × 全量/LoRA),SFT 只动三处,RLHF 与 DPO 的关系,以及 SFT、DPO、RLHF、RLVR、蒸馏的分类表。">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://learn-llm.fim.ai/06_posttraining_viz.html">
 <meta property="og:image" content="https://learn-llm.fim.ai/og.png">
@@ -17,7 +17,7 @@
 <!-- Twitter / X -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="第 7 章 · 后训练地图 · 从零手写大语言模型">
-<meta name="twitter:description" content="动手前先对齐全景:参数量 vs 数据量、任务 vs 手段(SFT/DPO × 全量/LoRA)、SFT 只动三处、RLHF 与 DPO 的关系。">
+<meta name="twitter:description" content="动手前先对齐全景:后训练全链路哪些必需、哪些常规,任务 vs 手段(SFT/DPO × 全量/LoRA),SFT 只动三处,RLHF 与 DPO 的关系,以及 SFT、DPO、RLHF、RLVR、蒸馏的分类表。">
 <meta name="twitter:image" content="https://learn-llm.fim.ai/og.png">
 <style>
   :root{
@@ -136,6 +136,12 @@
   .pstage .stsub{font-size:12px;color:var(--ink2);line-height:1.5;}
   .pstage .youhere{position:absolute;top:-10px;right:10px;font-family:var(--mono);font-size:10px;font-weight:700;
     color:#fff;background:#3f7d63;border-radius:999px;padding:2px 8px;}
+  .need{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:700;border-radius:999px;
+    padding:1px 7px;margin-left:4px;vertical-align:1px;letter-spacing:0;}
+  .need.must{color:#fff;background:var(--accent);}
+  .need.usual{color:#2c6b53;background:#D7EBE0;}
+  .need.opt{color:var(--ink2);background:#F4F2EA;border:1px dashed #cfc9ba;}
+  .stage-detail a{color:var(--accent);text-decoration:none;font-weight:600;}
   .stage-detail{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-top:12px;min-height:80px;}
   .stage-detail .sd-t{font-family:var(--serif);font-weight:600;font-size:16px;margin-bottom:4px;}
   .saybox{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
@@ -157,6 +163,16 @@
   .gcell .cs{font-family:var(--mono);font-size:11px;color:var(--ink2);margin-top:3px;}
   .gcell .cscript{display:inline-block;margin-top:6px;font-family:var(--mono);font-size:10.5px;font-weight:700;
     color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:1px 7px;}
+  .mcell{background:#fff;border:1px solid var(--border);border-radius:11px;padding:12px 12px;cursor:pointer;transition:.2s;min-height:74px;}
+  .mcell:hover{border-color:#cfc9ba;}
+  .mcell.lit{background:#FBF1EA;border-color:#F0DDD0;}
+  .mcell.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
+  .mcell .ct{font-size:13.5px;font-weight:700;}
+  .mcell .cs{font-family:var(--mono);font-size:11px;color:var(--ink2);margin-top:3px;}
+  .mcell .cscript{display:inline-block;margin-top:6px;font-family:var(--mono);font-size:10.5px;font-weight:700;
+    color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:1px 7px;}
+  .cell-detail ul{margin:6px 0 0;padding-left:18px;}
+  .cell-detail a{color:var(--accent);text-decoration:none;font-weight:600;}
   .cell-detail{background:#fff;border:1px solid var(--border);border-radius:12px;padding:13px 16px;margin-top:12px;min-height:54px;font-size:13px;}
   .cell-detail b{color:var(--accent);}
 
@@ -247,7 +263,7 @@
       Phase 1 练出来的是一台只会<b>续写</b>的<span class="term" data-term="基座模型 · base model" data-key="post-training" data-def="只经过预训练、还没对齐的模型。它学会的是『把话说得像』,只会顺着上文接着写,不会听指令答题。">底座模型</span>。
       这一页是 Phase 2 的<b>地图与术语对齐</b>:从"会续写"到"会听话"要经过哪几步、有哪两个容易混的轴、
       <span class="term" data-term="SFT · 监督微调" data-key="sft" data-def="用『指令→理想回答』成对数据继续训练,把底座调成会听指令答题的姿态。和预训练用同一个 loss,只是数据和算 loss 的范围变了。">SFT</span> 到底改了什么、
-      <span class="term" data-term="偏好对齐 · preference alignment" data-key="preference-alignment" data-def="让模型的回答更合人类口味的阶段。有两条路:RLHF(走强化学习)和 DPO(不走强化学习)。">偏好对齐</span>里 RLHF 和 DPO 是什么关系。先建立全景,再去写代码。
+      <span class="term" data-term="偏好对齐 · preference alignment" data-key="preference-alignment" data-def="让模型的回答更合人类口味的阶段。有两条路:RLHF(走强化学习)和 DPO(不走强化学习)。">偏好对齐</span>里 RLHF 和 DPO 是什么关系,以及 SFT、DPO、RLHF、RLVR、蒸馏在一张表上各占哪一格。先建立全景,再去写代码。
     </p>
   </header>
 
@@ -257,7 +273,8 @@
     <div class="step-tab" data-step="2"><div class="num">STEP 3</div><div class="label">任务 × 手段</div></div>
     <div class="step-tab" data-step="3"><div class="num">STEP 4</div><div class="label">SFT 机制</div></div>
     <div class="step-tab" data-step="4"><div class="num">STEP 5</div><div class="label">偏好对齐</div></div>
-    <div class="step-tab" data-step="5"><div class="num">STEP 6</div><div class="label">路线图 & 达标</div></div>
+    <div class="step-tab" data-step="5"><div class="num">STEP 6</div><div class="label">方法分类表</div></div>
+    <div class="step-tab" data-step="6"><div class="num">STEP 7</div><div class="label">路线图 & 达标</div></div>
   </div>
 
   <div class="hp-bar">
@@ -303,36 +320,69 @@
 
   <!-- ============ STEP 2 ============ -->
   <section class="panel" id="panel1">
-    <h2>② 后训练地图:预训练 → SFT → 偏好对齐</h2>
+    <h2>② 后训练地图:从预训练到安全训练</h2>
     <p class="lead">
-      现代大模型是<b>一条流水线</b>下来的。你现在站在第一段的终点。点每一段,看它<b>用什么数据、把模型改成什么样</b>。
+      现代大模型是<b>一条流水线</b>下来的,你现在站在第一段的终点。每段右上角标了它是
+      <span class="need must">必需</span>、<span class="need usual">常规</span>还是<span class="need opt">可选</span>。
+      点每一段,看它<b>用什么数据、把模型改成什么样</b>,以及本项目在哪一章做它。
     </p>
 
     <div class="pipe" id="mapPipe">
       <div class="pstage on" data-st="0">
         <span class="youhere">你在这</span>
-        <div class="stn">STAGE 1</div>
+        <div class="stn">STAGE 1 <span class="need must">必需</span></div>
         <div class="sttitle">预训练 Pre-training</div>
         <div class="stsub">海量纯文本,学"预测下一个 token"。产出 = 只会续写的 base。</div>
       </div>
       <div class="pstage" data-st="1">
-        <div class="stn">STAGE 2</div>
+        <div class="stn">STAGE 2 <span class="need opt">可选</span></div>
+        <div class="sttitle"><span class="term" data-term="中期训练 · mid-training" data-key="mid-training" data-def="预训练之后、SFT 之前,换成更精选的数据(代码、数学、长文档)接着做『预测下一个 token』,或专门拉长上下文窗口。">中期训练</span></div>
+        <div class="stsub">接着预训练,但换精选数据(代码、数学、长文档),或拉长上下文。</div>
+      </div>
+      <div class="pstage" data-st="2">
+        <div class="stn">STAGE 3 <span class="need usual">常规</span></div>
         <div class="sttitle">SFT 监督微调</div>
         <div class="stsub">「指令→回答」成对数据,教它听指令、按格式答、答完就停。</div>
       </div>
-      <div class="pstage" data-st="2">
-        <div class="stn">STAGE 3</div>
-        <div class="sttitle">偏好对齐</div>
-        <div class="stsub">人类偏好(A 比 B 好),把回答调得更合口味、更安全。</div>
+      <div class="pstage" data-st="3">
+        <div class="stn">STAGE 4 <span class="need usual">常规</span></div>
+        <div class="sttitle">偏好优化</div>
+        <div class="stsub">"A 比 B 好"的比较数据,把回答调得更有用、更合口味。</div>
+      </div>
+      <div class="pstage" data-st="4">
+        <div class="stn">STAGE 5 <span class="need opt">推理模型常规</span></div>
+        <div class="sttitle"><span class="term" data-term="RLVR · 可验证奖励强化学习" data-key="rlvr" data-def="Reinforcement Learning with Verifiable Rewards。奖励由程序判对错(答案对不对、测试过没过),不用人打分。推理模型的长思考主要靠它。">RLVR</span></div>
+        <div class="stsub">数学、代码这类能自动判对错的题,模型自己做、程序判分。</div>
+      </div>
+      <div class="pstage" data-st="5">
+        <div class="stn">STAGE 6 <span class="need usual">常规 · 贯穿</span></div>
+        <div class="sttitle">安全训练</div>
+        <div class="stsub">红队测试、拒答训练、上线后的输入输出分类器。</div>
       </div>
     </div>
 
     <div class="stage-detail" id="mapDetail"></div>
 
     <div class="note">
-      <b>三段是叠加,不是替换。</b>SFT 在预训练的权重上继续调,偏好对齐又在 SFT 的基础上继续调 ——
-      后一段都站在前一段的肩膀上。本项目 Phase 2 做<b>第 2、3 段</b>。
+      <b>各段是叠加,不是替换。</b>每一段都在上一段的权重上继续调。本项目 Phase 2 做<b>第 3、4 段</b>,第 5 段在第 21 章。
     </div>
+
+    <details class="dig">
+      <summary>SFT 能跳过吗?</summary>
+      <div class="dig-body">
+        能,但很少这么做。DeepSeek-R1-Zero(2025)没做 SFT,直接在基座上跑 <b>RLVR</b>,推理能力照样练出来了,
+        只是输出常常中英混杂、可读性差。正式版 DeepSeek-R1 于是先补了一小段 SFT 做<b>冷启动</b>,再进 RL。
+        所以 SFT 是惯例,不是硬性前提;只有预训练是真正必需的。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>真实的训练是一段接一段走完的吗?</summary>
+      <div class="dig-body">
+        不完全是。SFT、偏好优化、RL 常常<b>交替跑好几轮</b>:每轮用上一轮的模型生成新数据,筛选后再训下一轮。
+        安全训练也不单独排在最后,拒答数据混在 SFT 和偏好数据里,红队测试在每轮之后都做。
+        这张地图画的是<b>每段解决什么问题</b>,不是严格的时间顺序。
+      </div>
+    </details>
 
     <div class="next-hint">↳ 下一步:同样是"微调",为什么有人说"全量",有人说"LoRA"?那是另一个轴。</div>
   </section>
@@ -389,6 +439,7 @@
     <p class="lead">
       SFT 和预训练用的是<b>同一个</b><span class="term" data-term="交叉熵 · cross-entropy" data-key="cross-entropy" data-def="预测下一个 token 的损失:正确 token 概率越高,loss 越低。预训练和 SFT 用的是同一个它。">交叉熵</span>(预测下一个 token),没有新数学。
       改动只有三处:<b>① 数据换成「指令→回答」对、② 套对话模板并在结尾放 EOS、③ loss 只算回答那一段。</b>
+      用这类指令数据做的 SFT 也叫<span class="term" data-term="指令微调 · instruction tuning" data-key="instruction-tuning" data-def="用大量『指令 → 回答』数据做 SFT,让模型学会按指令做事。Google 的 FLAN 与 BigScience 的 T0(都在 2021 年)发现:训过足够多种指令任务后,模型对没见过的任务也能照指令完成。">指令微调</span>。
       下面把整条样本拼出来,拨一下"loss 算在哪些 token 上"。
     </p>
 
@@ -459,7 +510,7 @@
     <div class="note">
       关键澄清:<b>DPO 不是 PPO 的变体或衍生版</b>,它俩是实现"偏好对齐"的<b>两条平行路线</b> ——
       <span class="term" data-term="RLHF · 人类反馈强化学习" data-key="rlhf" data-def="用强化学习做偏好对齐:先训一个奖励模型给回答打分,再用 PPO 让模型最大化这个分数。要采样 rollout、要价值网络,工程重。">RLHF</span>
-      走真<span class="term" data-term="强化学习 · RL" data-key="rlhf" data-def="智能体通过『试错 + 奖励信号』来学策略。RLHF 用的 PPO 就是一种 RL 算法。">强化学习</span>(PPO),
+      走真<span class="term" data-term="强化学习 · RL" data-key="rlhf" data-def="智能体通过『试错 + 奖励信号』来学策略。RLHF 用的 PPO 就是一种 RL 算法。">强化学习</span>(<span class="term" data-term="PPO · 近端策略优化" data-key="ppo" data-def="Proximal Policy Optimization(Schulman 等,2017),一种通用的强化学习算法。每步更新被裁剪住、不许一次改太多,所以训练稳定。RLHF 用它按奖励模型的分数更新模型。">PPO</span>),
       <span class="term" data-term="DPO · 直接偏好优化" data-key="dpo" data-def="Direct Preference Optimization。把 RLHF 的目标推成闭式解,直接在偏好对上做一个类监督损失,不需要奖励模型、不需要采样、不走 RL 循环。">DPO</span>
       不走 RL(直接在偏好对上做类监督损失)。DPO 的卖点正是"<b>不用 RL 那套笨重机器,也能拿到 RLHF 的效果</b>"。
     </div>
@@ -469,12 +520,87 @@
       <b>不写成脚本</b> —— 它要额外训奖励模型 + 在线采样,工程量数倍,对"理解偏好对齐"边际收益低。
     </div>
 
-    <div class="next-hint">↳ 下一步:这些都落到几个脚本里?用哪个底座?训成什么样算达标?</div>
+    <details class="dig">
+      <summary>RLHF 用 PPO 训练时,显存里要同时放几个模型?</summary>
+      <div class="dig-body">
+        四个:<br>
+        · <b>主模型</b>:正在训的那个,负责生成回答;<br>
+        · <b>参考模型</b>:SFT 后冻结的版本,用来算 <span class="term" data-term="KL 惩罚 · KL penalty" data-key="kl-penalty" data-def="训练时额外扣的一项分:主模型的输出分布离参考模型越远,扣得越多。防止模型为了刷高奖励跑偏。">KL 惩罚</span>,不让主模型偏离太远、去钻奖励模型的空子;<br>
+        · <b><span class="term" data-term="奖励模型 · reward model" data-key="reward-model" data-def="用『A 比 B 好』的偏好数据训出来的打分模型:输入一个回答,输出一个分数。RLHF 里由它代替人给每个回答打分。">奖励模型</span></b>:给每个回答打分;<br>
+        · <b>价值模型</b>(critic):估计"这个回答比平均水平好多少",帮 PPO 算更新方向。<br>
+        DPO 只需要前两个。第 21 章的 <b>GRPO</b> 去掉了价值模型,改用同一道题一组回答的平均分当基线。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:除了 DPO 和 RLHF,还有 SFT、RLVR、蒸馏。它们之间是什么关系?用一张表放到一起看。</div>
   </section>
 
   <!-- ============ STEP 6 ============ -->
   <section class="panel" id="panel5">
-    <h2>⑥ Phase 2 路线图 · 底座 · 达标标准</h2>
+    <h2>⑥ 一张表分清:SFT、DPO、RLHF、RLVR</h2>
+    <p class="lead">
+      SFT、DPO、RLHF、<span class="term" data-term="RLAIF · AI 反馈强化学习" data-key="rlaif" data-def="Reinforcement Learning from AI Feedback。和 RLHF 流程相同,只是『哪个回答更好』改由另一个模型按一套写好的原则来判,减少人工标注。">RLAIF</span>、RLVR,
+      都能用两个问题定位:<b>① 训练时模型自己生成回答吗?② 信号是"A 比 B 好"的比较吗?</b>
+      点格子看每一格是什么;再点上面的标签,看"强化学习""偏好优化""<span class="term" data-term="蒸馏 · distillation" data-key="distillation" data-def="训练信号来自一个更强的教师模型:教师写答案、当裁判或逐 token 给分,学生照此学习。它说的是信号的来源,SFT、DPO、RL 都能拿来做蒸馏。">蒸馏</span>"各覆盖哪几格。
+    </p>
+
+    <div class="btn-row" id="lensBtns">
+      <button class="btn primary" data-lens="none">不加标签</button>
+      <button class="btn" data-lens="rl">强化学习</button>
+      <button class="btn" data-lens="pref">偏好优化</button>
+      <button class="btn" data-lens="distill">蒸馏</button>
+    </div>
+
+    <div class="grid2" id="methodGrid">
+      <div class="gh corner"></div>
+      <div class="gh col">模型自己生成回答<br><span style="font-weight:400;font-size:10px">= 强化学习</span></div>
+      <div class="gh col">拿现成数据训<br><span style="font-weight:400;font-size:10px">= 非强化学习</span></div>
+
+      <div class="gh row">信号:<br>A 比 B 好</div>
+      <div class="mcell" data-m="0"><div class="ct">RLHF / RLAIF</div><div class="cs">奖励模型打分,PPO 更新</div><span class="cscript">本章第 5 步</span></div>
+      <div class="mcell" data-m="1"><div class="ct">DPO</div><div class="cs">好坏配对直接算损失</div><span class="cscript">08_dpo.py</span></div>
+
+      <div class="gh row">信号:<br>标准答案 / 对错</div>
+      <div class="mcell" data-m="2"><div class="ct">RLVR</div><div class="cs">程序判对错,GRPO 更新</div><span class="cscript">19_grpo.py</span></div>
+      <div class="mcell" data-m="3"><div class="ct">SFT</div><div class="cs">照标准答案学</div><span class="cscript">06_sft.py</span></div>
+    </div>
+
+    <div class="cell-detail" id="methodDetail"></div>
+
+    <div class="note">
+      <b>三个标签各管一个维度:</b>强化学习看训练时模型自己生成不生成,偏好优化看信号是不是比较,蒸馏看信号是不是来自教师模型。一种训练方法可以同时带好几个标签。
+    </div>
+
+    <details class="dig">
+      <summary>PPO、GRPO 和 RLHF、RLVR 是什么关系?</summary>
+      <div class="dig-body">
+        RLHF、RLAIF、RLVR 说的是<b>奖励从哪来</b>:人的偏好、AI 的判断、程序的判定。
+        PPO、GRPO 是<b>算法</b>,说的是拿到奖励之后怎么更新模型。两边可以任意搭配:
+        早期的 RLHF 用 PPO;AI2 的 Tülu 3(2024,RLVR 这个名字出自这篇)用 PPO 做 RLVR;DeepSeek-R1 用 GRPO 做 RLVR。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>最早的"知识蒸馏"学的是什么?</summary>
+      <div class="dig-body">
+        Hinton 等人(2015)提出时,学生学的不是"正确答案是哪个词",而是教师在每个位置给<b>所有词的概率分布</b>,
+        用 KL 散度衡量两个分布的差距。分布里带着"第二可能的词是什么"这类信息,比单个正确答案多。
+        这种做法要拿到教师的 logits,两个模型的词表也得一样,所以多用在同一家机构自己的大小模型之间。它落在右下格:不走强化学习,信号也不是偏好。
+      </div>
+    </details>
+    <details class="dig">
+      <summary>自蒸馏是什么?</summary>
+      <div class="dig-body">
+        教师和学生是<b>同一个模型</b>:先让它在更有利的条件下作答(多采样几次挑出答对的、给更多提示或换一种更顺手的格式),
+        再拿这些回答训练它在普通条件下的表现。用的训练方法通常就是 SFT。
+      </div>
+    </details>
+
+    <div class="next-hint">↳ 下一步:这些落到本项目的哪几个脚本?用哪个底座?训成什么样算达标?</div>
+  </section>
+
+  <!-- ============ STEP 7 ============ -->
+  <section class="panel" id="panel6">
+    <h2>⑦ Phase 2 路线图 · 底座 · 达标标准</h2>
     <p class="lead">
       把前面的概念落到<b>三个脚本</b>。每个脚本对应一个值得手搓的新机制,合起来覆盖"任务 × 手段"那张表。
     </p>
@@ -504,6 +630,9 @@
       <b>底座沿用 124M,不往上加。</b> 目标是"看懂机制 + 看到行为变化",124M 完全够演示;
       放大只增加成本、不增加新知识点。(注意:124M 是<b>英文玩具级</b>,SFT 后是"像在答题"而非能真聊天;
       想要能中文对话的助手是另一条线,得换含中文的开源底座。)
+    </div>
+    <div class="note">
+      地图第 5 段 <b>RLVR</b> 不在 Phase 2:它在 <a href="21_rlvr_grpo_viz.html#step-1" style="color:var(--accent)">第 21 章</a>(<code>19_grpo.py</code>)用 GRPO 教 124M 做两位数加法。
     </div>
 
     <div class="sub-h"><span class="badge">达标</span>训成什么样算到位(玩具级 · 看行为,不刷榜)</div>
@@ -545,7 +674,7 @@
 
     <div class="congrats" id="congrats">
       <div class="ct">🎉 Phase 2 地图已对齐</div>
-      <div class="cs">你已经分清:参数量 vs 数据量 · 任务 vs 手段 · SFT 改了哪三处 · RLHF vs DPO。接下来就是 <code>06_sft.py</code> 动手。</div>
+      <div class="cs">你已经分清:参数量 vs 数据量 · 后训练各段必需与否 · 任务 vs 手段 · SFT 改了哪三处 · RLHF vs DPO · 各种训练方法在两轴表上的位置。接下来就是 <code>06_sft.py</code> 动手。</div>
     </div>
   </section>
 
@@ -560,7 +689,7 @@
 
 <script>
 /* ============ 步骤切换 ============ */
-const NSTEP=6;
+const NSTEP=7;
 const tabs=document.querySelectorAll('.step-tab');
 const panels=[];for(let i=0;i<NSTEP;i++)panels.push(document.getElementById('panel'+i));
 let cur=0;
@@ -608,18 +737,36 @@ buildAx('axP','p','p'); buildAx('axD','d','d');
 
 /* ============ STEP 2:后训练地图 ============ */
 const MAP=[
-  {t:'STAGE 1 · 预训练',d:'<b>用什么数据:</b>海量无标注纯文本(本项目 FineWeb-Edu 10B token)。<br><b>把模型改成:</b>会预测下一个 token,也就是"会续写"。这一段你已经做完了。',
+  {t:'STAGE 1 · 预训练',d:'<b>用什么数据:</b>海量无标注纯文本(本项目 FineWeb-Edu 10B token)。<br><b>把模型改成:</b>会预测下一个 token,也就是"会续写"。知识和语言能力基本都在这一步学到。',
+   need:'<b>必需。</b>后面每一段都在它的权重上继续调,没有它就没有可调的模型。',
+   ch:'<a href="07_pretraining_viz.html#step-1">第 6 章 · 预训练 124M →</a>(你已经做完)',
    ask:'The history of Rome', out:'The history of Rome, particularly the last one, is quite fascinating…(顺着续写,停不下来)'},
-  {t:'STAGE 2 · SFT 监督微调',d:'<b>用什么数据:</b>「指令 → 理想回答」成对数据 + 对话模板。<br><b>把模型改成:</b>听懂指令、按助手口吻回答、答完输出 EOS 停下。',
+  {t:'STAGE 2 · 中期训练',d:'<b>用什么数据:</b>比预训练更精选的文本:代码、数学、教材、长文档。<br><b>把模型改成:</b>某些领域更强,或能读更长的输入(上下文窗口拉长)。loss 仍是"预测下一个 token"。',
+   need:'<b>可选。</b>大厂的模型普遍做,但它解决的是"底座不够强",不是"不会听话"。',
+   ch:'本项目不做:124M 的目标是看懂机制,不追底座能力。',
+   ask:'一份 3 万 token 的合同 + 一个问题', out:'能把整份合同读进来再答(训练前只读得下开头一段)'},
+  {t:'STAGE 3 · SFT 监督微调',d:'<b>用什么数据:</b>「指令 → 理想回答」成对数据 + 对话模板,通常几万到几十万条。<br><b>把模型改成:</b>听懂指令、按助手口吻回答、答完输出 EOS 停下。',
+   need:'<b>常规。</b>几乎所有对话模型都做。少数推理模型试过跳过它直接上 RL(见下方折叠)。',
+   ch:'<a href="08_sft_viz.html#step-1">第 8 章 · SFT →</a>,省参数版见 <a href="09_lora_viz.html#step-1">第 9 章 · LoRA →</a>',
    ask:'用户:把 “I love cats” 翻成法语', out:'助手:J\'aime les chats.〈EOS〉(听指令、给答案、停)'},
-  {t:'STAGE 3 · 偏好对齐',d:'<b>用什么数据:</b>同一个问题的两个回答 + 人类判断"A 比 B 好"。<br><b>把模型改成:</b>在"都能答"的基础上,答得更有用、更安全、更合口味。',
+  {t:'STAGE 4 · 偏好优化',d:'<b>用什么数据:</b>同一个问题的两个回答 + 判断"A 比 B 好",判断来自人或另一个模型。<br><b>把模型改成:</b>在"都能答"的基础上,答得更有用、更安全、更合口味。',
+   need:'<b>常规。</b>SFT 只能教"照这个答案写",分不出两个都通顺的回答谁更好,这一段补的就是比较。',
+   ch:'<a href="10_dpo_viz.html#step-1">第 10 章 · DPO →</a>;RLHF 路线见本章第 5 步',
    ask:'同一问题:回答 A vs 回答 B', out:'学会"多产出 A 这类回答" —— 调的是偏好,不是对错'},
+  {t:'STAGE 5 · RLVR',d:'<b>用什么数据:</b>有标准答案的题(数学、代码),外加一个判分程序。<br><b>把模型改成:</b>自己写出推理过程,只要最后答案被判对就得奖励,慢慢学会"多想几步"。',
+   need:'<b>推理模型常规,普通对话模型可选。</b>它只适用于能自动判对错的任务。',
+   ch:'<a href="21_rlvr_grpo_viz.html#step-1">第 21 章 · RLVR 与 GRPO →</a>',
+   ask:'37 + 48 = ?', out:'先写过程再给 85;判分器只看最后的 85 对不对'},
+  {t:'STAGE 6 · 安全训练',d:'<b>用什么数据:</b>红队测试找出的危险提问 + 合适的拒答或安全回答。<br><b>把模型改成:</b>遇到有害请求时拒绝或给安全替代,正常请求照常回答。',
+   need:'<b>常规,而且贯穿全程。</b>拒答数据混在 SFT 与偏好数据里,上线后还有单独的分类器把关。',
+   ch:'本项目不做:124M 没有足够能力产生需要拦截的内容。',
+   ask:'教我配一种危险的化学品', out:'拒绝具体步骤,说明风险,给出安全的替代信息'},
 ];
 function selMap(i){
   document.querySelectorAll('#mapPipe .pstage').forEach(s=>s.classList.toggle('on',+s.dataset.st===i));
   const m=MAP[i];
   document.getElementById('mapDetail').innerHTML =
-    `<div class="sd-t">${m.t}</div><div style="font-size:13px;color:var(--ink2)">${m.d}</div>`
+    `<div class="sd-t">${m.t}</div><div style="font-size:13px;color:var(--ink2)">${m.d}<br>${m.need}<br><b>本项目:</b>${m.ch}</div>`
     +`<div class="saybox"><div class="say ask"><div class="sh">输入</div><div class="txt">${m.ask}</div></div>`
     +`<div class="say out"><div class="sh">这一段后,模型会</div><div class="txt">${m.out}</div></div></div>`;
 }
@@ -703,6 +850,44 @@ function renderRoute(){
 }
 document.querySelectorAll('#routeTabs .btn').forEach(b=>b.addEventListener('click',()=>{route=b.dataset.r;renderRoute();}));
 renderRoute();
+
+/* ============ STEP 6:方法分类表 ============ */
+const METHODS=[
+  {d:'<b>RLHF / RLAIF:模型自己生成 + 信号是偏好。</b>先用偏好数据训一个奖励模型;模型现场生成回答,奖励模型打分,PPO 按分数更新。偏好由人给叫 RLHF(InstructGPT、早期 ChatGPT);由另一个模型按一套写好的原则来判叫 RLAIF,Anthropic 的 Constitutional AI(2022)是代表。→ 本章第 5 步',
+   dist:'RLAIF 里给回答排好坏的那个模型,就是教师。'},
+  {d:'<b>DPO:现成数据 + 信号是偏好。</b>拿事先收集好的(好回答, 差回答)配对直接算损失,不训奖励模型,也不现场生成。优化的目标和 RLHF 相同。→ <a href="10_dpo_viz.html#step-1">第 10 章 · 08_dpo.py</a>',
+   dist:'教师当裁判给一批回答排好坏,得到偏好数据再做 DPO(偏好蒸馏)。Hugging Face 的 Zephyr(2023)用教师模型排好序的数据做 DPO,全程没有人工标注。'},
+  {d:'<b>RLVR:模型自己生成 + 信号是对错。</b>模型自己解题,判分程序看最后答案对不对给奖励,再用 GRPO 或 PPO 更新。推理模型的长思考主要来自这一格。→ <a href="21_rlvr_grpo_viz.html#step-1">第 21 章 · 19_grpo.py</a>',
+   dist:'这一格本身不用教师:判分的是程序。另有一种"在线策略蒸馏",学生自己生成、教师逐 token 给分,形式上也落在左列。'},
+  {d:'<b>SFT:现成数据 + 信号是标准答案。</b>照着「指令 → 回答」学,loss 和预训练是同一个交叉熵。→ <a href="08_sft_viz.html#step-1">第 8 章 · 06_sft.py</a>',
+   dist:'教师写答案、学生照学(数据蒸馏),是现在最常见的蒸馏。DeepSeek-R1 同时发布的几个小模型只做了这一步,没有跑 RL。'},
+];
+const LENS={
+  none:{cells:[],d:'两个问题定一格:① 训练时模型自己生成回答吗?② 信号是"A 比 B 好"的比较吗?点格子看每一格是什么。'},
+  rl:{cells:[0,2],d:'<b>强化学习 = 左列。</b>判据只有一个:训练时模型自己生成回答,再按得到的分数调整。分数来自奖励模型(RLHF)、另一个模型(RLAIF)还是程序(RLVR),都属于强化学习。'},
+  pref:{cells:[0,1],d:'<b>偏好优化 = 上行。</b>它说的是信号的形态是"A 比 B 好"的比较,不指某种算法。同一种信号既能走强化学习(RLHF),也能不走(DPO)。'},
+  distill:{cells:[0,1,2,3],d:'<b>蒸馏 = 四格都可能出现。</b>它说的是信号来自一个更强的教师模型,跟用哪种方法训无关:'},
+};
+let lens='none', mSel=-1;
+function setActiveBtn(containerId,n){
+  document.querySelectorAll('#'+containerId+' .btn').forEach((b,i)=>b.classList.toggle('primary',i===n));
+}
+function renderMethods(){
+  const L=LENS[lens];
+  document.querySelectorAll('#methodGrid .mcell').forEach(c=>{
+    const i=+c.dataset.m; c.classList.toggle('lit',L.cells.includes(i)); c.classList.toggle('sel',i===mSel);
+  });
+  setActiveBtn('lensBtns',['none','rl','pref','distill'].indexOf(lens));
+  const NAMES=['RLHF / RLAIF','DPO','RLVR','SFT'];
+  let h;
+  if(mSel>=0){ h=METHODS[mSel].d; if(lens==='distill') h+='<br><b>蒸馏在这一格:</b>'+METHODS[mSel].dist; }
+  else if(lens==='distill'){ h=L.d+'<ul>'+[3,1,0,2].map(i=>'<li><b>'+NAMES[i]+':</b>'+METHODS[i].dist+'</li>').join('')+'</ul>'; }
+  else h=L.d;
+  document.getElementById('methodDetail').innerHTML=h;
+}
+document.querySelectorAll('#lensBtns .btn').forEach(b=>b.addEventListener('click',()=>{lens=b.dataset.lens;mSel=-1;renderMethods();}));
+document.querySelectorAll('#methodGrid .mcell').forEach(c=>c.addEventListener('click',()=>{mSel=+c.dataset.m;renderMethods();}));
+renderMethods();
 
 /* ============ 名词气泡 ============ */
 (function(){
