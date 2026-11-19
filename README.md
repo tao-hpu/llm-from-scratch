@@ -16,36 +16,34 @@
 
 ## 交互式可视化
 
-除了代码,每一关还配一套**交互式 HTML 可视化**——把抽象的张量、损失、注意力拆成可以亲手拨动的动画,**先看懂直觉,再读代码**。全部单文件、零依赖,**双击 [`web/index.html`](web/index.html) 即可离线打开**。
+除了代码,每一关还配一套**交互式可视化**——把抽象的张量、损失、注意力拆成可以亲手拨动的动画,**先看懂直觉,再读代码**。
 
-> 🌐 **在线版(免下载,手机也能看):<https://learn-llm.fim.ai>**
+> 🌐 **在线版(免下载,手机也能看):<https://learn-llm.fim.ai>**;页面源码在 [tao-hpu/learn-llm](https://github.com/tao-hpu/learn-llm)。
 
-- [`web/index.html`](web/index.html) — 总入口,扁平列出所有章节
-- [`web/01_bigram_crossentropy_viz.html`](web/01_bigram_crossentropy_viz.html) — 第 1 章:logits 摊平 & 交叉熵
-- [`web/02_attention_viz.html`](web/02_attention_viz.html) — 第 2 章:自注意力,让每个位置"往回看"
-- [`web/03_transformer_viz.html`](web/03_transformer_viz.html) — 第 3 章:完整 Transformer(多头 + FFN + 残差 + LayerNorm)
-- [`web/04_gpt_machine_viz.html`](web/04_gpt_machine_viz.html) — 第 4 章:整机俯瞰,零件拼成 tiny GPT,装机 + 前向/采样全自动动画
-- [`web/05_sampling_viz.html`](web/05_sampling_viz.html) — 第 5 章(124M 推理):从 logits 到文字——temperature / top_k / 自回归 / KV-cache 加速
-- [`web/07_pretraining_viz.html`](web/07_pretraining_viz.html) — 第 6 章(124M 训练,对应 `04_gpt2_124m.py`):配置跃迁 / BPE + shards / 梯度累积 / warmup+余弦学习率 / 数据量收敛对照
-- [`web/06_posttraining_viz.html`](web/06_posttraining_viz.html) — 第 7 章 · Phase 2 开篇 · 后训练白皮书:参数量 vs 数据量、任务 vs 手段、SFT 机制(loss mask)、RLHF vs DPO
-- [`web/08_sft_viz.html`](web/08_sft_viz.html) — 第 8 章 · SFT(对应 `06_sft.py`):把 124M base 调成会答题——对话模板 + EOS + loss mask + 训练前后真实采样对比
-- [`web/09_lora_viz.html`](web/09_lora_viz.html) — 第 9 章 · 手搓 LoRA(对应 `07_lora.py`):冻结底座只训低秩旁路 B·A(~0.94% 参数 / 4.7MB adapter)——拨 r 算账 + B=0 平滑出发 + 真实 loss 曲线与采样
-- [`web/10_dpo_viz.html`](web/10_dpo_viz.html) — 第 10 章 · 手搓 DPO(对应 `08_dpo.py`):偏好对齐,不训奖励模型/不走 RL——policy+冻结 ref + 隐式奖励 + DPO loss 滑块 + 真实曲线(loss↓/margin↑/准确率 0→100%)
-- [`web/11_moe_viz.html`](web/11_moe_viz.html) — 第 11 章 · 手搓 MoE(对应 `09_moe.py`):把 FFN 拆成 4 专家 + 路由器 top-2 派单,分工涌现热力图、负载均衡对照(top-1 关 aux 实测偏载滚雪球)、"参数翻倍算力不变"账本。1.35M 参数,大概是**全球最小的 MoE 之一**,机制却和 671B 的 DeepSeek 同款
-- [`web/12_llama_viz.html`](web/12_llama_viz.html) — 第 12 章 · 把 GPT-2 升级成 LLaMA(对应 `10_llama.py`):RoPE 把位置变成旋转角、RMSNorm 少做一半、SwiGLU 给 FFN 装闸门、GQA 让 K/V 拼车 —— 四个零件各能单独开关,附六组真实对照训练
-- [`web/13_linear_attention_viz.html`](web/13_linear_attention_viz.html) — 第 13 章 · 线性注意力(对应 `11_linear_attn.py`):把越存越长的 KV cache 换成固定大小的记忆板,linear / delta rule / Gated DeltaNet 三种写法,再用键值检索任务看它的容量上限和 3:1 混合
-- [`web/14_sparse_attention_viz.html`](web/14_sparse_attention_viz.html) — 第 14 章 · 稀疏注意力(对应 `12_sparse_attn.py`):NSA 的压缩、挑选、滑窗三条支路,每个 query 只读一小部分历史,附"远处找钥匙"对照
-- [`web/15_ngram_memory_viz.html`](web/15_ngram_memory_viz.html) — 第 15 章 · N-gram 查表(对应 `13_engram.py`):按最近两三个字哈希查一张大表,表越大容量越大,每 token 读取量不变,表还能留在 CPU
-- [`web/16_speculative_decoding_viz.html`](web/16_speculative_decoding_viz.html) — 第 16 章 · 投机解码与 MTP(对应 `14_mtp.py`):草稿员先猜、主模型一次验收,接受规则保证输出分布不变;小草稿模型与 DeepSeek-V3 式 MTP 头两种草稿员
-- [`web/17_quantization_viz.html`](web/17_quantization_viz.html) — 第 17 章 · 量化(对应 `15_quant.py`):把第 6 章的 124M 从 32 位压到 2 位,对照 int8 / int4 各种 scale 粒度、Q4_K、NVFP4、MXFP4
-- [`web/18_bpe_viz.html`](web/18_bpe_viz.html) — 第 18 章 · 手写 BPE(对应 `16_bpe.py`):从 256 个字节出发数对、合并,在 8 MB FineWeb-Edu 上训出 16,384 词表;预切分对照、词表大小与压缩率、中文为什么贵
-- [`web/19_flash_attention_viz.html`](web/19_flash_attention_viz.html) — 第 19 章 · 手写 FlashAttention(对应 `17_flash_attn.py`):online softmax、分块、Triton 前向 kernel,在 RTX 4090 上和朴素写法、SDPA 比时间与显存,换进 124M 核对 loss
-- [`web/20_scaling_law_viz.html`](web/20_scaling_law_viz.html) — 第 20 章 · Scaling Law(对应 `18_scaling.py`):21 个小模型训练点拟合 L(N, D),外推第 6 章 124M 训 10B token 的 loss(预测 3.36、实测 3.03);换三组拟合点看外推越远误差越大,并排查两次训练发散(注意力 logit 增长,qk-norm 修复)
-- [`web/21_rlvr_grpo_viz.html`](web/21_rlvr_grpo_viz.html) — 第 21 章 · RLVR 与 GRPO(对应 `19_grpo.py`):只给判分器,把 124M 教会两位数加法;同一基座、同一评测下和 SFT、DPO 同台对照
-- [`web/glossary.html`](web/glossary.html) — 名词表(术语字典,正文术语 hover 即弹气泡)
-- [`web/notes.html`](web/notes.html) — 学习札记 / 彩蛋:正课之外的小故事(如 Transformer 前世今生:8 作者、翻译起源、家谱)
-
-> 维护/新增可视化页面前,请先读 [`可视化规范.md`](可视化规范.md)——记录了配色、分步导航、按钮、名词气泡等全站约定。
+- [`/`](https://learn-llm.fim.ai/) — 总入口,扁平列出所有章节
+- [`/ch/bigram`](https://learn-llm.fim.ai/ch/bigram) — 第 1 章:logits 摊平 & 交叉熵
+- [`/ch/attention`](https://learn-llm.fim.ai/ch/attention) — 第 2 章:自注意力,让每个位置"往回看"
+- [`/ch/transformer`](https://learn-llm.fim.ai/ch/transformer) — 第 3 章:完整 Transformer(多头 + FFN + 残差 + LayerNorm)
+- [`/ch/gpt-machine`](https://learn-llm.fim.ai/ch/gpt-machine) — 第 4 章:整机俯瞰,零件拼成 tiny GPT,装机 + 前向/采样全自动动画
+- [`/ch/sampling`](https://learn-llm.fim.ai/ch/sampling) — 第 5 章(124M 推理):从 logits 到文字——temperature / top_k / 自回归 / KV-cache 加速
+- [`/ch/pretraining`](https://learn-llm.fim.ai/ch/pretraining) — 第 6 章(124M 训练,对应 `04_gpt2_124m.py`):配置跃迁 / BPE + shards / 梯度累积 / warmup+余弦学习率 / 数据量收敛对照
+- [`/ch/posttraining`](https://learn-llm.fim.ai/ch/posttraining) — 第 7 章 · Phase 2 开篇 · 后训练白皮书:参数量 vs 数据量、任务 vs 手段、SFT 机制(loss mask)、RLHF vs DPO
+- [`/ch/sft`](https://learn-llm.fim.ai/ch/sft) — 第 8 章 · SFT(对应 `06_sft.py`):把 124M base 调成会答题——对话模板 + EOS + loss mask + 训练前后真实采样对比
+- [`/ch/lora`](https://learn-llm.fim.ai/ch/lora) — 第 9 章 · 手搓 LoRA(对应 `07_lora.py`):冻结底座只训低秩旁路 B·A(~0.94% 参数 / 4.7MB adapter)——拨 r 算账 + B=0 平滑出发 + 真实 loss 曲线与采样
+- [`/ch/dpo`](https://learn-llm.fim.ai/ch/dpo) — 第 10 章 · 手搓 DPO(对应 `08_dpo.py`):偏好对齐,不训奖励模型/不走 RL——policy+冻结 ref + 隐式奖励 + DPO loss 滑块 + 真实曲线(loss↓/margin↑/准确率 0→100%)
+- [`/ch/moe`](https://learn-llm.fim.ai/ch/moe) — 第 11 章 · 手搓 MoE(对应 `09_moe.py`):把 FFN 拆成 4 专家 + 路由器 top-2 派单,分工涌现热力图、负载均衡对照(top-1 关 aux 实测偏载滚雪球)、"参数翻倍算力不变"账本。1.35M 参数,大概是**全球最小的 MoE 之一**,机制却和 671B 的 DeepSeek 同款
+- [`/ch/llama`](https://learn-llm.fim.ai/ch/llama) — 第 12 章 · 把 GPT-2 升级成 LLaMA(对应 `10_llama.py`):RoPE 把位置变成旋转角、RMSNorm 少做一半、SwiGLU 给 FFN 装闸门、GQA 让 K/V 拼车 —— 四个零件各能单独开关,附六组真实对照训练
+- [`/ch/linear-attention`](https://learn-llm.fim.ai/ch/linear-attention) — 第 13 章 · 线性注意力(对应 `11_linear_attn.py`):把越存越长的 KV cache 换成固定大小的记忆板,linear / delta rule / Gated DeltaNet 三种写法,再用键值检索任务看它的容量上限和 3:1 混合
+- [`/ch/sparse-attention`](https://learn-llm.fim.ai/ch/sparse-attention) — 第 14 章 · 稀疏注意力(对应 `12_sparse_attn.py`):NSA 的压缩、挑选、滑窗三条支路,每个 query 只读一小部分历史,附"远处找钥匙"对照
+- [`/ch/ngram-memory`](https://learn-llm.fim.ai/ch/ngram-memory) — 第 15 章 · N-gram 查表(对应 `13_engram.py`):按最近两三个字哈希查一张大表,表越大容量越大,每 token 读取量不变,表还能留在 CPU
+- [`/ch/speculative-decoding`](https://learn-llm.fim.ai/ch/speculative-decoding) — 第 16 章 · 投机解码与 MTP(对应 `14_mtp.py`):草稿员先猜、主模型一次验收,接受规则保证输出分布不变;小草稿模型与 DeepSeek-V3 式 MTP 头两种草稿员
+- [`/ch/quantization`](https://learn-llm.fim.ai/ch/quantization) — 第 17 章 · 量化(对应 `15_quant.py`):把第 6 章的 124M 从 32 位压到 2 位,对照 int8 / int4 各种 scale 粒度、Q4_K、NVFP4、MXFP4
+- [`/ch/bpe`](https://learn-llm.fim.ai/ch/bpe) — 第 18 章 · 手写 BPE(对应 `16_bpe.py`):从 256 个字节出发数对、合并,在 8 MB FineWeb-Edu 上训出 16,384 词表;预切分对照、词表大小与压缩率、中文为什么贵
+- [`/ch/flash-attention`](https://learn-llm.fim.ai/ch/flash-attention) — 第 19 章 · 手写 FlashAttention(对应 `17_flash_attn.py`):online softmax、分块、Triton 前向 kernel,在 RTX 4090 上和朴素写法、SDPA 比时间与显存,换进 124M 核对 loss
+- [`/ch/scaling-law`](https://learn-llm.fim.ai/ch/scaling-law) — 第 20 章 · Scaling Law(对应 `18_scaling.py`):21 个小模型训练点拟合 L(N, D),外推第 6 章 124M 训 10B token 的 loss(预测 3.36、实测 3.03);换三组拟合点看外推越远误差越大,并排查两次训练发散(注意力 logit 增长,qk-norm 修复)
+- [`/ch/rlvr-grpo`](https://learn-llm.fim.ai/ch/rlvr-grpo) — 第 21 章 · RLVR 与 GRPO(对应 `19_grpo.py`):只给判分器,把 124M 教会两位数加法;同一基座、同一评测下和 SFT、DPO 同台对照
+- [`/glossary`](https://learn-llm.fim.ai/glossary) — 名词表(术语字典,正文术语 hover 即弹气泡)
+- [`/notes`](https://learn-llm.fim.ai/notes) — 学习札记 / 彩蛋:正课之外的小故事(如 Transformer 前世今生:8 作者、翻译起源、家谱)
 
 ---
 
@@ -318,7 +316,7 @@ python 05_sample.py --ckpt /path/to/gpt2-124m-10b-val3.02.pt --prompt "The histo
 
 A learning path, not a framework: hand-build a Transformer step by step (01 → 02 → 03), then reproduce GPT-2 124M with real data, real BPE, and a real optimizer. Code is kept short and over-commented on purpose — the goal is *understanding*, not speed.
 
-> 🌐 **Interactive visualizations (no download, mobile-friendly): <https://learn-llm.fim.ai>**
+> 🌐 **Interactive visualizations (no download, mobile-friendly): <https://learn-llm.fim.ai>** (source: [tao-hpu/learn-llm](https://github.com/tao-hpu/learn-llm))
 
 Heavily based on Andrej Karpathy's [nanoGPT](https://github.com/karpathy/nanoGPT) and [build-nanogpt](https://github.com/karpathy/build-nanogpt). **The added value here is the detailed Chinese walkthrough**, so the inline comments and `导读.md` are in Chinese. If there's interest in an English-commented version, open an issue.
 

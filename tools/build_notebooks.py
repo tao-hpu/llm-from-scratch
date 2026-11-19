@@ -17,8 +17,9 @@
 Colab 上 clone 仓库、缺包才装、进入章节目录,补上脚本靠 __file__ 定位数据的那个变量,
 把命令行参数写进 sys.argv;需要预训练权重的章节,顺带从 HuggingFace 下载第 6 章训出的 124M 权重。
 
-README 里的章节 ↔ Notebook 表,以及 web/ 各章节页顶部的「源码 / Colab」链接,也由本工具按 CHAPTERS
-生成,都写在两行 HTML 注释标记之间(README: notebooks-table,页面: code-links)。
+README 里的章节 ↔ Notebook 表也由本工具按 CHAPTERS 生成,写在两行 HTML 注释标记
+(notebooks-table)之间。交互式可视化页面在 learn-llm 仓库,各章的源码 / Colab 链接在那边的
+src/catalog.json 里手动维护,本工具不再写网页。
 
 用法(不需要任何第三方库):
     python tools/build_notebooks.py           # 重新生成全部 Notebook 和 README 表
@@ -53,41 +54,28 @@ PIP_BY_IMPORT = {"tiktoken": "tiktoken", "regex": "regex"}
 #   argv:        写进 sys.argv 的命令行参数(不含脚本名);"{CKPT}" 会换成权重绝对路径
 #   needs_ckpt:  是否先下载 124M 权重
 #   prereq:      先于本脚本执行的前置脚本及其参数(08 要先有 06 的 SFT 结果)
-#   page:        web/ 下对应的章节页;页面顶部 .filename 角标后的代码 / Colab 链接也由本工具生成
 CHAPTERS = [
-    dict(ch=1, script="phase1-nanogpt/01_bigram.py", page="01_bigram_crossentropy_viz.html", needs="无,CPU 几分钟"),
-    dict(ch=2, script="phase1-nanogpt/02_attention.py", page="02_attention_viz.html", needs="无"),
-    dict(ch=3, script="phase1-nanogpt/03_transformer.py", page="03_transformer_viz.html", needs="无"),
-    dict(ch=5, script="phase1-124m/05_sample.py", page="05_sampling_viz.html", needs="自动下载 124M 权重(约 500 MB)",
+    dict(ch=1, script="phase1-nanogpt/01_bigram.py", needs="无,CPU 几分钟"),
+    dict(ch=2, script="phase1-nanogpt/02_attention.py", needs="无"),
+    dict(ch=3, script="phase1-nanogpt/03_transformer.py", needs="无"),
+    dict(ch=5, script="phase1-124m/05_sample.py", needs="自动下载 124M 权重(约 500 MB)",
          needs_ckpt=True, argv=["--ckpt", "{CKPT}", "--prompt", "The history of ancient Rome", "--n", "3"]),
-    dict(ch=8, script="phase2-sft-lora/06_sft.py", page="08_sft_viz.html", needs="同上",
+    dict(ch=8, script="phase2-sft-lora/06_sft.py", needs="同上",
          needs_ckpt=True, argv=["--ckpt", "{CKPT}", "--epochs", "30"]),
-    dict(ch=9, script="phase2-sft-lora/07_lora.py", page="09_lora_viz.html", needs="同上",
+    dict(ch=9, script="phase2-sft-lora/07_lora.py", needs="同上",
          needs_ckpt=True, argv=["--ckpt", "{CKPT}"]),
-    dict(ch=10, script="phase2-sft-lora/08_dpo.py", page="10_dpo_viz.html", needs="同上;没有 SFT 权重时先跑一遍 06",
+    dict(ch=10, script="phase2-sft-lora/08_dpo.py", needs="同上;没有 SFT 权重时先跑一遍 06",
          needs_ckpt=True, argv=[],
          prereq=dict(script="06_sft.py", argv=["--ckpt", "{CKPT}", "--epochs", "30"],
                      produces=os.path.join("ckpt_sft", "sft.pt"))),
-    dict(ch=11, script="phase3-moe/09_moe.py", page="11_moe_viz.html", needs="无"),
-    dict(ch=12, script="phase3-moe/10_llama.py", page="12_llama_viz.html", needs="无"),
-    dict(ch=13, script="phase4-efficiency/11_linear_attn.py", page="13_linear_attention_viz.html", needs="无"),
-    dict(ch=14, script="phase4-efficiency/12_sparse_attn.py", page="14_sparse_attention_viz.html", needs="无"),
-    dict(ch=16, script="phase4-efficiency/14_mtp.py", page="16_speculative_decoding_viz.html", needs="无"),
-    dict(ch=21, script="phase5-fullstack/19_grpo.py", page="21_rlvr_grpo_viz.html", needs="自动下载 124M 权重",
+    dict(ch=11, script="phase3-moe/09_moe.py", needs="无"),
+    dict(ch=12, script="phase3-moe/10_llama.py", needs="无"),
+    dict(ch=13, script="phase4-efficiency/11_linear_attn.py", needs="无"),
+    dict(ch=14, script="phase4-efficiency/12_sparse_attn.py", needs="无"),
+    dict(ch=16, script="phase4-efficiency/14_mtp.py", needs="无"),
+    dict(ch=21, script="phase5-fullstack/19_grpo.py", needs="自动下载 124M 权重",
          needs_ckpt=True, argv=["--ckpt", "{CKPT}"]),
 ]
-
-# 有配套脚本但没做成 Notebook 的章节页:只放 GitHub 源码链接
-CODE_ONLY_PAGES = [
-    dict(script="phase1-124m/04_gpt2_124m.py", page="07_pretraining_viz.html"),
-    dict(script="phase4-efficiency/13_engram.py", page="15_ngram_memory_viz.html"),
-    dict(script="phase4-efficiency/15_quant.py", page="17_quantization_viz.html"),
-    dict(script="phase5-fullstack/16_bpe.py", page="18_bpe_viz.html"),
-    dict(script="phase5-fullstack/17_flash_attn.py", page="19_flash_attention_viz.html"),
-    dict(script="phase5-fullstack/18_scaling.py", page="20_scaling_law_viz.html"),
-]
-WEB_DIR = os.path.join(ROOT, "web")
-WEB_MARK = ("<!-- code-links:start -->", "<!-- code-links:end -->")
 
 RE_SINGLE = re.compile(r"^# -{4,} ?([^-\s].*?)\s*-{2,}\s*$")   # 单行:# ---- 标题 ----
 RE_RULE = re.compile(r"^# [-=]{20,}\s*$")                       # 横幅的上下横线(- 或 =)
@@ -306,80 +294,6 @@ def readme_with_table(text):
     return replace_between(text, README_MARK, readme_table(), "README.md")
 
 
-# ---------------------------------------------------------------------------
-# 章节页顶部的代码 / Colab 链接(.filename 角标之后)
-# ---------------------------------------------------------------------------
-WEB_CSS_MARK = ("/* code-links-css:start */", "/* code-links-css:end */")
-WEB_CSS = ".code-link{text-decoration:none;margin-left:6px;}\n.code-link:hover{border-color:var(--accent);color:var(--accent);}"
-
-
-def page_links(entry, with_notebook):
-    rel = entry["script"]
-    links = [f'<a class="filename code-link" href="{REPO_URL}/blob/main/{rel}" target="_blank" rel="noopener">'
-             f'📄 源码 {os.path.basename(rel)}</a>']
-    if with_notebook:
-        links.append(f'<a class="filename code-link" href="{COLAB_BASE}{nb_name_of(entry)}" target="_blank" rel="noopener">'
-                     f'▶ 在 Colab 里跑这一章</a>')
-    return "\n".join(links)
-
-
-def page_targets():
-    out = []
-    for entry, with_nb in [(c, True) for c in CHAPTERS] + [(c, False) for c in CODE_ONLY_PAGES]:
-        path = os.path.join(WEB_DIR, entry["page"])
-        if not os.path.exists(path):
-            raise SystemExit(f"CHAPTERS / CODE_ONLY_PAGES 里写的页面不存在:web/{entry['page']}")
-        text = open(path, encoding="utf-8").read()
-        text = replace_between(text, WEB_MARK, page_links(entry, with_nb), entry["page"])
-        # 样式写进页面原有的 <style> 块(每页只许一个 <style>),第一次缺标记就在 </style> 前补上
-        text = ensure_css_marks(text, entry["page"])
-        text = replace_between(text, WEB_CSS_MARK, WEB_CSS, entry["page"])
-        out.append((path, text))
-    return out
-
-
-# ---------------------------------------------------------------------------
-# 首页卡片里的 Colab 入口(每张有 Notebook 的卡片,「开始 →」左边)
-# ---------------------------------------------------------------------------
-INDEX_MARK = ("<!-- colab-link:start -->", "<!-- colab-link:end -->")
-INDEX_CSS = (".card-foot .colab{position:absolute;right:66px;top:9px;font-size:12px;color:var(--ink2);text-decoration:none;"
-             "border:1px solid var(--border);border-radius:6px;padding:1px 7px;background:#fff;}\n"
-             ".card-foot .colab:hover{color:var(--accent);border-color:var(--accent);}")
-
-
-def ensure_css_marks(text, page):
-    """页面的 <style> 块里没有样式标记就在 </style> 前补一对(每页只许一个 <style>)。"""
-    if WEB_CSS_MARK[0] in text:
-        return text
-    m = re.search(r"^([ \t]*)</style>", text, re.M)
-    if not m:
-        raise SystemExit(f"web/{page} 里找不到 </style>")
-    return text[:m.start()] + f"{m.group(1)}{WEB_CSS_MARK[0]}\n{m.group(1)}{WEB_CSS_MARK[1]}\n" + text[m.start():]
-
-
-def index_target():
-    path = os.path.join(WEB_DIR, "index.html")
-    text = open(path, encoding="utf-8").read()
-    for ch in CHAPTERS:
-        card = re.search(rf'<article class="card" id="ch-{ch["ch"]:02d}">.*?</article>', text, re.S)
-        if not card:
-            raise SystemExit(f"index.html 里找不到第 {ch['ch']} 章的卡片 <article id=\"ch-{ch['ch']:02d}\">")
-        body = card.group(0)
-        if INDEX_MARK[0] not in body:
-            # 第一次:标记放在「开始 →」那一行前面,同缩进
-            m = re.search(r'^([ \t]*)<a class="go" ', body, re.M)
-            if not m:
-                raise SystemExit(f"index.html 第 {ch['ch']} 章卡片里找不到 <a class=\"go\">")
-            body = body[:m.start()] + f"{m.group(1)}{INDEX_MARK[0]}\n{m.group(1)}{INDEX_MARK[1]}\n" + body[m.start():]
-        link = (f'<a class="colab" href="{COLAB_BASE}{nb_name_of(ch)}" target="_blank" rel="noopener" '
-                f'title="在 Colab 里跑这一章的代码">▶ Colab</a>')
-        body = replace_between(body, INDEX_MARK, link, f"index.html 第 {ch['ch']} 章卡片")
-        text = text[:card.start()] + body + text[card.end():]
-    text = ensure_css_marks(text, "index.html")
-    text = replace_between(text, WEB_CSS_MARK, INDEX_CSS, "index.html")
-    return path, text
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true", help="只比对已生成的文件,不一致退出码 1")
@@ -388,8 +302,6 @@ def main():
     targets = [(os.path.join(OUT_DIR, nb_name_of(ch)), build(ch)) for ch in CHAPTERS]
     readme_old = open(README, encoding="utf-8").read()
     targets.append((README, readme_with_table(readme_old)))
-    targets += page_targets()
-    targets.append(index_target())
     stale = []
     for path, text in targets:
         old = open(path, encoding="utf-8").read() if os.path.exists(path) else None
@@ -406,7 +318,7 @@ def main():
             for p in stale:
                 print("  ", os.path.relpath(p, ROOT))
             sys.exit(1)
-        print(f"{len(CHAPTERS)} 本 Notebook、README 表、{len(CHAPTERS) + len(CODE_ONLY_PAGES)} 个章节页的代码链接均与脚本一致")
+        print(f"{len(CHAPTERS)} 本 Notebook 和 README 表均与脚本一致")
 
 
 if __name__ == "__main__":

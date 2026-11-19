@@ -1,5 +1,5 @@
-# 仓库自检:web/ 页面约定(tools/check_web.py)与 notebooks/ 是否和脚本同步(tools/build_notebooks.py --check)。
-# 只订 push,不订 pull_request,避免一次合并跑两条。两个检查都只用标准库。
+# 仓库自检:notebooks/ 与 README 表是否和脚本同步(tools/build_notebooks.py --check)。
+# 只订 push,不订 pull_request,避免一次合并跑两条。检查只用标准库。
 name: check
 on:
   push:
@@ -12,5 +12,4 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python tools/check_web.py
       - run: python tools/build_notebooks.py --check

@@ -1,19 +1,13 @@
 # 项目说明(给 Claude 的工作约定)
 
-本项目 = 从零手写大语言模型的**教学项目**:每一关有 Python 代码(真正实现)+ 交互式 HTML 可视化(先建直觉)。
+本项目 = 从零手写大语言模型的**教学项目**:每一关有 Python 代码(真正实现)+ 交互式可视化(先建直觉,页面在 learn-llm 仓库)。
 
-## ⚠️ 改动 / 新建可视化 HTML 前,必读
+## 网页在 learn-llm 仓库
 
-**动任何 `*.html`(`index.html` / `glossary.html` / `0X_*_viz.html`)之前,先读 [`可视化规范.md`](可视化规范.md)。**
-它定义了全站统一规则:暖色配色变量、分步导航(step-tab + `#step-N` 深链)、按钮规则(同组按钮必须有 active 态、不留透明)、名词气泡组件(`.term` + `glossary.html`)、每页常驻超参速查条、新增章节清单。不读它很容易做出风格不一致的页面。
+交互式可视化页面已迁到 [tao-hpu/learn-llm](https://github.com/tao-hpu/learn-llm)(React,线上 https://learn-llm.fim.ai),本仓库不再放 HTML。改页面、加章节、配色与组件约定都去那个仓库做。
 
-**⚠️ 高频遗忘点:首页是子页的镜像。** 只要改了某章节页的 step 标题/数量或章节描述,**必须同步更新 `index.html`** 对应卡片的步骤列表与描述,否则首页会指向过时内容。
-
-## 结构速览
-
-- 所有 HTML 都放在 **`web/` 目录下同一层**(扁平,不再嵌套);文件名一律**英文**。Python 代码按 `phaseX-*/` 分目录。
-- `web/index.html` 是唯一首页(一层,直达章节);`web/glossary.html` 是名词表。
-- 章节进度 / 论文出处等约定见 `可视化规范.md` 与 `README.md`。
+- 本仓库只放 Python 代码(按 `phaseX-*/` 分目录)与 `notebooks/`。
+- **某章新增或改动了脚本 / Notebook,要同步改 learn-llm 的 `src/catalog.json` 里该章的 `codeLinks` / `source` / `colab`**:`tools/build_notebooks.py` 不再往网页注入链接。
 
 ## 教学风格
 
